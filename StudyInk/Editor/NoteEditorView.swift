@@ -411,6 +411,8 @@ struct NoteEditorView: View {
                 Button { showScanner = true } label: { Label("media.scan", systemImage: "doc.viewfinder") }
                 Button { showStickers = true } label: { Label("media.stickers", systemImage: "face.smiling") }
                 Button { importingPDF = true } label: { Label("media.importPDF", systemImage: "doc.badge.plus") }
+                Divider()
+                Button { pasteFromClipboard() } label: { Label("media.paste", systemImage: "doc.on.clipboard") }
             } label: {
                 Image(systemName: "plus")
             }
@@ -528,6 +530,23 @@ struct NoteEditorView: View {
         box.colorHex = canvasController.toolState.colorHex
         textBoxes.append(box)
         editingBoxID = box.id
+    }
+
+    /// Pastes clipboard images as media items, or clipboard text as a text box,
+    /// dropped at the center of the visible page region.
+    private func pasteFromClipboard() {
+        let pasteboard = UIPasteboard.general
+        if let images = pasteboard.images, !images.isEmpty {
+            for image in images {
+                insert(image: image, kind: .image)
+            }
+        } else if let text = pasteboard.string, !text.isEmpty {
+            let pagePoint = transform.toPage(CGPoint(x: UIScreen.main.bounds.midX, y: UIScreen.main.bounds.midY))
+            var box = TextBoxModel(x: pagePoint.x - 130, y: pagePoint.y - 30)
+            box.text = text
+            box.colorHex = canvasController.toolState.colorHex
+            textBoxes.append(box)
+        }
     }
 
     private func insert(image: UIImage, kind: MediaItemModel.Kind) {

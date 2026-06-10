@@ -137,6 +137,10 @@ struct PencilCanvasView: UIViewRepresentable {
 
         controller.isDarkMode = colorScheme == .dark
         controller.attach(canvas)
+        DispatchQueue.main.async { [weak coordinator = context.coordinator, weak canvas] in
+            guard let canvas else { return }
+            coordinator?.centerContent(canvas)
+        }
         return canvas
     }
 
@@ -154,6 +158,7 @@ struct PencilCanvasView: UIViewRepresentable {
             context.coordinator.isProgrammaticChange = false
         }
         if canvas.contentSize != pageSize { canvas.contentSize = pageSize }
+        context.coordinator.centerContent(canvas)
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(controller: controller) }
@@ -229,10 +234,23 @@ struct PencilCanvasView: UIViewRepresentable {
         }
 
         func scrollViewDidZoom(_ scrollView: UIScrollView) {
+            centerContent(scrollView)
             let scale = scrollView.zoomScale
             DispatchQueue.main.async { [weak controller] in
                 guard let controller, controller.zoomScale != scale else { return }
                 controller.zoomScale = scale
+            }
+        }
+
+        /// Keeps the page centered when it's smaller than the viewport (PencilKit
+        /// only accepts ink inside the content area, so without this the page
+        /// hugs the top-left and the rest of the screen is dead space).
+        func centerContent(_ scrollView: UIScrollView) {
+            let dx = max(0, (scrollView.bounds.width - scrollView.contentSize.width) / 2)
+            let dy = max(0, (scrollView.bounds.height - scrollView.contentSize.height) / 2)
+            let insets = UIEdgeInsets(top: dy, left: dx, bottom: dy, right: dx)
+            if scrollView.contentInset != insets {
+                scrollView.contentInset = insets
             }
         }
 
@@ -244,10 +262,12 @@ struct PencilCanvasView: UIViewRepresentable {
             targetContentOffset: UnsafeMutablePointer<CGPoint>
         ) {
             let threshold: CGFloat = 70
-            let maxOffsetY = max(0, scrollView.contentSize.height + scrollView.adjustedContentInset.bottom - scrollView.bounds.height)
+            let insets = scrollView.adjustedContentInset
+            let minOffsetY = -insets.top
+            let maxOffsetY = max(minOffsetY, scrollView.contentSize.height + insets.bottom - scrollView.bounds.height)
             let offsetY = scrollView.contentOffset.y
             var direction = 0
-            if offsetY < -threshold {
+            if offsetY < minOffsetY - threshold {
                 direction = -1
             } else if offsetY > maxOffsetY + threshold {
                 direction = 1

@@ -81,6 +81,7 @@
 "media.stickers" = "Stickers";
 "media.importPDF" = "Import PDF";
 "media.importSticker" = "Import PNG Sticker";
+"media.paste" = "Paste";
 "media.sticker" = "Sticker";
 "media.image" = "Image";
 "media.resize" = "Resize";
