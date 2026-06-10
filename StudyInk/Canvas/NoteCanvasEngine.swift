@@ -14,7 +14,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     private var pageFrames: [CGRect] = []   // document space (zoom 1)
     private var pageSizes: [CGSize] = []
     private var layoutSignature = ""
-    private let pageGap: CGFloat = 18
+    private let pageGap: CGFloat = 0
 
     let canvas = PKCanvasView()
     private var activeIndex = 0
@@ -150,7 +150,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     private func applyInitialZoomIfNeeded() {
         guard !didSetInitialZoom, bounds.width > 0, documentView.frame.width > 0 else { return }
         didSetInitialZoom = true
-        let fit = (bounds.width - 40) / (documentView.frame.width / zoomScale)
+        let fit = bounds.width / (documentView.frame.width / zoomScale)
         setZoomScale(min(max(fit, minimumZoomScale), 1.5), animated: false)
         contentOffset = CGPoint(x: max(0, (contentSize.width - bounds.width) / 2), y: 0)
     }
@@ -287,6 +287,16 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         publishGeometry()
     }
 
+    /// Releasing a pinch near fit-width snaps the page to exactly fill the screen.
+    func scrollViewDidEndZooming(_ scrollView: UIScrollView, with view: UIView?, atScale scale: CGFloat) {
+        guard documentView.frame.width > 0, zoomScale > 0 else { return }
+        let fit = bounds.width / (documentView.frame.width / zoomScale)
+        if fit >= minimumZoomScale, fit <= maximumZoomScale,
+           abs(zoomScale - fit) / fit < 0.12, zoomScale != fit {
+            setZoomScale(fit, animated: true)
+        }
+    }
+
     // MARK: - PKCanvasViewDelegate
 
     func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
@@ -358,10 +368,6 @@ final class PageContainerView: UIView {
         super.init(frame: .zero)
         contentMode = .redraw
         isOpaque = false
-        layer.shadowColor = UIColor.black.cgColor
-        layer.shadowOpacity = 0.22
-        layer.shadowRadius = 8
-        layer.shadowOffset = CGSize(width: 0, height: 3)
         imageView.contentMode = .scaleToFill
         imageView.isUserInteractionEnabled = false
         addSubview(imageView)
@@ -373,12 +379,16 @@ final class PageContainerView: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         imageView.frame = bounds
-        layer.shadowPath = UIBezierPath(rect: bounds).cgPath
     }
 
     override func draw(_ rect: CGRect) {
         guard let snapshot, let cg = UIGraphicsGetCurrentContext() else { return }
-        PageRenderer.drawBackground(snapshot, in: cg, darkMode: traitCollection.userInterfaceStyle == .dark)
+        let dark = traitCollection.userInterfaceStyle == .dark
+        PageRenderer.drawBackground(snapshot, in: cg, darkMode: dark)
+        // Hairline seam where stitched pages meet (pages are gapless).
+        let seam = (UIColor(named: "templateLine") ?? .separator).resolvedColor(with: traitCollection)
+        cg.setFillColor(seam.withAlphaComponent(0.8).cgColor)
+        cg.fill(CGRect(x: 0, y: bounds.height - 0.5, width: bounds.width, height: 0.5))
     }
 }
 

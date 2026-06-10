@@ -58,7 +58,16 @@ struct ToolState: Codable, Equatable {
         case .eraserObject: return PKEraserTool(.vector)
         case .lasso: return PKLassoTool()
         case .ballpoint, .fountain, .monoline, .highlighter, .pencil:
-            let base = InkColorAdapter.rendered(from: UIColor(hex: colorHex) ?? .black, darkMode: darkMode)
+            // What the user sees while drawing should be exactly this color:
+            var base = InkColorAdapter.rendered(from: UIColor(hex: colorHex) ?? .black, darkMode: darkMode)
+            if darkMode {
+                // PencilKit re-interprets tool colors against the current
+                // appearance (storing a light-mode equivalent and inverting at
+                // display). Without this pre-conversion our dark-adapted color
+                // gets inverted a second time — black AND white both came out
+                // black on the dark canvas.
+                base = PKInkingTool.convertColor(base, from: .dark, to: .light)
+            }
             let color = base.withAlphaComponent(kind == .highlighter ? min(opacity, 0.6) : opacity)
             return PKInkingTool(inkType, color: color, width: width)
         }

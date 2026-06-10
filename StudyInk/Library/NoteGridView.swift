@@ -24,9 +24,11 @@ struct NoteGridView: View {
             result = result.filter { $0.subject == subject }
         }
         if !searchText.isEmpty {
+            // localizedStandardContains: case-, diacritic- (niqqud), and
+            // width-insensitive — the right matcher for Hebrew + English.
             result = result.filter {
-                ($0.searchableText ?? "").localizedCaseInsensitiveContains(searchText)
-                    || ($0.title ?? "").localizedCaseInsensitiveContains(searchText)
+                ($0.searchableText ?? "").localizedStandardContains(searchText)
+                    || ($0.title ?? "").localizedStandardContains(searchText)
             }
         }
         switch sort {

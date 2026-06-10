@@ -19,6 +19,8 @@ struct FloatingToolbar: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var onInsertTextBox: () -> Void
+    /// Re-tapping the lasso tool arms select-and-rotate.
+    var onTransformSelection: () -> Void = {}
     var extraItems: [ToolbarExtraItem] = []
 
     private var dock: ToolbarDock { ToolbarDock(rawValue: dockRaw) ?? .top }
@@ -126,7 +128,11 @@ struct FloatingToolbar: View {
         Button {
             if controller.toolState.kind == kind {
                 // Second tap on the active tool = open its options.
-                if kind.isInking { optionsForTool = kind }
+                if kind.isInking {
+                    optionsForTool = kind
+                } else if kind == .lasso {
+                    onTransformSelection()
+                }
             } else {
                 Haptics.selection()
                 controller.select(kind)
