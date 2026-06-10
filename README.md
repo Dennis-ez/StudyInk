@@ -57,8 +57,9 @@ cp StudyInk/Config.sample.plist StudyInk/Config.plist
 
 ### iCloud entitlements
 1. In **Signing & Capabilities**, select your team.
-2. The project ships with an `iCloud` capability (CloudKit, container `iCloud.com.studyink.app`). Change the container ID to match your team if needed — also update `PersistenceController.cloudKitContainerID`.
-3. Background Modes → Remote notifications is enabled for CloudKit push.
+2. The entitlements file ships empty so the app builds without a paid team. To enable sync, add the **iCloud → CloudKit** capability in Signing & Capabilities with container `iCloud.com.studyink.app` (or your own ID — then also update `PersistenceController.cloudKitContainerID`).
+3. Turn on **Settings → iCloud Sync** inside the app and relaunch; the store is shared, so no data is lost when toggling.
+4. Background Modes → Remote notifications is enabled in Info.plist for CloudKit push.
 
 ### Build & run
 Open `StudyInk.xcodeproj`, select an iPad simulator or device, and run. No third-party dependencies — everything is Apple-native.
@@ -119,7 +120,7 @@ graph TD
 - [x] **Phase 5** — AI bubble system, canvas annotations, chips (`feature/phase-5-ai-bubbles`)
 - [x] **Phase 6** — Circle & Ask, Guided Mode, Quiz Me (`feature/phase-6-ai-modes`)
 - [x] **Phase 7** — Hebrew AI responses, RTL bubbles (`feature/phase-7-hebrew-ai`)
-- [ ] **Phase 8** — iCloud sync, audio, polish, accessibility (`feature/phase-8-sync-polish`)
+- [x] **Phase 8** — iCloud sync, audio, polish, accessibility (`feature/phase-8-sync-polish`)
 
 Workflow: every phase is developed on its feature branch and merged into `dev` via PR; `main` receives stable releases from `dev`. Commits follow [Conventional Commits](https://www.conventionalcommits.org).
 

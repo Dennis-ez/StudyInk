@@ -132,6 +132,14 @@
 "settings.ai.missingKey" = "חסר";
 "settings.ai.keyHelp" = "יש להוסיף את מפתח ה-API של Anthropic לקובץ Config.plist — ראו הוראות ב-README.";
 
+/* שמע */
+"audio.record" = "הקלטת שמע";
+"audio.stop" = "עצירת הקלטה";
+"audio.recording" = "מקליט…";
+"audio.pause" = "השהיית ניגון";
+"audio.tapHint" = "הקישו על הכתב כדי לקפוץ";
+"audio.recordings %lld" = "%lld הקלטות";
+
 /* מורה AI */
 "ai.tutorName" = "מורה AI";
 "ai.menu" = "תפריט מורה AI";

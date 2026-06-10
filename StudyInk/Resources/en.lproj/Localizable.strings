@@ -132,6 +132,14 @@
 "settings.ai.missingKey" = "Missing";
 "settings.ai.keyHelp" = "Add your Anthropic API key to Config.plist — see the README for setup.";
 
+/* Audio */
+"audio.record" = "Record Audio";
+"audio.stop" = "Stop Recording";
+"audio.recording" = "Recording…";
+"audio.pause" = "Pause Playback";
+"audio.tapHint" = "Tap your writing to jump";
+"audio.recordings %lld" = "%lld recordings";
+
 /* AI tutor */
 "ai.tutorName" = "AI Tutor";
 "ai.menu" = "AI Tutor Menu";
