@@ -27,6 +27,7 @@
 "tool.customColor" = "צבע מותאם אישית";
 "tool.opacity" = "שקיפות";
 "tool.width" = "עובי קו";
+"tool.optionsHint" = "הקישו שוב לאפשרויות צבע ועובי";
 
 /* סרגל כלים */
 "toolbar.customize" = "התאמת סרגל הכלים";
@@ -115,7 +116,8 @@
 "library.untitledNote" = "מחברת ללא שם";
 "library.newSubjectName" = "מקצוע חדש";
 "library.newDividerName" = "חוצץ";
-"library.empty" = "אין עדיין מחברות — הקישו על העיפרון כדי להתחיל";
+"library.empty" = "אין עדיין מחברות";
+"library.empty.subtitle" = "צרו את המחברת הראשונה שלכם — המורה החכם יחכה לכם ישר על הדף.";
 "library.noResults" = "אין תוצאות";
 "library.created %@" = "נוצר %@";
 "library.modified %@" = "עודכן %@";

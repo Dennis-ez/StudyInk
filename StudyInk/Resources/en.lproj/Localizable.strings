@@ -27,6 +27,7 @@
 "tool.customColor" = "Custom Color";
 "tool.opacity" = "Opacity";
 "tool.width" = "Stroke Width";
+"tool.optionsHint" = "Tap again for color and width options";
 
 /* Toolbar */
 "toolbar.customize" = "Customize Toolbar";
@@ -115,7 +116,8 @@
 "library.untitledNote" = "Untitled Note";
 "library.newSubjectName" = "New Subject";
 "library.newDividerName" = "Divider";
-"library.empty" = "No notes yet — tap the pencil to start";
+"library.empty" = "No notes yet";
+"library.empty.subtitle" = "Create your first note and the AI tutor will be right there on the page with you.";
 "library.noResults" = "No results";
 "library.created %@" = "Created %@";
 "library.modified %@" = "Modified %@";
