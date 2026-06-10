@@ -16,15 +16,26 @@ final class GuidedModeController: ObservableObject {
         didSet { isEnabled ? start() : stop() }
     }
     @Published var suggestion: GuidedSuggestion?
+    /// Transient, non-tappable status text (e.g. "guided mode is watching").
+    @Published var banner: String?
 
     weak var tutor: AITutorController?
     private var watchTask: Task<Void, Never>?
     private var dismissTask: Task<Void, Never>?
+    private var bannerTask: Task<Void, Never>?
     private var lastSeenText = ""
     private var inFlight = false
 
     func start() {
         stopTasks()
+        // Re-arm the change detector so re-enabling re-evaluates the current page.
+        lastSeenText = ""
+        guard AIConfig.isConfigured else {
+            isEnabled = false
+            tutor?.errorMessage = AIServiceError.missingKey(AIConfig.provider).localizedDescription
+            return
+        }
+        showBanner(String(localized: "ai.guided.activated"))
         watchTask = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.checkPage()
@@ -36,6 +47,7 @@ final class GuidedModeController: ObservableObject {
     func stop() {
         stopTasks()
         suggestion = nil
+        banner = nil
     }
 
     func pageTurned() {
@@ -46,8 +58,20 @@ final class GuidedModeController: ObservableObject {
     private func stopTasks() {
         watchTask?.cancel()
         dismissTask?.cancel()
+        bannerTask?.cancel()
         watchTask = nil
         dismissTask = nil
+        bannerTask = nil
+    }
+
+    private func showBanner(_ text: String) {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { banner = text }
+        bannerTask?.cancel()
+        bannerTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(4))
+            guard !Task.isCancelled else { return }
+            withAnimation { self?.banner = nil }
+        }
     }
 
     /// One cheap, text-only request: is there something worth flagging right now?
@@ -84,7 +108,10 @@ final class GuidedModeController: ObservableObject {
                   let text = object["suggestion"] as? String, !text.isEmpty else { return }
             show(GuidedSuggestion(text: text, matchString: object["match_string"] as? String))
         } catch {
-            // Guided mode is best-effort; stay silent on errors.
+            // Don't fail silently and don't alert every 10s: surface the error
+            // once and switch guided mode off so the user can fix the cause.
+            tutor.errorMessage = error.localizedDescription
+            isEnabled = false
         }
     }
 
@@ -119,8 +146,13 @@ final class GuidedModeController: ObservableObject {
         }
     }
 
+    /// Tolerates fenced code blocks and surrounding prose around the JSON object.
     private func extractJSON(from raw: String) -> String? {
-        guard let start = raw.firstIndex(of: "{"), let end = raw.lastIndex(of: "}") else { return nil }
+        if let fence = raw.range(of: "```json", options: .caseInsensitive),
+           let close = raw.range(of: "```", range: fence.upperBound..<raw.endIndex) {
+            return String(raw[fence.upperBound..<close.lowerBound])
+        }
+        guard let start = raw.firstIndex(of: "{"), let end = raw.lastIndex(of: "}"), start <= end else { return nil }
         return String(raw[start...end])
     }
 }

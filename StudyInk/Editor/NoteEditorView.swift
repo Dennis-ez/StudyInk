@@ -157,6 +157,49 @@ struct NoteEditorView: View {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
+            // Guided-mode status: transient banner on activation + a persistent
+            // "watching" chip while enabled (tap to turn off).
+            if let banner = guidedMode.banner, guidedMode.suggestion == nil {
+                VStack {
+                    Spacer()
+                    HStack(spacing: 8) {
+                        Image(systemName: "lightbulb.fill")
+                            .foregroundStyle(SemanticColor.aiCircleStroke)
+                        Text(banner)
+                            .font(.footnote)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(.regularMaterial, in: Capsule())
+                    .overlay(Capsule().strokeBorder(SemanticColor.aiBubbleBorder))
+                    .padding(.bottom, showPageStrip ? 130 : 30)
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+
+            if guidedMode.isEnabled && !distractionFree {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Button {
+                            guidedMode.isEnabled = false
+                        } label: {
+                            Label("ai.guidedMode", systemImage: "lightbulb.fill")
+                                .font(.caption2)
+                                .foregroundStyle(SemanticColor.aiCircleStroke)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(.regularMaterial, in: Capsule())
+                                .overlay(Capsule().strokeBorder(SemanticColor.aiBubbleBorder, lineWidth: 0.5))
+                        }
+                        .accessibilityLabel(Text("ai.guided.disable"))
+                        .padding(.leading, 14)
+                        Spacer()
+                    }
+                    .padding(.bottom, 8)
+                }
+            }
+
             // Side AI panel (secondary surface for long explanations + history).
             if tutor.panelOpen {
                 HStack {
