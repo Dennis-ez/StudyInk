@@ -127,6 +127,11 @@ struct FloatingToolbar: View {
         } label: {
             Image(systemName: kind.symbolName)
                 .foregroundStyle(controller.toolState.kind == kind ? Color.accentColor : Color.primary)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(controller.toolState.kind == kind ? Color.accentColor.opacity(0.16) : .clear)
+                        .frame(width: 32, height: 32)
+                )
         }
         .accessibilityLabel(Text(kind.labelKey))
         .accessibilityAddTraits(controller.toolState.kind == kind ? .isSelected : [])
