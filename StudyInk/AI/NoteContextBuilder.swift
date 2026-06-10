@@ -26,11 +26,18 @@ enum NoteContextBuilder {
         Total pages: \(pages.count). The student is currently on page \(currentPageIndex + 1).
         """
 
+        // Snapshot pages on the main actor (cheap), render off it (expensive) —
+        // asking the AI must never freeze the canvas or keyboard.
+        let snapshots = pages.map(PageRenderer.Snapshot.init)
+        let images = await Task.detached(priority: .userInitiated) {
+            snapshots.enumerated().map { index, snapshot in
+                // Page images scaled down to keep payloads light; current page sharper.
+                PageRenderer.render(snapshot, darkMode: darkMode, scale: index == currentPageIndex ? 1.0 : 0.5)
+            }
+        }.value
+
         for (index, page) in pages.enumerated() {
-            // Page snapshots scaled down to keep payloads light; current page sharper.
-            let scale: CGFloat = index == currentPageIndex ? 1.0 : 0.5
-            let image = PageRenderer.image(for: page, darkMode: darkMode, scale: scale)
-            if let block = AIContent.image(image) {
+            if images.indices.contains(index), let block = AIContent.image(images[index]) {
                 blocks.append(.text("Page \(index + 1) image:"))
                 blocks.append(block)
             }
@@ -59,8 +66,10 @@ enum NoteContextBuilder {
     /// Fresh OCR lines for the current page, used to resolve annotation targets.
     @MainActor
     static func ocrLines(for page: Page) async -> [OCRLine] {
-        let pageSize = PageSize.from(id: page.pageSizeID).size
-        let image = PageRenderer.image(for: page, darkMode: false)
-        return await OCRService.recognize(image: image, pageSize: pageSize)
+        let snapshot = PageRenderer.Snapshot(page: page)
+        return await Task.detached(priority: .userInitiated) {
+            let image = PageRenderer.render(snapshot, darkMode: false)
+            return await OCRService.recognize(image: image, pageSize: snapshot.pageSize)
+        }.value
     }
 }

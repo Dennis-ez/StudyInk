@@ -3,48 +3,80 @@ import PencilKit
 import PDFKit
 
 /// Composites a full page — background, template/PDF, media, ink, typed text —
-/// into a UIImage or PDF. Used by export, share, and the AI context builder.
+/// into a UIImage or PDF. Used by export, share, OCR, and the AI context builder.
+///
+/// Rendering can take hundreds of milliseconds per page, so the heavy path is
+/// split in two: a cheap main-actor `Snapshot` copies the page's value data out
+/// of Core Data, and `render(_:)` does the actual drawing on any thread.
 enum PageRenderer {
+    /// Value-type copy of everything needed to draw a page, safe to ship to a
+    /// background thread (Core Data objects are main-actor only).
+    struct Snapshot {
+        let pageSize: CGSize
+        let template: PageTemplate
+        let customTemplatePDF: Data?
+        let drawingData: Data?
+        let mediaItems: [MediaItemModel]
+        let textBoxes: [TextBoxModel]
+
+        @MainActor
+        init(page: Page) {
+            pageSize = PageSize.from(id: page.pageSizeID).size
+            template = page.template
+            customTemplatePDF = page.customTemplatePDF
+            drawingData = page.drawingData
+            mediaItems = page.mediaItems
+            textBoxes = page.textBoxes
+        }
+    }
+
     /// Canvas/background colors mirror the asset catalog tokens; resolved here
     /// explicitly so rendering can target either appearance regardless of UI state.
     static func backgroundColor(darkMode: Bool) -> UIColor {
         darkMode ? UIColor(red: 0.11, green: 0.11, blue: 0.118, alpha: 1) : .white
     }
 
-    static func image(for page: Page, darkMode: Bool, scale: CGFloat = 1) -> UIImage {
-        let pageSize = PageSize.from(id: page.pageSizeID).size
+    /// Thread-safe core renderer — call from a background task for heavy work.
+    static func render(_ snapshot: Snapshot, darkMode: Bool, scale: CGFloat = 1) -> UIImage {
         let format = UIGraphicsImageRendererFormat()
         format.scale = scale
-        let renderer = UIGraphicsImageRenderer(size: pageSize, format: format)
+        let renderer = UIGraphicsImageRenderer(size: snapshot.pageSize, format: format)
         return renderer.image { ctx in
-            draw(page: page, in: ctx.cgContext, pageSize: pageSize, darkMode: darkMode)
+            draw(snapshot, in: ctx.cgContext, darkMode: darkMode)
         }
     }
 
+    @MainActor
+    static func image(for page: Page, darkMode: Bool, scale: CGFloat = 1) -> UIImage {
+        render(Snapshot(page: page), darkMode: darkMode, scale: scale)
+    }
+
+    @MainActor
     static func pdfData(for note: Note, darkMode: Bool = false) -> Data {
+        let snapshots = note.sortedPages.map(Snapshot.init)
         let renderer = UIGraphicsPDFRenderer(bounds: .zero)
         return renderer.pdfData { ctx in
-            for page in note.sortedPages {
-                let pageSize = PageSize.from(id: page.pageSizeID).size
-                ctx.beginPage(withBounds: CGRect(origin: .zero, size: pageSize), pageInfo: [:])
-                draw(page: page, in: ctx.cgContext, pageSize: pageSize, darkMode: darkMode)
+            for snapshot in snapshots {
+                ctx.beginPage(withBounds: CGRect(origin: .zero, size: snapshot.pageSize), pageInfo: [:])
+                draw(snapshot, in: ctx.cgContext, darkMode: darkMode)
             }
         }
     }
 
+    @MainActor
     static func pngData(for page: Page, darkMode: Bool) -> Data? {
         image(for: page, darkMode: darkMode, scale: 2).pngData()
     }
 
-    private static func draw(page: Page, in cg: CGContext, pageSize: CGSize, darkMode: Bool) {
-        let pageRect = CGRect(origin: .zero, size: pageSize)
+    private static func draw(_ snapshot: Snapshot, in cg: CGContext, darkMode: Bool) {
+        let pageRect = CGRect(origin: .zero, size: snapshot.pageSize)
 
         cg.setFillColor(backgroundColor(darkMode: darkMode).cgColor)
         cg.fill(pageRect)
 
         // Template or custom PDF background.
-        if page.template == .customPDF, let data = page.customTemplatePDF,
-           let pdfImage = PDFTemplateRenderer.image(from: data, targetWidth: pageSize.width * 2) {
+        if snapshot.template == .customPDF, let data = snapshot.customTemplatePDF,
+           let pdfImage = PDFTemplateRenderer.image(from: data, targetWidth: snapshot.pageSize.width * 2) {
             pdfImage.draw(in: pageRect, blendMode: .normal, alpha: darkMode ? 0.85 : 1)
         } else {
             let lineColor = darkMode
@@ -53,17 +85,16 @@ enum PageRenderer {
             let accent = darkMode
                 ? UIColor(red: 0.039, green: 0.518, blue: 1, alpha: 1)
                 : UIColor(red: 0, green: 0.478, blue: 1, alpha: 1)
-            page.template.drawCG(in: cg, rect: pageRect, scale: 1, lineColor: lineColor.cgColor, accentColor: accent.cgColor)
+            snapshot.template.drawCG(in: cg, rect: pageRect, scale: 1, lineColor: lineColor.cgColor, accentColor: accent.cgColor)
         }
 
         // Media below ink, matching the editor's layer order.
-        for item in page.mediaItems {
+        for item in snapshot.mediaItems {
             MediaStore.image(named: item.fileName)?.draw(in: item.frame)
         }
 
         // Ink, appearance-resolved so dark-remapped colors render correctly.
-        let drawing = page.drawing
-        if !drawing.strokes.isEmpty {
+        if let data = snapshot.drawingData, let drawing = try? PKDrawing(data: data), !drawing.strokes.isEmpty {
             let traits = UITraitCollection(userInterfaceStyle: darkMode ? .dark : .light)
             var inkImage: UIImage?
             traits.performAsCurrent {
@@ -73,7 +104,7 @@ enum PageRenderer {
         }
 
         // Typed text boxes.
-        for box in page.textBoxes {
+        for box in snapshot.textBoxes {
             let paragraph = NSMutableParagraphStyle()
             paragraph.baseWritingDirection = box.isRTL ? .rightToLeft : .leftToRight
             switch box.textAlignment {
