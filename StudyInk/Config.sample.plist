@@ -7,6 +7,6 @@
 	<key>ANTHROPIC_MODEL</key>
 	<string>claude-fable-5</string>
 	<key>GEMINI_API_KEY</key>
-	<string>AIzaSyDpBDrkMW7hCqctpH9gPZDp-4nFeh2hKos</string>
+	<string></string>
 </dict>
 </plist>
