@@ -56,6 +56,7 @@ private struct TextBoxView: View {
     let onDelete: () -> Void
 
     @State private var dragStart: CGPoint?
+    @State private var resizeStart: CGSize?
 
     var body: some View {
         let screenFrame = transform.toScreen(box.frame)
@@ -86,6 +87,21 @@ private struct TextBoxView: View {
                     .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 1, dash: [4]))
             }
         }
+        .overlay(alignment: .bottomTrailing) {
+            if isEditing {
+                boxHandle(systemName: "arrow.up.left.and.arrow.down.right")
+                    .gesture(resizeGesture)
+                    .accessibilityLabel(Text("textbox.resize"))
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            if isEditing {
+                Button(action: onDelete) {
+                    boxHandle(systemName: "xmark", tint: Color("errorRed"))
+                }
+                .accessibilityLabel(Text("action.delete"))
+            }
+        }
         .position(x: screenFrame.midX, y: screenFrame.midY)
         .onTapGesture(perform: onBeginEdit)
         .gesture(dragGesture)
@@ -98,6 +114,20 @@ private struct TextBoxView: View {
         .accessibilityValue(Text(box.text))
     }
 
+    private func boxHandle(systemName: String, tint: Color = .accentColor) -> some View {
+        Circle()
+            .fill(tint)
+            .frame(width: 22, height: 22)
+            .overlay(
+                Image(systemName: systemName)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.white)
+            )
+            .shadow(color: .black.opacity(0.25), radius: 2, y: 1)
+            .contentShape(Circle().scale(1.8))
+            .offset(x: 11, y: systemName == "xmark" ? -11 : 11)
+    }
+
     private var dragGesture: some Gesture {
         DragGesture(minimumDistance: 4)
             .onChanged { value in
@@ -107,6 +137,17 @@ private struct TextBoxView: View {
                 box.y = start.y + value.translation.height / transform.zoomScale
             }
             .onEnded { _ in dragStart = nil }
+    }
+
+    private var resizeGesture: some Gesture {
+        DragGesture(minimumDistance: 2)
+            .onChanged { value in
+                if resizeStart == nil { resizeStart = CGSize(width: box.width, height: box.height) }
+                guard let start = resizeStart else { return }
+                box.width = max(80, start.width + value.translation.width / transform.zoomScale)
+                box.height = max(40, start.height + value.translation.height / transform.zoomScale)
+            }
+            .onEnded { _ in resizeStart = nil }
     }
 }
 

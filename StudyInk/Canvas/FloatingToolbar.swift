@@ -123,7 +123,7 @@ struct FloatingToolbar: View {
 
     private func toolButton(_ kind: ToolKind) -> some View {
         Button {
-            controller.toolState.kind = kind
+            controller.select(kind)
         } label: {
             Image(systemName: kind.symbolName)
                 .foregroundStyle(controller.toolState.kind == kind ? Color.accentColor : Color.primary)

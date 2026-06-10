@@ -4,8 +4,11 @@ import PencilKit
 /// Owns the live PKCanvasView so SwiftUI views (toolbar, editor) can drive
 /// undo/redo, tools, and zoom without fighting the representable lifecycle.
 final class CanvasController: NSObject, ObservableObject {
-    @Published var toolState = ToolState() {
-        didSet { applyTool() }
+    @Published var toolState: ToolState {
+        didSet {
+            applyTool()
+            rememberCurrentTool()
+        }
     }
     @Published var isRulerActive = false {
         didSet { canvasView?.isRulerActive = isRulerActive }
@@ -23,14 +26,46 @@ final class CanvasController: NSObject, ObservableObject {
         didSet { applyTool() }
     }
 
+    /// Per-tool settings (color/width/opacity remembered separately for each
+    /// pen, the highlighter, the pencil, …), persisted across launches.
+    private var savedTools: [String: ToolState]
+
     /// Remembered tool for Apple Pencil double-tap eraser toggle.
-    private var toolBeforeEraser: ToolState?
+    private var toolBeforeEraser: ToolKind?
 
     weak var canvasView: PKCanvasView?
     var onDrawingChanged: ((PKDrawing) -> Void)?
     var onStroke: ((PKStroke) -> Void)?
     /// Fired when the Apple Pencil is held still on the canvas for ~1s (ask gesture).
     var onPencilHold: (() -> Void)?
+    /// Fired when the user drags past the page's top/bottom edge (-1 = previous, +1 = next).
+    var onPageOverscroll: ((Int) -> Void)?
+
+    override init() {
+        if let data = UserDefaults.standard.data(forKey: "tools.perKind"),
+           let saved = try? JSONDecoder().decode([String: ToolState].self, from: data) {
+            savedTools = saved
+        } else {
+            savedTools = [:]
+        }
+        toolState = savedTools[ToolKind.ballpoint.rawValue] ?? ToolState()
+        super.init()
+    }
+
+    /// Switch tools, restoring that tool's own remembered color/width/opacity.
+    func select(_ kind: ToolKind) {
+        guard kind != toolState.kind else { return }
+        var next = savedTools[kind.rawValue] ?? toolState
+        next.kind = kind
+        toolState = next
+    }
+
+    private func rememberCurrentTool() {
+        savedTools[toolState.kind.rawValue] = toolState
+        if let data = try? JSONEncoder().encode(savedTools) {
+            UserDefaults.standard.set(data, forKey: "tools.perKind")
+        }
+    }
 
     func attach(_ canvas: PKCanvasView) {
         canvasView = canvas
@@ -55,13 +90,11 @@ final class CanvasController: NSObject, ObservableObject {
 
     func toggleEraser() {
         if toolState.kind.isInking || toolState.kind == .lasso {
-            toolBeforeEraser = toolState
-            toolState.kind = .eraserPixel
-        } else if let previous = toolBeforeEraser {
-            toolState = previous
-            toolBeforeEraser = nil
+            toolBeforeEraser = toolState.kind
+            select(.eraserPixel)
         } else {
-            toolState.kind = .ballpoint
+            select(toolBeforeEraser ?? .ballpoint)
+            toolBeforeEraser = nil
         }
     }
 }
@@ -98,6 +131,9 @@ struct PencilCanvasView: UIViewRepresentable {
         hold.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.pencil.rawValue)]
         hold.delegate = context.coordinator
         canvas.addGestureRecognizer(hold)
+        context.coordinator.holdRecognizer = hold
+
+        context.coordinator.observeKeyboard(for: canvas)
 
         controller.isDarkMode = colorScheme == .dark
         controller.attach(canvas)
@@ -126,10 +162,39 @@ struct PencilCanvasView: UIViewRepresentable {
         let controller: CanvasController
         var lastPushedDrawing: PKDrawing?
         var isProgrammaticChange = false
+        weak var holdRecognizer: UILongPressGestureRecognizer?
+        private weak var observedCanvas: PKCanvasView?
         private var saveWorkItem: DispatchWorkItem?
+        private var keyboardObservers: [NSObjectProtocol] = []
 
         init(controller: CanvasController) {
             self.controller = controller
+        }
+
+        deinit {
+            keyboardObservers.forEach(NotificationCenter.default.removeObserver)
+        }
+
+        /// While any keyboard is up, suspend the drawing + pencil-hold recognizers.
+        /// iPadOS's Scribble/handwriting daemon otherwise fights the canvas for the
+        /// text-input session ("Result accumulator timeout … exceeded"), freezing
+        /// the app for ~3s whenever a text field gains focus.
+        func observeKeyboard(for canvas: PKCanvasView) {
+            observedCanvas = canvas
+            let center = NotificationCenter.default
+            keyboardObservers = [
+                center.addObserver(forName: UIResponder.keyboardWillShowNotification, object: nil, queue: .main) { [weak self] _ in
+                    self?.setDrawingSuspended(true)
+                },
+                center.addObserver(forName: UIResponder.keyboardWillHideNotification, object: nil, queue: .main) { [weak self] _ in
+                    self?.setDrawingSuspended(false)
+                },
+            ]
+        }
+
+        private func setDrawingSuspended(_ suspended: Bool) {
+            observedCanvas?.drawingGestureRecognizer.isEnabled = !suspended
+            holdRecognizer?.isEnabled = !suspended
         }
 
         func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
@@ -168,6 +233,28 @@ struct PencilCanvasView: UIViewRepresentable {
             DispatchQueue.main.async { [weak controller] in
                 guard let controller, controller.zoomScale != scale else { return }
                 controller.zoomScale = scale
+            }
+        }
+
+        /// Dragging well past the page's top or bottom edge flows to the
+        /// neighboring page — continuous vertical reading across the note.
+        func scrollViewWillEndDragging(
+            _ scrollView: UIScrollView,
+            withVelocity velocity: CGPoint,
+            targetContentOffset: UnsafeMutablePointer<CGPoint>
+        ) {
+            let threshold: CGFloat = 70
+            let maxOffsetY = max(0, scrollView.contentSize.height + scrollView.adjustedContentInset.bottom - scrollView.bounds.height)
+            let offsetY = scrollView.contentOffset.y
+            var direction = 0
+            if offsetY < -threshold {
+                direction = -1
+            } else if offsetY > maxOffsetY + threshold {
+                direction = 1
+            }
+            guard direction != 0 else { return }
+            DispatchQueue.main.async { [weak controller] in
+                controller?.onPageOverscroll?(direction)
             }
         }
 
