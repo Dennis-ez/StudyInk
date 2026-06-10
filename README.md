@@ -17,12 +17,11 @@ Full **Hebrew + RTL** support throughout: handwriting OCR, typed text, UI mirror
 ## Features
 
 ### Note-taking engine (Notability parity)
-- Infinite vertical canvas with **PencilKit**: pressure, tilt, palm rejection
-- Tools: ballpoint / fountain / monoline pens, blending highlighter, textured pencil, object + pixel eraser, lasso, ruler
-- Custom color picker, opacity & stroke width sliders, unlimited undo/redo
-- Typed text boxes anywhere on canvas — fonts, styles, colors, **RTL auto-detected for Hebrew**
-- Multi-page documents, thumbnail strip, add/delete/reorder/duplicate pages
-- Templates: blank, ruled (wide/college/narrow), dot grid, square grid, isometric, music staff, Cornell — plus **custom PDF templates**, per-page backgrounds, dark-mode-aware rendering
+- **Continuous stitched pages**: the whole note scrolls as one document (sheet gaps + shadows), while every page stays a separate entity — per-page drawings, templates, OCR, exports, AI anchors
+- **PencilKit** ink with pressure, tilt, palm rejection; per-tool memory — every pen/highlighter/pencil keeps its own color, width, and opacity; re-tap the active tool for its options popover
+- Typed text boxes anywhere on canvas — fonts, styles, colors, **RTL auto-detected for Hebrew**; media with move/resize/rotate/delete handles; clipboard paste
+- Multi-page documents, right-side thumbnail strip, add/delete/reorder/duplicate pages
+- Templates: blank, ruled (wide/college/narrow), dot grid, square grid, isometric, music staff, Cornell — plus **custom PDF templates**, per-page backgrounds, **adjustable line/grid spacing**, dark-mode-aware rendering
 - Media: images (Photos/camera/Files), inline PDF annotation, stickers, VisionKit document scanner, drag & drop
 - Floating repositionable toolbar, customizable tool set, distraction-free mode, Split View / Slide Over
 - Library: subjects (folders) with colors and nesting, dividers, drag-to-organize, sort, **full-text + handwriting OCR search (Hebrew, Latin, math)**
@@ -34,7 +33,7 @@ Full **Hebrew + RTL** support throughout: handwriting OCR, typed text, UI mirror
 - Claude returns structured annotations the app draws on an overlay: **highlights, hand-drawn-style circles, arrows, underlines** — matched to OCR text and animated in
 - **Ask More**: quick-reply chips + inline follow-up field inside every bubble; threads grow in place
 - Pin bubbles to the page, dismiss to AI History, drag to reposition, "insert answer into note"
-- Modes: **Circle & Ask**, proactive **Guided Mode**, **Explain This Page**, **Quiz Me**
+- Modes: **Circle & Ask**, proactive **Guided Mode** (pen-pause triggered, rate-limited, with a tappable suggestion history), **Explain This Page**, **Quiz Me**
 - Side AI panel (320 pt drawer) as a secondary reading surface, KaTeX math rendering with dark-mode CSS
 - Claude responds **in the student's language** — Hebrew questions get Hebrew answers, RTL bubbles
 

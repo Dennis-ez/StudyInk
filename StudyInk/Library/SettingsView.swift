@@ -20,7 +20,7 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section(header: Text("settings.appearance")) {
+                Section(header: Label("settings.appearance", systemImage: "circle.lefthalf.filled")) {
                     Picker("settings.appearance", selection: $appearance) {
                         Text("settings.appearance.system").tag("system")
                         Text("settings.appearance.light").tag("light")
@@ -28,7 +28,7 @@ struct SettingsView: View {
                     }
                     .pickerStyle(.segmented)
                 }
-                Section(header: Text("settings.backup")) {
+                Section(header: Label("settings.backup", systemImage: "icloud")) {
                     Toggle("settings.autoBackup", isOn: $autoBackup)
                     Toggle("settings.iCloudSync", isOn: $iCloudSync)
                     Text("settings.iCloudSync.footnote")
@@ -53,7 +53,7 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var aiKeySection: some View {
-        Section(header: Text("settings.ai")) {
+        Section(header: Label("settings.ai", systemImage: "sparkles")) {
             Picker("settings.ai.provider", selection: $providerRaw) {
                 ForEach(AIProvider.allCases) { provider in
                     Text(provider.displayName).tag(provider.rawValue)
@@ -98,7 +98,7 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var aiModelSection: some View {
-        Section(header: Text("settings.ai.model")) {
+        Section(header: Label("settings.ai.model", systemImage: "cpu")) {
             Picker("settings.ai.model", selection: modelBinding) {
                 ForEach(models, id: \.self) { model in
                     Text(verbatim: model).tag(model)

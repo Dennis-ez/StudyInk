@@ -80,6 +80,7 @@ final class AITutorController: ObservableObject {
             apply(parsed: parsed, to: bubble.id, ocrLines: lines)
         } catch {
             errorMessage = error.localizedDescription
+            Haptics.error()
             bubbles.removeAll { $0.id == bubble.id }
         }
     }
@@ -136,6 +137,7 @@ final class AITutorController: ObservableObject {
             bubbles[index].annotations = AIResponseParser.resolve(annotations: parsed.annotations, against: ocrLines)
         }
         logToHistory(bubbles[index])
+        Haptics.success()
         // VoiceOver: announce new tutor responses so non-visual users hear them arrive.
         UIAccessibility.post(
             notification: .announcement,
