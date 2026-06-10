@@ -118,7 +118,7 @@ graph TD
 - [x] **Phase 4** — Dark mode full implementation (`feature/phase-4-darkmode`)
 - [x] **Phase 5** — AI bubble system, canvas annotations, chips (`feature/phase-5-ai-bubbles`)
 - [x] **Phase 6** — Circle & Ask, Guided Mode, Quiz Me (`feature/phase-6-ai-modes`)
-- [ ] **Phase 7** — Hebrew AI responses, RTL bubbles (`feature/phase-7-hebrew-ai`)
+- [x] **Phase 7** — Hebrew AI responses, RTL bubbles (`feature/phase-7-hebrew-ai`)
 - [ ] **Phase 8** — iCloud sync, audio, polish, accessibility (`feature/phase-8-sync-polish`)
 
 Workflow: every phase is developed on its feature branch and merged into `dev` via PR; `main` receives stable releases from `dev`. Commits follow [Conventional Commits](https://www.conventionalcommits.org).
