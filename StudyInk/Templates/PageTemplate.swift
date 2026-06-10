@@ -47,17 +47,18 @@ enum PageTemplate: String, CaseIterable, Codable, Identifiable {
     }
 
     /// SwiftUI entry point — bridges into the CGContext core.
-    func draw(in ctx: inout GraphicsContext, rect: CGRect, scale: CGFloat, lineColor: Color, accentColor: Color) {
+    func draw(in ctx: inout GraphicsContext, rect: CGRect, scale: CGFloat, lineColor: Color, accentColor: Color, spacing: CGFloat = 1) {
         let line = UIColor(lineColor).cgColor
         let accent = UIColor(accentColor).cgColor
         ctx.withCGContext { cg in
-            drawCG(in: cg, rect: rect, scale: scale, lineColor: line, accentColor: accent)
+            drawCG(in: cg, rect: rect, scale: scale, lineColor: line, accentColor: accent, spacing: spacing)
         }
     }
 
     /// Core renderer. `rect` is the page rect in the destination space; `scale`
-    /// converts page points to that space.
-    func drawCG(in cg: CGContext, rect: CGRect, scale: CGFloat, lineColor: CGColor, accentColor: CGColor) {
+    /// converts page points to that space; `spacing` scales line/grid density.
+    func drawCG(in cg: CGContext, rect: CGRect, scale rawScale: CGFloat, lineColor: CGColor, accentColor: CGColor, spacing: CGFloat = 1) {
+        let scale = rawScale * max(spacing, 0.4)
         cg.saveGState()
         defer { cg.restoreGState() }
         cg.clip(to: rect)

@@ -14,6 +14,7 @@ enum PageRenderer {
     struct Snapshot {
         let pageSize: CGSize
         let template: PageTemplate
+        let templateSpacing: CGFloat
         let customTemplatePDF: Data?
         let drawingData: Data?
         let mediaItems: [MediaItemModel]
@@ -23,6 +24,7 @@ enum PageRenderer {
         init(page: Page) {
             pageSize = PageSize.from(id: page.pageSizeID).size
             template = page.template
+            templateSpacing = page.effectiveTemplateSpacing
             customTemplatePDF = page.customTemplatePDF
             drawingData = page.drawingData
             mediaItems = page.mediaItems
@@ -86,7 +88,7 @@ enum PageRenderer {
             let accent = darkMode
                 ? UIColor(red: 0.039, green: 0.518, blue: 1, alpha: 1)
                 : UIColor(red: 0, green: 0.478, blue: 1, alpha: 1)
-            snapshot.template.drawCG(in: cg, rect: pageRect, scale: 1, lineColor: lineColor.cgColor, accentColor: accent.cgColor)
+            snapshot.template.drawCG(in: cg, rect: pageRect, scale: 1, lineColor: lineColor.cgColor, accentColor: accent.cgColor, spacing: snapshot.templateSpacing)
         }
     }
 
