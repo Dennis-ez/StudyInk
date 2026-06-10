@@ -1,8 +1,9 @@
 import SwiftUI
 import PDFKit
 
-/// Built-in page background templates. Drawn vector-style in page space so they
-/// stay crisp at any zoom, using the semantic templateLine color (dark-mode aware).
+/// Built-in page background templates. The drawing core targets CGContext so the
+/// same code paints the live canvas (via GraphicsContext), thumbnails, PDF/PNG
+/// export, and AI context renders — always with semantic, dark-mode-aware colors.
 enum PageTemplate: String, CaseIterable, Codable, Identifiable {
     case blank
     case wideRuled, collegeRuled, narrowRuled
@@ -45,93 +46,113 @@ enum PageTemplate: String, CaseIterable, Codable, Identifiable {
         PageTemplate(rawValue: id ?? "blank") ?? .blank
     }
 
-    /// Draws the template into a SwiftUI GraphicsContext. `rect` is the page rect in
-    /// the destination coordinate space; `scale` converts page points to that space.
+    /// SwiftUI entry point — bridges into the CGContext core.
     func draw(in ctx: inout GraphicsContext, rect: CGRect, scale: CGFloat, lineColor: Color, accentColor: Color) {
+        let line = UIColor(lineColor).cgColor
+        let accent = UIColor(accentColor).cgColor
+        ctx.withCGContext { cg in
+            drawCG(in: cg, rect: rect, scale: scale, lineColor: line, accentColor: accent)
+        }
+    }
+
+    /// Core renderer. `rect` is the page rect in the destination space; `scale`
+    /// converts page points to that space.
+    func drawCG(in cg: CGContext, rect: CGRect, scale: CGFloat, lineColor: CGColor, accentColor: CGColor) {
+        cg.saveGState()
+        defer { cg.restoreGState() }
+        cg.clip(to: rect)
+        cg.setLineWidth(max(0.5, 0.7 * scale.squareRoot()))
+
         switch self {
         case .blank, .customPDF:
             return
         case .wideRuled:
-            drawRules(in: &ctx, rect: rect, spacing: 34 * scale, color: lineColor)
+            rules(cg, rect: rect, spacing: 34 * scale, color: lineColor)
         case .collegeRuled:
-            drawRules(in: &ctx, rect: rect, spacing: 26 * scale, color: lineColor)
-            drawMargin(in: &ctx, rect: rect, x: rect.minX + 64 * scale, color: accentColor)
+            rules(cg, rect: rect, spacing: 26 * scale, color: lineColor)
+            vertical(cg, rect: rect, x: rect.minX + 64 * scale, color: accentColor)
         case .narrowRuled:
-            drawRules(in: &ctx, rect: rect, spacing: 20 * scale, color: lineColor)
+            rules(cg, rect: rect, spacing: 20 * scale, color: lineColor)
         case .dotGrid:
             let step = 24 * scale
+            cg.setFillColor(lineColor)
             var y = rect.minY + step
             while y < rect.maxY {
                 var x = rect.minX + step
                 while x < rect.maxX {
-                    let dot = CGRect(x: x - 1, y: y - 1, width: 2, height: 2)
-                    ctx.fill(Path(ellipseIn: dot), with: .color(lineColor))
+                    cg.fillEllipse(in: CGRect(x: x - 1, y: y - 1, width: 2, height: 2))
                     x += step
                 }
                 y += step
             }
         case .squareGrid:
             let step = 24 * scale
+            cg.setStrokeColor(lineColor)
             var x = rect.minX
             while x <= rect.maxX {
-                stroke(&ctx, from: CGPoint(x: x, y: rect.minY), to: CGPoint(x: x, y: rect.maxY), color: lineColor)
+                line(cg, from: CGPoint(x: x, y: rect.minY), to: CGPoint(x: x, y: rect.maxY))
                 x += step
             }
             var y = rect.minY
             while y <= rect.maxY {
-                stroke(&ctx, from: CGPoint(x: rect.minX, y: y), to: CGPoint(x: rect.maxX, y: y), color: lineColor)
+                line(cg, from: CGPoint(x: rect.minX, y: y), to: CGPoint(x: rect.maxX, y: y))
                 y += step
             }
         case .isometricGrid:
             let step = 28 * scale
-            let slope: CGFloat = 0.577  // tan(30°)
-            var c = rect.minY - rect.width * slope
-            while c < rect.maxY + rect.width * slope {
-                stroke(&ctx, from: CGPoint(x: rect.minX, y: c), to: CGPoint(x: rect.maxX, y: c + rect.width * slope), color: lineColor)
-                stroke(&ctx, from: CGPoint(x: rect.minX, y: c + rect.width * slope), to: CGPoint(x: rect.maxX, y: c), color: lineColor)
+            let rise = rect.width * 0.577  // tan(30°)
+            cg.setStrokeColor(lineColor)
+            var c = rect.minY - rise
+            while c < rect.maxY + rise {
+                line(cg, from: CGPoint(x: rect.minX, y: c), to: CGPoint(x: rect.maxX, y: c + rise))
+                line(cg, from: CGPoint(x: rect.minX, y: c + rise), to: CGPoint(x: rect.maxX, y: c))
                 c += step
             }
         case .musicStaff:
-            let staffLineGap = 10 * scale
-            let staffBlockGap = 70 * scale
+            let lineGap = 10 * scale
+            let blockGap = 70 * scale
+            cg.setStrokeColor(lineColor)
             var y = rect.minY + 60 * scale
-            while y + 4 * staffLineGap < rect.maxY - 30 * scale {
-                for line in 0..<5 {
-                    let lineY = y + CGFloat(line) * staffLineGap
-                    stroke(&ctx, from: CGPoint(x: rect.minX + 30 * scale, y: lineY),
-                           to: CGPoint(x: rect.maxX - 30 * scale, y: lineY), color: lineColor)
+            while y + 4 * lineGap < rect.maxY - 30 * scale {
+                for i in 0..<5 {
+                    let lineY = y + CGFloat(i) * lineGap
+                    line(cg, from: CGPoint(x: rect.minX + 30 * scale, y: lineY),
+                         to: CGPoint(x: rect.maxX - 30 * scale, y: lineY))
                 }
-                y += staffBlockGap
+                y += blockGap
             }
         case .cornell:
-            // Cue column, note area, summary strip.
             let cueX = rect.minX + rect.width * 0.28
+            let headerY = rect.minY + 50 * scale
             let summaryY = rect.maxY - rect.height * 0.18
-            drawRules(in: &ctx, rect: CGRect(x: rect.minX, y: rect.minY + 50 * scale, width: rect.width, height: summaryY - rect.minY - 50 * scale), spacing: 26 * scale, color: lineColor)
-            drawMargin(in: &ctx, rect: CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: summaryY - rect.minY), x: cueX, color: accentColor)
-            stroke(&ctx, from: CGPoint(x: rect.minX, y: summaryY), to: CGPoint(x: rect.maxX, y: summaryY), color: accentColor, lineWidth: 1.5)
-            stroke(&ctx, from: CGPoint(x: rect.minX, y: rect.minY + 50 * scale), to: CGPoint(x: rect.maxX, y: rect.minY + 50 * scale), color: accentColor, lineWidth: 1.5)
+            rules(cg, rect: CGRect(x: rect.minX, y: headerY, width: rect.width, height: summaryY - headerY), spacing: 26 * scale, color: lineColor)
+            vertical(cg, rect: CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: summaryY - rect.minY), x: cueX, color: accentColor)
+            cg.setStrokeColor(accentColor)
+            cg.setLineWidth(1.5)
+            line(cg, from: CGPoint(x: rect.minX, y: headerY), to: CGPoint(x: rect.maxX, y: headerY))
+            line(cg, from: CGPoint(x: rect.minX, y: summaryY), to: CGPoint(x: rect.maxX, y: summaryY))
         }
     }
 
-    private func drawRules(in ctx: inout GraphicsContext, rect: CGRect, spacing: CGFloat, color: Color) {
+    private func rules(_ cg: CGContext, rect: CGRect, spacing: CGFloat, color: CGColor) {
         guard spacing > 1 else { return }
+        cg.setStrokeColor(color)
         var y = rect.minY + spacing
         while y < rect.maxY {
-            stroke(&ctx, from: CGPoint(x: rect.minX, y: y), to: CGPoint(x: rect.maxX, y: y), color: color)
+            line(cg, from: CGPoint(x: rect.minX, y: y), to: CGPoint(x: rect.maxX, y: y))
             y += spacing
         }
     }
 
-    private func drawMargin(in ctx: inout GraphicsContext, rect: CGRect, x: CGFloat, color: Color) {
-        stroke(&ctx, from: CGPoint(x: x, y: rect.minY), to: CGPoint(x: x, y: rect.maxY), color: color.opacity(0.6), lineWidth: 1.2)
+    private func vertical(_ cg: CGContext, rect: CGRect, x: CGFloat, color: CGColor) {
+        cg.setStrokeColor(color.copy(alpha: 0.6) ?? color)
+        line(cg, from: CGPoint(x: x, y: rect.minY), to: CGPoint(x: x, y: rect.maxY))
     }
 
-    private func stroke(_ ctx: inout GraphicsContext, from: CGPoint, to: CGPoint, color: Color, lineWidth: CGFloat = 0.7) {
-        var path = Path()
-        path.move(to: from)
-        path.addLine(to: to)
-        ctx.stroke(path, with: .color(color), lineWidth: lineWidth)
+    private func line(_ cg: CGContext, from: CGPoint, to: CGPoint) {
+        cg.move(to: from)
+        cg.addLine(to: to)
+        cg.strokePath()
     }
 }
 
@@ -172,13 +193,19 @@ struct TemplateBackgroundView: View {
     }
 
     private func renderPDF() {
-        guard template == .customPDF, let data = customPDFData,
-              let doc = PDFDocument(data: data), let page = doc.page(at: 0) else {
+        guard template == .customPDF, let data = customPDFData else {
             pdfImage = nil
             return
         }
+        pdfImage = PDFTemplateRenderer.image(from: data, targetWidth: pageSize.width * 2)
+    }
+}
+
+enum PDFTemplateRenderer {
+    static func image(from data: Data, targetWidth: CGFloat) -> UIImage? {
+        guard let doc = PDFDocument(data: data), let page = doc.page(at: 0) else { return nil }
         let bounds = page.bounds(for: .mediaBox)
-        let renderScale = max(pageSize.width / max(bounds.width, 1), 1) * 2
-        pdfImage = page.thumbnail(of: CGSize(width: bounds.width * renderScale, height: bounds.height * renderScale), for: .mediaBox)
+        let scale = max(targetWidth / max(bounds.width, 1), 1)
+        return page.thumbnail(of: CGSize(width: bounds.width * scale, height: bounds.height * scale), for: .mediaBox)
     }
 }

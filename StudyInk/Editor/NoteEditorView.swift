@@ -22,6 +22,7 @@ struct NoteEditorView: View {
     @State private var photoPickerItem: PhotosPickerItem?
     @State private var showPhotoPicker = false
     @State private var importingPDF = false
+    @State private var ocrTask: Task<Void, Never>?
     @Environment(\.managedObjectContext) private var context
 
     private var currentPage: Page? {
@@ -159,6 +160,26 @@ struct NoteEditorView: View {
             }
             .accessibilityLabel(Text("media.insert"))
 
+            Menu {
+                ShareLink(
+                    item: PDFExportFile(note: note),
+                    preview: SharePreview(note.title ?? "StudyInk")
+                ) {
+                    Label("export.pdf", systemImage: "doc.richtext")
+                }
+                if let page = currentPage {
+                    ShareLink(
+                        item: PNGExportFile(page: page),
+                        preview: SharePreview(note.title ?? "StudyInk")
+                    ) {
+                        Label("export.png", systemImage: "photo")
+                    }
+                }
+            } label: {
+                Image(systemName: "square.and.arrow.up")
+            }
+            .accessibilityLabel(Text("export.share"))
+
             Button { showPageSettings = true } label: { Image(systemName: "doc.badge.gearshape") }
                 .accessibilityLabel(Text("page.settings"))
 
@@ -214,6 +235,18 @@ struct NoteEditorView: View {
             pages[pageIndex].drawing = drawing
             note.searchableText = SearchableTextBuilder.build(for: note)
             PersistenceController.shared.save()
+            scheduleOCR(for: pages[pageIndex])
+        }
+    }
+
+    /// Re-indexes handwriting a few seconds after the pen goes quiet, keeping
+    /// search (and AI targeting) fresh without OCR-ing every stroke.
+    private func scheduleOCR(for page: Page) {
+        ocrTask?.cancel()
+        ocrTask = Task {
+            try? await Task.sleep(for: .seconds(4))
+            guard !Task.isCancelled else { return }
+            await OCRService.indexPage(page)
         }
     }
 
