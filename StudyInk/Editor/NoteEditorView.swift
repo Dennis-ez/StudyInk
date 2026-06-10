@@ -55,7 +55,7 @@ struct NoteEditorView: View {
     /// Engine rebuilds the page stack when this changes (count/size/template).
     private var layoutSignature: String {
         note.sortedPages.map {
-            "\($0.pageSizeID ?? "letter")|\($0.templateID ?? "blank")|\($0.customTemplatePDF?.count ?? 0)|\($0.templateSpacing)"
+            "\($0.id?.uuidString ?? "?")|\($0.pageSizeID ?? "letter")|\($0.templateID ?? "blank")|\($0.customTemplatePDF?.count ?? 0)|\($0.templateSpacing)"
         }.joined(separator: ",")
     }
 

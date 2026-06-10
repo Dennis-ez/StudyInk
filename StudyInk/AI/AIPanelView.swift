@@ -24,8 +24,10 @@ struct AIPanelView: View {
             composer
         }
         .frame(width: 320)
-        .background(SemanticColor.aiPanelBackground)
-        .overlay(alignment: .leading) { Divider() }
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .studyGlass(cornerRadius: 24)
+        .padding(.trailing, 10)
+        .padding(.vertical, 10)
         .transition(.move(edge: layoutDirection == .rightToLeft ? .leading : .trailing))
     }
 

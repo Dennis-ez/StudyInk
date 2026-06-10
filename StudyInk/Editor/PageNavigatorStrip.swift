@@ -28,7 +28,7 @@ struct PageNavigatorStrip: View {
             }
             .padding(10)
         }
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .studyGlass(cornerRadius: 16)
         .frame(maxWidth: horizontal ? 460 : 84, maxHeight: horizontal ? 100 : 480)
     }
 

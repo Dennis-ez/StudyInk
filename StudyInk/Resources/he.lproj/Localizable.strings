@@ -33,6 +33,7 @@
 /* סרגל כלים */
 "toolbar.customize" = "התאמת סרגל הכלים";
 "toolbar.pencilOnly" = "Apple Pencil בלבד";
+"tool.autoShapes" = "צורות אוטומטיות";
 "toolbar.move" = "הזזת סרגל הכלים";
 
 /* תיבות טקסט */
