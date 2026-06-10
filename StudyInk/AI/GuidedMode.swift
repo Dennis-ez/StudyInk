@@ -74,9 +74,9 @@ final class GuidedModeController: ObservableObject {
         """
 
         do {
-            let raw = try await ClaudeService.send(
+            let raw = try await AIService.send(
                 system: SystemPrompt.tutor(subjectContext: note.subjectContext ?? "calculus1"),
-                messages: [.init(role: "user", content: [.text(hint)])],
+                messages: [.user(text: hint)],
                 maxTokens: 300
             )
             guard let data = extractJSON(from: raw)?.data(using: .utf8),

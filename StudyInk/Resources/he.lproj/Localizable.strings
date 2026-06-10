@@ -131,6 +131,11 @@
 "settings.ai.configured" = "מוגדר";
 "settings.ai.missingKey" = "חסר";
 "settings.ai.keyHelp" = "יש להוסיף את מפתח ה-API של Anthropic לקובץ Config.plist — ראו הוראות ב-README.";
+"settings.ai.keyHelp.gemini" = "יש להוסיף GEMINI_API_KEY לקובץ Config.plist — מפתחות חינמיים זמינים ב-aistudio.google.com.";
+"settings.ai.provider" = "ספק";
+"settings.ai.model" = "מודל";
+"settings.ai.loadModels" = "טעינת מודלים זמינים";
+"settings.ai.customModel" = "מזהה מודל מותאם…";
 
 /* שמע */
 "audio.record" = "הקלטת שמע";
@@ -162,6 +167,7 @@
 "ai.history.page %lld" = "עמוד %lld";
 "ai.error" = "שגיאת מורה AI";
 "ai.error.missingKey" = "לא הוגדר מפתח API של Anthropic. העתיקו את Config.sample.plist ל-Config.plist והוסיפו את המפתח.";
+"ai.error.missingKey.gemini" = "לא הוגדר מפתח API של Gemini. הוסיפו GEMINI_API_KEY לקובץ Config.plist (מפתחות חינמיים ב-aistudio.google.com).";
 "ai.error.api %lld" = "בקשת ה-AI נכשלה ‏(HTTP %lld).";
 "ai.circleAsk.title" = "הקיפו ושאלו";
 "ai.circleAsk.hint" = "ציירו עיגול סביב מה שתרצו לשאול עליו";

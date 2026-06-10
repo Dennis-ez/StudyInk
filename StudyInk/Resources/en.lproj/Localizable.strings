@@ -131,6 +131,11 @@
 "settings.ai.configured" = "Configured";
 "settings.ai.missingKey" = "Missing";
 "settings.ai.keyHelp" = "Add your Anthropic API key to Config.plist — see the README for setup.";
+"settings.ai.keyHelp.gemini" = "Add a GEMINI_API_KEY to Config.plist — free-tier keys are available at aistudio.google.com.";
+"settings.ai.provider" = "Provider";
+"settings.ai.model" = "Model";
+"settings.ai.loadModels" = "Load Available Models";
+"settings.ai.customModel" = "Custom model ID…";
 
 /* Audio */
 "audio.record" = "Record Audio";
@@ -162,6 +167,7 @@
 "ai.history.page %lld" = "Page %lld";
 "ai.error" = "AI Tutor Error";
 "ai.error.missingKey" = "No Anthropic API key configured. Copy Config.sample.plist to Config.plist and add your key.";
+"ai.error.missingKey.gemini" = "No Gemini API key configured. Add GEMINI_API_KEY to Config.plist (free keys at aistudio.google.com).";
 "ai.error.api %lld" = "The AI request failed (HTTP %lld).";
 "ai.circleAsk.title" = "Circle & Ask";
 "ai.circleAsk.hint" = "Draw a loop around what you want to ask about";
