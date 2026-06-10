@@ -46,14 +46,22 @@ Full **Hebrew + RTL** support throughout: handwriting OCR, typed text, UI mirror
 - An **Anthropic API key** — get one at <https://console.anthropic.com>
 
 ### API key configuration
-The key is **never hardcoded or committed**. Copy the sample config and add your key:
+Keys are **never hardcoded or committed**. Copy the sample config and add your key(s):
 
 ```bash
 cp StudyInk/Config.sample.plist StudyInk/Config.plist
-# then edit StudyInk/Config.plist and set ANTHROPIC_API_KEY
+# then edit StudyInk/Config.plist:
+#   ANTHROPIC_API_KEY — from console.anthropic.com (paid credits)
+#   GEMINI_API_KEY    — from aistudio.google.com (free tier available)
 ```
 
-`StudyInk/Config.plist` is listed in `.gitignore`. If the file is missing at runtime the app runs with AI features disabled and shows a setup hint in the AI panel.
+`StudyInk/Config.plist` is listed in `.gitignore`. If no key is configured the app runs with AI features disabled and shows a setup hint in Settings.
+
+### AI provider & model
+The tutor supports **two providers — Anthropic Claude and Google Gemini** — selected in **Settings → AI Tutor**, along with the model. "Load Available Models" fetches the live model list from the selected provider's API; a custom model ID can also be entered. Notes on cost:
+
+- Claude API usage is billed via Console credits (a Claude Pro subscription does **not** cover API calls). For cheap iteration use `claude-haiku-4-5`; for best quality use `claude-fable-5`.
+- Gemini keys from Google AI Studio include a **free tier** — handy for zero-cost testing.
 
 ### iCloud entitlements
 1. In **Signing & Capabilities**, select your team.
