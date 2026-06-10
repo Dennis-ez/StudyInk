@@ -87,17 +87,25 @@ struct NoteGridView: View {
         NavigationLink {
             NoteEditorView(note: note)
         } label: {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 8) {
                 if let first = note.sortedPages.first {
                     PageThumbnailView(page: first)
                         .frame(height: 190)
+                        .shadow(color: .black.opacity(0.14), radius: 6, y: 3)
                 }
-                Text(verbatim: note.title ?? "")
-                    .font(.subheadline.weight(.medium))
-                    .lineLimit(1)
-                Text(note.modifiedAt ?? .now, style: .date)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(verbatim: note.title ?? "")
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                    HStack(spacing: 6) {
+                        Text(note.modifiedAt ?? .now, style: .date)
+                        Text(verbatim: "·")
+                        Text("library.pageCount \(note.sortedPages.count)")
+                    }
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 2)
             }
         }
         .buttonStyle(.plain)

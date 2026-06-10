@@ -50,7 +50,7 @@ struct NoteEditorView: View {
 
     var body: some View {
         ZStack {
-            Color("canvasBackground").ignoresSafeArea()
+            Color("deskBackground").ignoresSafeArea()
 
             if let page = currentPage {
                 TemplateBackgroundView(

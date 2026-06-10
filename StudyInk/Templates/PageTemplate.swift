@@ -168,9 +168,16 @@ struct TemplateBackgroundView: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        Canvas { ctx, _ in
+        Canvas { ctx, size in
             let pageRect = transform.toScreen(CGRect(origin: .zero, size: pageSize))
-            ctx.fill(Path(pageRect), with: .color(Color("canvasBackground")))
+
+            // Desk surface behind the page, so the page reads as a sheet of
+            // paper with a soft shadow in both light and dark mode.
+            ctx.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Color("deskBackground")))
+            var shadowCtx = ctx
+            shadowCtx.addFilter(.shadow(color: .black.opacity(0.28), radius: 14, y: 5))
+            shadowCtx.fill(Path(roundedRect: pageRect, cornerRadius: 2), with: .color(Color("canvasBackground")))
+            ctx.stroke(Path(roundedRect: pageRect, cornerRadius: 2), with: .color(Color("aiBubbleBorder").opacity(0.5)), lineWidth: 0.5)
 
             if template == .customPDF, let pdfImage {
                 // PDF templates keep their own colors; dim slightly in dark mode for comfort.
