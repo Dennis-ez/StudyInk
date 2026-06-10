@@ -28,6 +28,7 @@
 "tool.opacity" = "Opacity";
 "tool.width" = "Stroke Width";
 "tool.optionsHint" = "Tap again for color and width options";
+"lasso.transform.hint" = "Circle the strokes you want to rotate";
 
 /* Toolbar */
 "toolbar.customize" = "Customize Toolbar";

@@ -35,7 +35,15 @@ enum OCRService {
                     continuation.resume(returning: lines)
                 }
                 request.recognitionLevel = .accurate
-                request.recognitionLanguages = languages
+                // An unsupported language code can sink the whole request (no
+                // results at all, English included) — keep only languages this
+                // OS version actually supports, and let Vision auto-detect.
+                let supported = (try? request.supportedRecognitionLanguages()) ?? []
+                let usable = languages.filter { code in
+                    supported.contains { $0 == code || $0.hasPrefix(code + "-") }
+                }
+                request.recognitionLanguages = usable.isEmpty ? supported : usable
+                request.automaticallyDetectsLanguage = true
                 request.usesLanguageCorrection = true
 
                 let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])

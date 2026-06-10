@@ -210,10 +210,23 @@ struct TemplateBackgroundView: View {
 }
 
 enum PDFTemplateRenderer {
-    static func image(from data: Data, targetWidth: CGFloat) -> UIImage? {
+    private static let ciContext = CIContext(options: [.useSoftwareRenderer: false])
+
+    static func image(from data: Data, targetWidth: CGFloat, darkMode: Bool = false) -> UIImage? {
         guard let doc = PDFDocument(data: data), let page = doc.page(at: 0) else { return nil }
         let bounds = page.bounds(for: .mediaBox)
         let scale = max(targetWidth / max(bounds.width, 1), 1)
-        return page.thumbnail(of: CGSize(width: bounds.width * scale, height: bounds.height * scale), for: .mediaBox)
+        let rendered = page.thumbnail(of: CGSize(width: bounds.width * scale, height: bounds.height * scale), for: .mediaBox)
+        return darkMode ? darkOptimized(rendered) : rendered
+    }
+
+    /// "Smart invert" for documents: invert luminance, then rotate hue 180° so
+    /// colors keep their identity — white paper becomes dark, black text light.
+    private static func darkOptimized(_ image: UIImage) -> UIImage {
+        guard let input = CIImage(image: image) else { return image }
+        let inverted = input.applyingFilter("CIColorInvert")
+        let hueFixed = inverted.applyingFilter("CIHueAdjust", parameters: ["inputAngle": CGFloat.pi])
+        guard let cg = ciContext.createCGImage(hueFixed, from: hueFixed.extent) else { return image }
+        return UIImage(cgImage: cg)
     }
 }
