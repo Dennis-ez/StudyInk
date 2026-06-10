@@ -36,10 +36,12 @@
 /* Text boxes */
 "textbox.accessibility" = "Text box";
 "textbox.alignment" = "Alignment";
+"textbox.resize" = "Resize text box";
 
 /* Editor */
 "editor.fullscreen" = "Distraction-Free Mode";
 "editor.exitFullscreen" = "Exit Full Screen";
+"editor.backToLibrary" = "Back to Library";
 
 /* Templates */
 "template.blank" = "Blank";
@@ -81,6 +83,9 @@
 "media.importSticker" = "Import PNG Sticker";
 "media.sticker" = "Sticker";
 "media.image" = "Image";
+"media.resize" = "Resize";
+"media.rotate" = "Rotate";
+"media.resetRotation" = "Reset Rotation";
 
 /* Library */
 "library.allNotes" = "All Notes";

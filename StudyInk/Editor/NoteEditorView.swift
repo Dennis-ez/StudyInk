@@ -34,6 +34,7 @@ struct NoteEditorView: View {
     @State private var circleAskRegion: CGRect?
     @Environment(\.managedObjectContext) private var context
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dismiss) private var dismiss
 
     private var currentPage: Page? {
         let pages = note.sortedPages
@@ -117,10 +118,16 @@ struct NoteEditorView: View {
                 VStack(spacing: 8) {
                     Spacer()
                     AudioBar(audio: audio, note: note)
+                        .padding(.bottom, 8)
+                }
+
+                // Page navigator docks on the trailing edge (vertical strip).
+                HStack {
+                    Spacer()
                     if showPageStrip {
-                        PageNavigatorStrip(note: note, currentIndex: $pageIndex)
-                            .padding(.bottom, 8)
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                        PageNavigatorStrip(note: note, currentIndex: $pageIndex, horizontal: false)
+                            .padding(.trailing, 6)
+                            .transition(.move(edge: .trailing).combined(with: .opacity))
                     }
                 }
             }
@@ -152,7 +159,7 @@ struct NoteEditorView: View {
                         onAccept: { guidedMode.accept(suggestion) },
                         onDismiss: { withAnimation { guidedMode.suggestion = nil } }
                     )
-                    .padding(.bottom, showPageStrip ? 130 : 30)
+                    .padding(.bottom, 64)
                 }
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
@@ -172,7 +179,7 @@ struct NoteEditorView: View {
                     .padding(.vertical, 10)
                     .background(.regularMaterial, in: Capsule())
                     .overlay(Capsule().strokeBorder(SemanticColor.aiBubbleBorder))
-                    .padding(.bottom, showPageStrip ? 130 : 30)
+                    .padding(.bottom, 64)
                 }
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
@@ -227,6 +234,13 @@ struct NoteEditorView: View {
             }
             canvasController.onPencilHold = {
                 withAnimation { askLassoActive = true }
+            }
+            canvasController.onPageOverscroll = { direction in
+                let target = pageIndex + direction
+                guard note.sortedPages.indices.contains(target) else { return }
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    pageIndex = target
+                }
             }
         }
         .onChange(of: colorScheme) { tutor.isDarkMode = colorScheme == .dark }
@@ -359,6 +373,14 @@ struct NoteEditorView: View {
 
     @ToolbarContentBuilder
     private var editorToolbar: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "books.vertical.fill")
+            }
+            .accessibilityLabel(Text("editor.backToLibrary"))
+        }
         ToolbarItemGroup(placement: .primaryAction) {
             Menu {
                 Button {

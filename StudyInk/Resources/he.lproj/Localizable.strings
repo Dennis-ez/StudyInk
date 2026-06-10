@@ -36,10 +36,12 @@
 /* תיבות טקסט */
 "textbox.accessibility" = "תיבת טקסט";
 "textbox.alignment" = "יישור";
+"textbox.resize" = "שינוי גודל תיבת הטקסט";
 
 /* עורך */
 "editor.fullscreen" = "מצב ללא הסחות דעת";
 "editor.exitFullscreen" = "יציאה ממסך מלא";
+"editor.backToLibrary" = "חזרה לספרייה";
 
 /* תבניות */
 "template.blank" = "ריק";
@@ -81,6 +83,9 @@
 "media.importSticker" = "ייבוא מדבקת PNG";
 "media.sticker" = "מדבקה";
 "media.image" = "תמונה";
+"media.resize" = "שינוי גודל";
+"media.rotate" = "סיבוב";
+"media.resetRotation" = "איפוס סיבוב";
 
 /* ספרייה */
 "library.allNotes" = "כל המחברות";
