@@ -170,7 +170,7 @@ struct PDFExportFile: Transferable {
 
     static var transferRepresentation: some TransferRepresentation {
         DataRepresentation(exportedContentType: .pdf) { file in
-            PageRenderer.pdfData(for: file.note)
+            await MainActor.run { PageRenderer.pdfData(for: file.note) }
         }
         .suggestedFileName { ($0.note.title ?? "StudyInk") + ".pdf" }
     }
@@ -181,7 +181,7 @@ struct PNGExportFile: Transferable {
 
     static var transferRepresentation: some TransferRepresentation {
         DataRepresentation(exportedContentType: .png) { file in
-            PageRenderer.pngData(for: file.page, darkMode: false) ?? Data()
+            await MainActor.run { PageRenderer.pngData(for: file.page, darkMode: false) ?? Data() }
         }
         .suggestedFileName { ($0.page.note?.title ?? "StudyInk") + ".png" }
     }
