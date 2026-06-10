@@ -31,6 +31,7 @@ struct NoteEditorView: View {
     @State private var askText = ""
     @State private var lastStrokeAnchor: CGPoint?
     @State private var askLassoActive = false
+    @State private var showGuidedLog = false
     @State private var circleAskRegion: CGRect?
     @Environment(\.managedObjectContext) private var context
     @Environment(\.colorScheme) private var colorScheme
@@ -199,7 +200,7 @@ struct NoteEditorView: View {
             if guidedMode.isEnabled && !distractionFree {
                 VStack {
                     Spacer()
-                    HStack {
+                    HStack(spacing: 8) {
                         Button {
                             guidedMode.isEnabled = false
                         } label: {
@@ -212,9 +213,23 @@ struct NoteEditorView: View {
                                 .overlay(Capsule().strokeBorder(SemanticColor.aiBubbleBorder, lineWidth: 0.5))
                         }
                         .accessibilityLabel(Text("ai.guided.disable"))
-                        .padding(.leading, 14)
+
+                        Button {
+                            showGuidedLog = true
+                        } label: {
+                            Image(systemName: "clock.arrow.circlepath")
+                                .font(.caption)
+                                .padding(7)
+                                .background(.regularMaterial, in: Circle())
+                                .overlay(Circle().strokeBorder(SemanticColor.aiBubbleBorder, lineWidth: 0.5))
+                        }
+                        .accessibilityLabel(Text("ai.guided.log"))
+                        .popover(isPresented: $showGuidedLog) {
+                            GuidedLogView(guidedMode: guidedMode)
+                        }
                         Spacer()
                     }
+                    .padding(.leading, 14)
                     .padding(.bottom, 8)
                 }
             }
@@ -243,6 +258,7 @@ struct NoteEditorView: View {
                 let center = CGPoint(x: stroke.renderBounds.midX, y: stroke.renderBounds.midY)
                 if index == pageIndex { lastStrokeAnchor = center }
                 audio.logStroke(at: center, pageIndex: index)
+                guidedMode.strokeOccurred()
             }
             canvasController.onPencilHold = {
                 withAnimation { askLassoActive = true }
