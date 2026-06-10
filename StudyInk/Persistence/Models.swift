@@ -120,6 +120,24 @@ final class Page: NSManagedObject {
         set { textBoxesData = try? JSONEncoder().encode(newValue); note?.touch() }
     }
 
+    var mediaItems: [MediaItemModel] {
+        get { decode([MediaItemModel].self, from: mediaItemsData) ?? [] }
+        set { mediaItemsData = try? JSONEncoder().encode(newValue); note?.touch() }
+    }
+
+    var template: PageTemplate { PageTemplate.from(id: templateID) }
+
+    /// Deep copy used by page duplication.
+    func copyContents(from other: Page) {
+        drawingData = other.drawingData
+        templateID = other.templateID
+        pageSizeID = other.pageSizeID
+        customTemplatePDF = other.customTemplatePDF
+        textBoxesData = other.textBoxesData
+        mediaItemsData = other.mediaItemsData
+        ocrText = other.ocrText
+    }
+
     private func decode<T: Decodable>(_ type: T.Type, from data: Data?) -> T? {
         guard let data else { return nil }
         return try? JSONDecoder().decode(type, from: data)
