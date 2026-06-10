@@ -71,9 +71,9 @@ final class AITutorController: ObservableObject {
             blocks.append(.text("Student question: \(question)"))
             if let systemHint { blocks.append(.text(systemHint)) }
 
-            let raw = try await ClaudeService.send(
+            let raw = try await AIService.send(
                 system: SystemPrompt.tutor(subjectContext: note.subjectContext ?? "calculus1"),
-                messages: [.init(role: "user", content: blocks)]
+                messages: [.user(blocks)]
             )
             let parsed = AIResponseParser.parse(raw)
             let lines = await NoteContextBuilder.ocrLines(for: page)
@@ -97,18 +97,18 @@ final class AITutorController: ObservableObject {
             let context = await NoteContextBuilder.build(
                 note: note, currentPageIndex: currentPageIndex, darkMode: isDarkMode
             )
-            var messages: [ClaudeService.Message] = [.init(role: "user", content: context.blocks)]
-            // Replay the thread so Claude has the bubble's conversation.
+            var messages: [AIMessage] = [.user(context.blocks)]
+            // Replay the thread so the model has the bubble's conversation.
             for exchange in bubbles[index].thread {
                 if let q = exchange.question {
-                    messages.append(.init(role: "user", content: [.text(q)]))
+                    messages.append(.user(text: q))
                 }
                 if !exchange.answer.isEmpty {
-                    messages.append(.init(role: "assistant", content: [.text(exchange.answer)]))
+                    messages.append(.assistant(text: exchange.answer))
                 }
             }
 
-            let raw = try await ClaudeService.send(
+            let raw = try await AIService.send(
                 system: SystemPrompt.tutor(subjectContext: note.subjectContext ?? "calculus1"),
                 messages: messages
             )

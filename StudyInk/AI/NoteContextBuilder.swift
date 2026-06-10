@@ -1,12 +1,12 @@
 import UIKit
 import PencilKit
 
-/// Assembles the full multimodal context Claude sees on every request:
+/// Assembles the full multimodal context the AI tutor sees on every request:
 /// all pages as images, OCR text, typed text, note metadata, and the
 /// focused region when the student circled something.
 enum NoteContextBuilder {
     struct Context {
-        var blocks: [ClaudeService.ContentBlock]
+        var blocks: [AIContent]
     }
 
     @MainActor
@@ -17,7 +17,7 @@ enum NoteContextBuilder {
         focusRegion: CGRect? = nil,
         focusImage: UIImage? = nil
     ) async -> Context {
-        var blocks: [ClaudeService.ContentBlock] = []
+        var blocks: [AIContent] = []
         let pages = note.sortedPages
 
         var summary = """
@@ -30,7 +30,7 @@ enum NoteContextBuilder {
             // Page snapshots scaled down to keep payloads light; current page sharper.
             let scale: CGFloat = index == currentPageIndex ? 1.0 : 0.5
             let image = PageRenderer.image(for: page, darkMode: darkMode, scale: scale)
-            if let block = ClaudeService.ContentBlock.image(image) {
+            if let block = AIContent.image(image) {
                 blocks.append(.text("Page \(index + 1) image:"))
                 blocks.append(block)
             }
@@ -47,7 +47,7 @@ enum NoteContextBuilder {
         if let focusRegion {
             summary += "\nThe student circled/selected the region at x:\(Int(focusRegion.minX)) y:\(Int(focusRegion.minY)) w:\(Int(focusRegion.width)) h:\(Int(focusRegion.height)) on the current page. Focus your answer there."
         }
-        if let focusImage, let block = ClaudeService.ContentBlock.image(focusImage) {
+        if let focusImage, let block = AIContent.image(focusImage) {
             blocks.append(.text("Cropped image of the circled region:"))
             blocks.append(block)
         }

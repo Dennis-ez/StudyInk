@@ -34,9 +34,9 @@ extension AITutorController {
             {"questions": [{"question": "<question text, LaTeX allowed>", "match_string": "<exact related string from the note OCR, or null>"}]}
             """))
 
-            let raw = try await ClaudeService.send(
+            let raw = try await AIService.send(
                 system: SystemPrompt.tutor(subjectContext: note.subjectContext ?? "calculus1"),
-                messages: [.init(role: "user", content: blocks)],
+                messages: [.user(blocks)],
                 maxTokens: 1200
             )
             guard let start = raw.firstIndex(of: "{"), let end = raw.lastIndex(of: "}"),
