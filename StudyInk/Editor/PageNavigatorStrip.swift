@@ -114,7 +114,8 @@ struct PageThumbnailView: View {
                         rect: CGRect(origin: .zero, size: CGSize(width: pageSize.width * scale, height: pageSize.height * scale)),
                         scale: scale,
                         lineColor: Color("templateLine"),
-                        accentColor: Color("accentBlue")
+                        accentColor: Color("accentBlue"),
+                        spacing: page.effectiveTemplateSpacing
                     )
                 }
                 if let drawingImage {

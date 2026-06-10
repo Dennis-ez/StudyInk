@@ -70,6 +70,10 @@
 "page.size.screen" = "Screen";
 "page.size.custom" = "Custom";
 "page.applyToAll" = "Apply to All Pages";
+"page.spacing" = "Line & Grid Spacing";
+"page.spacing.compact" = "Compact";
+"page.spacing.normal" = "Normal";
+"page.spacing.wide" = "Wide";
 "page.settings" = "Page Settings";
 "page.toggleStrip" = "Show/Hide Page Strip";
 

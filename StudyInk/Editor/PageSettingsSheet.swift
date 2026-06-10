@@ -34,6 +34,17 @@ struct PageSettingsSheet: View {
                         }
                     }
 
+                    if page.template != .blank && page.template != .customPDF {
+                        Text("page.spacing")
+                            .font(.headline)
+                        Picker("page.spacing", selection: spacingBinding) {
+                            Text("page.spacing.compact").tag(0.75)
+                            Text("page.spacing.normal").tag(1.0)
+                            Text("page.spacing.wide").tag(1.4)
+                        }
+                        .pickerStyle(.segmented)
+                    }
+
                     Text("page.size")
                         .font(.headline)
                     Picker("page.size", selection: sizeBinding) {
@@ -71,6 +82,21 @@ struct PageSettingsSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+    }
+
+    private var spacingBinding: Binding<Double> {
+        Binding(
+            get: {
+                // Snap stored value to the nearest preset so the picker always selects.
+                let value = page.templateSpacing > 0 ? page.templateSpacing : 1.0
+                return [0.75, 1.0, 1.4].min { abs($0 - value) < abs($1 - value) } ?? 1.0
+            },
+            set: {
+                page.templateSpacing = $0
+                page.note?.touch()
+                PersistenceController.shared.save()
+            }
+        )
     }
 
     private var sizeBinding: Binding<PageSize> {
@@ -116,6 +142,7 @@ struct PageSettingsSheet: View {
         guard let note = page.note else { return }
         for other in note.sortedPages where other != page {
             other.templateID = page.templateID
+            other.templateSpacing = page.templateSpacing
             other.pageSizeID = page.pageSizeID
             other.customTemplatePDF = page.customTemplatePDF
         }
