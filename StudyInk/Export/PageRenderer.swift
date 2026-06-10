@@ -79,8 +79,8 @@ enum PageRenderer {
         cg.fill(pageRect)
 
         if snapshot.template == .customPDF, let data = snapshot.customTemplatePDF,
-           let pdfImage = PDFTemplateRenderer.image(from: data, targetWidth: snapshot.pageSize.width * 2) {
-            pdfImage.draw(in: pageRect, blendMode: .normal, alpha: darkMode ? 0.85 : 1)
+           let pdfImage = PDFTemplateRenderer.image(from: data, targetWidth: snapshot.pageSize.width * 2, darkMode: darkMode) {
+            pdfImage.draw(in: pageRect)
         } else {
             let lineColor = darkMode
                 ? UIColor(red: 0.227, green: 0.227, blue: 0.235, alpha: 1)

@@ -32,6 +32,9 @@ struct NoteEditorView: View {
     @State private var lastStrokeAnchor: CGPoint?
     @State private var askLassoActive = false
     @State private var showGuidedLog = false
+    @State private var transformLassoActive = false
+    @State private var strokeSelection: StrokeSelection?
+    @State private var strokeRotation: Double = 0
     @State private var circleAskRegion: CGRect?
     @Environment(\.managedObjectContext) private var context
     @Environment(\.colorScheme) private var colorScheme
@@ -72,7 +75,7 @@ struct NoteEditorView: View {
                 layoutSignature: layoutSignature
             )
             .ignoresSafeArea(edges: .bottom)
-            .allowsHitTesting(selectedMediaID == nil)
+            .allowsHitTesting(selectedMediaID == nil && strokeSelection == nil && !transformLassoActive)
 
             // Tap-anywhere catcher to drop the current media/text selection.
             if selectedMediaID != nil || editingBoxID != nil {
@@ -125,6 +128,9 @@ struct NoteEditorView: View {
                 FloatingToolbar(
                     controller: canvasController,
                     onInsertTextBox: insertTextBox,
+                    onTransformSelection: {
+                        withAnimation { transformLassoActive = true }
+                    },
                     extraItems: toolbarExtras
                 )
 
@@ -161,6 +167,23 @@ struct NoteEditorView: View {
             // Circle & Ask lasso capture layer.
             AskLassoOverlay(isActive: $askLassoActive, transform: transform) { region in
                 circleAskRegion = region
+            }
+
+            // Select & rotate: lasso capture, then live rotation preview.
+            TransformLassoOverlay(isActive: $transformLassoActive, transform: transform) { polygon in
+                beginStrokeTransform(with: polygon)
+            }
+            if let selection = strokeSelection {
+                StrokeTransformOverlay(
+                    selection: selection,
+                    transform: canvasController.transform(forPage: selection.pageIndex),
+                    rotation: $strokeRotation,
+                    onDone: applyStrokeRotation,
+                    onCancel: {
+                        strokeSelection = nil
+                        strokeRotation = 0
+                    }
+                )
             }
 
             // Guided-mode bottom suggestion card (auto-dismisses after 8s).
@@ -389,6 +412,39 @@ struct NoteEditorView: View {
         ).intersection(CGRect(x: 0, y: 0, width: cg.width, height: cg.height))
         guard !pixelRect.isEmpty, let cropped = cg.cropping(to: pixelRect) else { return nil }
         return UIImage(cgImage: cropped)
+    }
+
+    /// Lasso completed in transform mode: capture the strokes under the loop.
+    private func beginStrokeTransform(with polygon: [CGPoint]) {
+        guard let drawing = canvasController.canvasView?.drawing else { return }
+        strokeRotation = 0
+        if let selection = StrokeSelector.selection(
+            from: drawing,
+            polygon: polygon,
+            pageIndex: pageIndex,
+            darkMode: colorScheme == .dark
+        ) {
+            Haptics.selection()
+            strokeSelection = selection
+        } else {
+            Haptics.error()
+        }
+    }
+
+    /// Bake the previewed rotation into the strokes, undoably.
+    private func applyStrokeRotation() {
+        defer {
+            strokeSelection = nil
+            strokeRotation = 0
+        }
+        guard let selection = strokeSelection, let canvas = canvasController.canvasView,
+              abs(strokeRotation) > 0.5 else { return }
+        let old = canvas.drawing
+        canvas.undoManager?.registerUndo(withTarget: canvas) { target in
+            target.drawing = old
+        }
+        canvas.drawing = StrokeSelector.applyRotation(strokeRotation, selection: selection, to: old)
+        Haptics.success()
     }
 
     private func sendAsk() {
