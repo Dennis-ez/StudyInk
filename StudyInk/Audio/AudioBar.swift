@@ -69,8 +69,7 @@ struct AudioBar: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .background(.regularMaterial, in: Capsule())
-        .overlay(Capsule().strokeBorder(SemanticColor.toolbarBorder, lineWidth: 0.5))
+        .studyGlassCapsule()
         .accessibilityElement(children: .contain)
     }
 

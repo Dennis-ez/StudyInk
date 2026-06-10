@@ -5,16 +5,16 @@ enum ToolbarDock: String, CaseIterable, Codable {
     var isHorizontal: Bool { self == .top || self == .bottom }
 }
 
-/// Floating, repositionable toolbar. Drag the grip toward a screen edge to re-dock;
-/// the visible tool set is user-customizable and persisted.
+/// Floating, repositionable glass toolbar. Drag the grip toward a screen edge
+/// to re-dock; the visible tool set is user-customizable and persisted.
+/// Re-tapping the active inking tool (or tapping the color swatch) opens that
+/// tool's options panel; re-tapping the lasso arms select-and-rotate.
 struct FloatingToolbar: View {
     @ObservedObject var controller: CanvasController
     @AppStorage("toolbar.dock") private var dockRaw = ToolbarDock.top.rawValue
     @AppStorage("toolbar.tools") private var enabledToolsRaw = ToolKind.allCases.map(\.rawValue).joined(separator: ",")
-    @State private var showColorPopover = false
+    @State private var showToolOptions = false
     @State private var showCustomize = false
-    /// Re-tapping the active tool opens its own color/width/opacity popover.
-    @State private var optionsForTool: ToolKind?
     @State private var dragOffset: CGSize = .zero
     @Environment(\.colorScheme) private var colorScheme
 
@@ -88,13 +88,18 @@ struct FloatingToolbar: View {
             Menu {
                 Button { showCustomize = true } label: { Label("toolbar.customize", systemImage: "slider.horizontal.3") }
                 Toggle(isOn: $controller.pencilOnly) { Label("toolbar.pencilOnly", systemImage: "applepencil") }
+                Toggle(isOn: $controller.autoShapes) { Label("tool.autoShapes", systemImage: "square.on.circle") }
             } label: {
                 Image(systemName: "ellipsis.circle")
             }
         }
         .buttonStyle(ToolbarButtonStyle())
         .padding(8)
-        .background(toolbarBackground)
+        .studyGlass(cornerRadius: 18)
+        // One deterministic options surface for every tool, anchored to the bar.
+        .popover(isPresented: $showToolOptions, arrowEdge: dock == .top ? .top : .bottom) {
+            ToolOptionsPanel(controller: controller)
+        }
         .sheet(isPresented: $showCustomize) { CustomizeToolbarSheet(enabledToolsRaw: $enabledToolsRaw) }
     }
 
@@ -129,7 +134,7 @@ struct FloatingToolbar: View {
             if controller.toolState.kind == kind {
                 // Second tap on the active tool = open its options.
                 if kind.isInking {
-                    optionsForTool = kind
+                    showToolOptions = true
                 } else if kind == .lasso {
                     onTransformSelection()
                 }
@@ -146,48 +151,24 @@ struct FloatingToolbar: View {
                         .frame(width: 32, height: 32)
                 )
         }
-        .popover(isPresented: optionsBinding(for: kind)) {
-            ColorPickerPopover(toolState: $controller.toolState)
-        }
         .accessibilityLabel(Text(kind.labelKey))
         .accessibilityHint(controller.toolState.kind == kind ? Text("tool.optionsHint") : Text(""))
         .accessibilityAddTraits(controller.toolState.kind == kind ? .isSelected : [])
     }
 
-    private func optionsBinding(for kind: ToolKind) -> Binding<Bool> {
-        Binding(
-            get: { optionsForTool == kind },
-            set: { if !$0 { optionsForTool = nil } }
-        )
-    }
-
     private var colorButton: some View {
-        Button { showColorPopover = true } label: {
+        Button {
+            if !controller.toolState.kind.isInking {
+                controller.select(.ballpoint)
+            }
+            showToolOptions = true
+        } label: {
             Circle()
                 .fill(Color(hex: controller.toolState.colorHex) ?? .black)
                 .frame(width: 22, height: 22)
                 .overlay(Circle().strokeBorder(.quaternary))
         }
         .accessibilityLabel(Text("tool.color"))
-        .popover(isPresented: $showColorPopover) {
-            ColorPickerPopover(toolState: $controller.toolState)
-        }
-    }
-
-    /// Light mode floats on a soft shadow; dark mode uses an inner border instead,
-    /// matching Notability's toolbar treatment.
-    private var toolbarBackground: some View {
-        RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .fill(SemanticColor.toolbarBackground.opacity(0.92))
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(SemanticColor.toolbarBorder, lineWidth: colorScheme == .dark ? 1 : 0.5)
-            )
-            .shadow(
-                color: colorScheme == .dark ? .clear : .black.opacity(0.12),
-                radius: 8, y: 2
-            )
     }
 }
 
@@ -208,9 +189,10 @@ private struct ToolbarButtonStyle: ButtonStyle {
     }
 }
 
-/// Color presets + system picker + opacity & width sliders.
-struct ColorPickerPopover: View {
-    @Binding var toolState: ToolState
+/// Options for the active tool: color presets, custom color, width, opacity —
+/// writing straight through the controller so changes always reach the canvas.
+struct ToolOptionsPanel: View {
+    @ObservedObject var controller: CanvasController
     @State private var customColor: Color = .black
 
     private static let presets = [
@@ -220,45 +202,61 @@ struct ColorPickerPopover: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
+                Image(systemName: controller.toolState.kind.symbolName)
+                    .foregroundStyle(Color.accentColor)
+                Text(controller.toolState.kind.labelKey)
+                    .font(.headline)
+            }
+
             LazyVGrid(columns: Array(repeating: GridItem(.fixed(34)), count: 5), spacing: 10) {
                 ForEach(Self.presets, id: \.self) { hex in
                     Button {
-                        toolState.colorHex = hex
+                        Haptics.selection()
+                        controller.toolState.colorHex = hex
                     } label: {
                         Circle()
                             .fill(Color(hex: hex) ?? .black)
                             .frame(width: 30, height: 30)
                             .overlay(Circle().strokeBorder(.quaternary))
                             .overlay {
-                                if toolState.colorHex == hex {
+                                if controller.toolState.colorHex == hex {
                                     Image(systemName: "checkmark")
                                         .font(.caption.bold())
-                                        .foregroundStyle((Color(hex: hex) == .white || hex == "#FFD60A") ? .black : .white)
+                                        .foregroundStyle((hex == "#FFFFFF" || hex == "#FFD60A") ? .black : .white)
                                 }
                             }
                     }
+                    .buttonStyle(.plain)
                 }
             }
+
             ColorPicker("tool.customColor", selection: $customColor, supportsOpacity: false)
                 .onChange(of: customColor) { _, newValue in
-                    toolState.colorHex = UIColor(newValue).hexString
+                    controller.toolState.colorHex = UIColor(newValue).hexString
                 }
+
             VStack(alignment: .leading, spacing: 4) {
-                Text("tool.opacity")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Slider(value: $toolState.opacity, in: 0.1...1)
+                HStack {
+                    Text("tool.width").font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    // Live stroke preview at the chosen width and color.
+                    Capsule()
+                        .fill(Color(hex: controller.toolState.colorHex) ?? .black)
+                        .frame(width: 56, height: min(max(controller.toolState.width, 2), 20))
+                }
+                Slider(value: $controller.toolState.width, in: 1...24)
             }
+
             VStack(alignment: .leading, spacing: 4) {
-                Text("tool.width")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Slider(value: $toolState.width, in: 1...24)
+                Text("tool.opacity").font(.caption).foregroundStyle(.secondary)
+                Slider(value: $controller.toolState.opacity, in: 0.1...1)
             }
         }
         .padding(16)
-        .frame(width: 240)
-        .onAppear { customColor = Color(hex: toolState.colorHex) ?? .black }
+        .frame(width: 250)
+        .onAppear { customColor = Color(hex: controller.toolState.colorHex) ?? .black }
+        .presentationCompactAdaptation(.popover)
     }
 }
 

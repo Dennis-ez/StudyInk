@@ -54,8 +54,7 @@ struct AIBubbleView: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(.regularMaterial, in: Capsule())
-            .overlay(Capsule().strokeBorder(SemanticColor.aiBubbleBorder))
+            .studyGlassCapsule()
         }
         .buttonStyle(.plain)
     }
@@ -71,23 +70,11 @@ struct AIBubbleView: View {
             askMoreField
             footer
         }
-        .background(tail.offset(x: isRTL ? 12 : -12, y: 28), alignment: isRTL ? .topTrailing : .topLeading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(SemanticColor.aiBubbleBorder, lineWidth: 1)
-        )
-        .overlay(alignment: isRTL ? .trailing : .leading) {
-            // Tone strip: blue explanation, green encouragement, orange correction, red error.
-            UnevenRoundedRectangle(
-                topLeadingRadius: isRTL ? 0 : 14, bottomLeadingRadius: isRTL ? 0 : 14,
-                bottomTrailingRadius: isRTL ? 14 : 0, topTrailingRadius: isRTL ? 14 : 0
-            )
-            .fill(Color(bubble.tone.colorToken))
-            .frame(width: 4)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .shadow(color: .black.opacity(0.18), radius: 12, y: 4)
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .studyGlass(cornerRadius: 22)
+        // The response tone (explanation/encouragement/correction/error)
+        // shows as a soft colored glow around the glass.
+        .shadow(color: Color(bubble.tone.colorToken).opacity(0.32), radius: 18, y: 6)
         .environment(\.layoutDirection, isRTL ? .rightToLeft : .leftToRight)
     }
 
@@ -97,6 +84,9 @@ struct AIBubbleView: View {
             Text("ai.tutorName")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
+            Circle()
+                .fill(Color(bubble.tone.colorToken))
+                .frame(width: 7, height: 7)
             Spacer()
             Button {
                 Haptics.tap()
@@ -127,10 +117,21 @@ struct AIBubbleView: View {
     }
 
     private var avatar: some View {
-        Image(systemName: "graduationcap.circle.fill")
-            .font(.system(size: 18))
-            .foregroundStyle(SemanticColor.accentBlue)
-            .symbolRenderingMode(.hierarchical)
+        Circle()
+            .fill(
+                LinearGradient(
+                    colors: [SemanticColor.accentBlue, Color(red: 0.62, green: 0.36, blue: 0.96)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .frame(width: 26, height: 26)
+            .overlay(
+                Image(systemName: "sparkles")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white)
+            )
+            .shadow(color: SemanticColor.accentBlue.opacity(0.4), radius: 4, y: 1)
     }
 
     /// Natural height for short threads; scrolls once content exceeds ~320pt.
@@ -178,14 +179,17 @@ struct AIBubbleView: View {
             HStack(spacing: 6) {
                 ForEach(bubble.chips, id: \.self) { chip in
                     Button {
+                        Haptics.tap()
                         sendFollowUp(chip)
                     } label: {
                         Text(chip)
                             .font(.caption)
                             .lineLimit(1)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(SemanticColor.aiMessageBubble, in: Capsule())
+                            .foregroundStyle(SemanticColor.accentBlue)
+                            .padding(.horizontal, 11)
+                            .padding(.vertical, 6)
+                            .background(.thinMaterial, in: Capsule())
+                            .overlay(Capsule().strokeBorder(SemanticColor.accentBlue.opacity(0.35), lineWidth: 0.8))
                     }
                     .buttonStyle(.plain)
                 }
@@ -213,9 +217,12 @@ struct AIBubbleView: View {
             .disabled(followUpText.isEmpty || isLoading)
             .accessibilityLabel(Text("ai.send"))
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(SemanticColor.aiMessageBubble.opacity(0.4))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(.thinMaterial, in: Capsule())
+        .overlay(Capsule().strokeBorder(SemanticColor.aiBubbleBorder.opacity(0.6), lineWidth: 0.5))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
     }
 
     private var footer: some View {
@@ -243,15 +250,6 @@ struct AIBubbleView: View {
         .padding(.vertical, 8)
     }
 
-    /// Speech-bubble tail pointing back toward the anchor content.
-    private var tail: some View {
-        Triangle()
-            .fill(.regularMaterial)
-            .overlay(Triangle().stroke(SemanticColor.aiBubbleBorder, lineWidth: 1))
-            .frame(width: 14, height: 16)
-            .rotationEffect(.degrees(isRTL ? 90 : -90))
-    }
-
     // MARK: - Actions
 
     private func sendFollowUp(_ text: String) {
@@ -273,16 +271,5 @@ struct AIBubbleView: View {
                 ))
             }
             .onEnded { _ in dragStart = nil }
-    }
-}
-
-struct Triangle: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        path.move(to: CGPoint(x: rect.midX, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
-        path.closeSubpath()
-        return path
     }
 }

@@ -33,6 +33,7 @@
 /* Toolbar */
 "toolbar.customize" = "Customize Toolbar";
 "toolbar.pencilOnly" = "Apple Pencil Only";
+"tool.autoShapes" = "Auto Shapes";
 "toolbar.move" = "Move Toolbar";
 
 /* Text boxes */

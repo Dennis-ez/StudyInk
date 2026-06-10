@@ -212,9 +212,7 @@ struct GuidedSuggestionCard: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(SemanticColor.aiBubbleBorder))
-        .shadow(color: .black.opacity(0.15), radius: 10, y: 3)
+        .studyGlass(cornerRadius: 16)
         .frame(maxWidth: 480)
         .contentShape(Rectangle())
         .onTapGesture(perform: onAccept)
