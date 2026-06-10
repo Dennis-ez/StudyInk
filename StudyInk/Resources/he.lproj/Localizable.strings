@@ -1,0 +1,175 @@
+/* StudyInk — מחרוזות בעברית */
+
+"app.name" = "StudyInk";
+
+/* פעולות כלליות */
+"action.done" = "סיום";
+"action.cancel" = "ביטול";
+"action.delete" = "מחיקה";
+"action.rename" = "שינוי שם";
+"action.undo" = "ביטול פעולה";
+"action.redo" = "ביצוע מחדש";
+"action.back" = "חזרה";
+"action.close" = "סגירה";
+
+/* כלים */
+"tool.ballpoint" = "עט כדורי";
+"tool.fountain" = "עט נובע";
+"tool.monoline" = "עט בקו אחיד";
+"tool.highlighter" = "מדגש";
+"tool.pencil" = "עיפרון";
+"tool.eraser.pixel" = "מחק פיקסלים";
+"tool.eraser.object" = "מחק אובייקטים";
+"tool.lasso" = "לאסו";
+"tool.ruler" = "סרגל";
+"tool.textbox" = "תיבת טקסט";
+"tool.color" = "צבע דיו";
+"tool.customColor" = "צבע מותאם אישית";
+"tool.opacity" = "שקיפות";
+"tool.width" = "עובי קו";
+
+/* סרגל כלים */
+"toolbar.customize" = "התאמת סרגל הכלים";
+"toolbar.pencilOnly" = "Apple Pencil בלבד";
+"toolbar.move" = "הזזת סרגל הכלים";
+
+/* תיבות טקסט */
+"textbox.accessibility" = "תיבת טקסט";
+"textbox.alignment" = "יישור";
+
+/* עורך */
+"editor.fullscreen" = "מצב ללא הסחות דעת";
+"editor.exitFullscreen" = "יציאה ממסך מלא";
+
+/* תבניות */
+"template.blank" = "ריק";
+"template.wideRuled" = "שורות רחבות";
+"template.collegeRuled" = "שורות קולג'";
+"template.narrowRuled" = "שורות צרות";
+"template.dotGrid" = "רשת נקודות";
+"template.squareGrid" = "רשת משבצות";
+"template.isometricGrid" = "רשת איזומטרית";
+"template.musicStaff" = "חמשה מוזיקלית";
+"template.cornell" = "שיטת קורנל";
+"template.customPDF" = "PDF מותאם אישית";
+
+/* עמודים */
+"page.add" = "הוספת עמוד";
+"page.addAfter" = "הוספת עמוד אחרי";
+"page.duplicate" = "שכפול עמוד";
+"page.moveBack" = "הזזה אחורה";
+"page.moveForward" = "הזזה קדימה";
+"page.delete" = "מחיקת עמוד";
+"page.thumbnail %lld" = "עמוד %lld";
+"page.template" = "תבנית";
+"page.size" = "גודל עמוד";
+"page.size.letter" = "Letter";
+"page.size.a4" = "A4";
+"page.size.screen" = "מסך";
+"page.size.custom" = "מותאם אישית";
+"page.applyToAll" = "החלה על כל העמודים";
+"page.settings" = "הגדרות עמוד";
+"page.toggleStrip" = "הצגה/הסתרה של פס העמודים";
+
+/* מדיה */
+"media.insert" = "הוספה";
+"media.photo" = "ספריית התמונות";
+"media.camera" = "מצלמה";
+"media.scan" = "סריקת מסמך";
+"media.stickers" = "מדבקות";
+"media.importPDF" = "ייבוא PDF";
+"media.importSticker" = "ייבוא מדבקת PNG";
+"media.sticker" = "מדבקה";
+"media.image" = "תמונה";
+
+/* ספרייה */
+"library.allNotes" = "כל המחברות";
+"library.subjects" = "מקצועות";
+"library.searchPrompt" = "חיפוש במחברות, בכתב יד, בעברית או באנגלית";
+"library.sort" = "מיון";
+"library.sort.date" = "תאריך עדכון";
+"library.sort.name" = "שם";
+"library.sort.size" = "גודל";
+"library.layout" = "תצוגה";
+"library.layout.grid" = "רשת";
+"library.layout.list" = "רשימה";
+"library.newNote" = "מחברת חדשה";
+"library.newSubject" = "מקצוע חדש";
+"library.newDivider" = "חוצץ חדש";
+"library.newNestedSubject" = "תת-מקצוע חדש";
+"library.subjectColor" = "צבע";
+"library.renameSubject" = "שינוי שם מקצוע";
+"library.subjectName" = "שם המקצוע";
+"library.renameNote" = "שינוי שם מחברת";
+"library.noteTitle" = "שם המחברת";
+"library.untitledNote" = "מחברת ללא שם";
+"library.newSubjectName" = "מקצוע חדש";
+"library.newDividerName" = "חוצץ";
+"library.empty" = "אין עדיין מחברות — הקישו על העיפרון כדי להתחיל";
+"library.noResults" = "אין תוצאות";
+"library.created %@" = "נוצר %@";
+"library.modified %@" = "עודכן %@";
+"library.pageCount %lld" = "%lld עמודים";
+
+/* ייצוא */
+"export.pdf" = "ייצוא כ-PDF";
+"export.png" = "ייצוא עמוד כ-PNG";
+"export.share" = "שיתוף";
+
+/* הגדרות */
+"settings.title" = "הגדרות";
+"settings.appearance" = "מראה";
+"settings.appearance.system" = "מערכת";
+"settings.appearance.light" = "בהיר";
+"settings.appearance.dark" = "כהה";
+"settings.backup" = "גיבוי וסנכרון";
+"settings.autoBackup" = "גיבוי אוטומטי";
+"settings.iCloudSync" = "סנכרון iCloud";
+"settings.iCloudSync.footnote" = "מסנכרן מחברות בין המכשירים שלך באמצעות CloudKit. נכנס לתוקף לאחר הפעלה מחדש של האפליקציה.";
+"settings.ai" = "מורה AI";
+"settings.ai.status" = "מפתח API";
+"settings.ai.configured" = "מוגדר";
+"settings.ai.missingKey" = "חסר";
+"settings.ai.keyHelp" = "יש להוסיף את מפתח ה-API של Anthropic לקובץ Config.plist — ראו הוראות ב-README.";
+
+/* מורה AI */
+"ai.tutorName" = "מורה AI";
+"ai.menu" = "תפריט מורה AI";
+"ai.ask" = "שאלו את ה-AI";
+"ai.askPlaceholder" = "שאלו על המחברת שלכם…";
+"ai.askHint" = "המורה רואה את כל עמודי המחברת.";
+"ai.askMore" = "שאלו עוד…";
+"ai.send" = "שליחה";
+"ai.thinking" = "חושב…";
+"ai.pin" = "הצמדה לעמוד";
+"ai.dismiss" = "סגירה";
+"ai.insertIntoNote" = "הוספה למחברת";
+"ai.openInPanel" = "פתיחה בחלונית";
+"ai.bubble.accessibility" = "תשובת המורה";
+"ai.history" = "היסטוריית AI";
+"ai.thread" = "שרשור";
+"ai.history.empty" = "אין עדיין שיחות AI במחברת הזו";
+"ai.history.active" = "על הקנבס";
+"ai.history.past" = "קודמות";
+"ai.history.page %lld" = "עמוד %lld";
+"ai.error" = "שגיאת מורה AI";
+"ai.error.missingKey" = "לא הוגדר מפתח API של Anthropic. העתיקו את Config.sample.plist ל-Config.plist והוסיפו את המפתח.";
+"ai.error.api %lld" = "בקשת ה-AI נכשלה ‏(HTTP %lld).";
+"ai.circleAsk.title" = "הקיפו ושאלו";
+"ai.circleAsk.hint" = "ציירו עיגול סביב מה שתרצו לשאול עליו";
+"ai.explainPage" = "הסבר את העמוד";
+"ai.explainPage.question" = "הסבר את העמוד הזה: סכם אותו והצבע על המושגים המרכזיים.";
+"ai.quizMe" = "בחן אותי";
+"ai.quiz.failed" = "עדיין אי אפשר ליצור בוחן מהמחברת הזו — נסו להוסיף עוד תוכן.";
+"ai.quiz.prefix %lld" = "שאלה %lld:";
+"ai.guidedMode" = "מצב מודרך";
+"ai.guided.suggestion" = "הצעת המורה";
+"ai.subject" = "הקשר מקצוע";
+"ai.subject.calculus1" = "חשבון אינפיניטסימלי 1";
+"ai.subject.discrete1" = "מתמטיקה בדידה 1";
+"ai.subject.custom" = "מותאם אישית…";
+"ai.subject.customPlaceholder" = "למשל: אלגברה לינארית";
+"ai.suggestion.checkThis" = "בדוק אם יש כאן טעויות";
+"ai.suggestion.explainThis" = "הסבר לי את זה";
+"ai.suggestion.nextStep" = "מה הצעד הבא?";
+"ai.suggestion.similarExample" = "הראה דוגמה דומה";
