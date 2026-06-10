@@ -4,12 +4,14 @@ struct GuidedSuggestion: Equatable, Identifiable {
     let id = UUID()
     let text: String
     let matchString: String?
+    let createdAt = Date()
 }
 
-/// Proactive tutoring: watches the page (OCR every ~10s and on page turn) and
-/// surfaces one short suggestion card at the bottom of the screen. Cards
-/// auto-dismiss after 8 seconds; tapping one opens a full response bubble
-/// anchored to the relevant region.
+/// Proactive tutoring: evaluates the page ~3 seconds after the pen goes quiet
+/// (and on page turns), never mid-stroke, with at least 30s between requests
+/// and no repeats for unchanged content. Suggestion cards auto-dismiss after
+/// 8 seconds; tapping one opens a full response bubble anchored to the
+/// relevant region. Every suggestion is kept in a tappable history log.
 @MainActor
 final class GuidedModeController: ObservableObject {
     @Published var isEnabled = false {
@@ -18,30 +20,33 @@ final class GuidedModeController: ObservableObject {
     @Published var suggestion: GuidedSuggestion?
     /// Transient, non-tappable status text (e.g. "guided mode is watching").
     @Published var banner: String?
+    /// Every suggestion made this session, newest first (tappable later).
+    @Published var log: [GuidedSuggestion] = []
 
     weak var tutor: AITutorController?
-    private var watchTask: Task<Void, Never>?
+    private var penPauseTask: Task<Void, Never>?
     private var dismissTask: Task<Void, Never>?
     private var bannerTask: Task<Void, Never>?
     private var lastSeenText = ""
+    private var lastRequestAt = Date.distantPast
     private var inFlight = false
+    /// Minimum quiet time between AI requests.
+    private let minRequestInterval: TimeInterval = 30
+    /// How long the pen must rest before we evaluate the page.
+    private let penPauseDelay: TimeInterval = 3
 
     func start() {
         stopTasks()
         // Re-arm the change detector so re-enabling re-evaluates the current page.
         lastSeenText = ""
+        lastRequestAt = .distantPast
         guard AIConfig.isConfigured else {
             isEnabled = false
             tutor?.errorMessage = AIServiceError.missingKey(AIConfig.provider).localizedDescription
             return
         }
         showBanner(String(localized: "ai.guided.activated"))
-        watchTask = Task { [weak self] in
-            while !Task.isCancelled {
-                await self?.checkPage()
-                try? await Task.sleep(for: .seconds(10))
-            }
-        }
+        Task { await checkPage() }
     }
 
     func stop() {
@@ -50,16 +55,29 @@ final class GuidedModeController: ObservableObject {
         banner = nil
     }
 
+    /// Called for every new stroke: (re)arms the pen-pause timer so evaluation
+    /// happens a few seconds after writing stops — never mid-stroke.
+    func strokeOccurred() {
+        guard isEnabled else { return }
+        penPauseTask?.cancel()
+        penPauseTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(self?.penPauseDelay ?? 3))
+            guard !Task.isCancelled else { return }
+            await self?.checkPage()
+        }
+    }
+
     func pageTurned() {
         guard isEnabled else { return }
+        penPauseTask?.cancel()
         Task { await checkPage(force: true) }
     }
 
     private func stopTasks() {
-        watchTask?.cancel()
+        penPauseTask?.cancel()
         dismissTask?.cancel()
         bannerTask?.cancel()
-        watchTask = nil
+        penPauseTask = nil
         dismissTask = nil
         bannerTask = nil
     }
@@ -79,19 +97,28 @@ final class GuidedModeController: ObservableObject {
         guard let tutor, let note = tutor.note, let page = tutor.currentPage,
               !inFlight, AIConfig.isConfigured else { return }
 
+        // Rate limit: at most one request per 30s, regardless of trigger.
+        guard Date().timeIntervalSince(lastRequestAt) >= minRequestInterval else { return }
+
         await OCRService.indexPage(page)
         let typed = page.textBoxes.map(\.text).joined(separator: "\n")
         let content = [(page.ocrText ?? ""), typed].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
         guard content.count > 12, force || content != lastSeenText else { return }
         lastSeenText = content
+        lastRequestAt = Date()
         inFlight = true
         defer { inFlight = false }
 
         let hint = """
         GUIDED MODE: You are passively watching the student write. Below is the OCR + typed text of the current page.
-        If — and only if — there is one genuinely useful, short proactive suggestion (e.g. "you wrote a limit — want me to check its structure?", "you defined a recurrence — want me to check the base case?"), respond with ONLY a JSON object:
-        {"suggestion": "<one short sentence in the student's language>", "match_string": "<exact string from the page text it refers to, or null>"}
-        If nothing is worth saying, respond with exactly {}.
+        Decide whether ONE genuinely useful, proactive suggestion exists. A good suggestion:
+        - quotes or names the exact expression/line it is about (e.g. "you wrote lim x→0 sin(x)/x — want me to check the evaluation?")
+        - offers a concrete next action (check a step, verify a base case, test an edge case, finish a definition)
+        - is at most ~12 words, in the student's language
+        Do NOT comment on neat/complete work, restate the obvious, or suggest generic "keep going" encouragement.
+        Respond with ONLY a JSON object:
+        {"suggestion": "<the one-sentence suggestion>", "match_string": "<exact string copied verbatim from the page text it refers to — required whenever possible, else null>"}
+        If nothing clears that bar, respond with exactly {}.
 
         Page content:
         \(content.prefix(3000))
@@ -116,6 +143,8 @@ final class GuidedModeController: ObservableObject {
     }
 
     private func show(_ new: GuidedSuggestion) {
+        log.insert(new, at: 0)
+        if log.count > 50 { log.removeLast(log.count - 50) }
         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
             suggestion = new
         }
@@ -193,5 +222,40 @@ struct GuidedSuggestionCard: View {
         .accessibilityLabel(Text("ai.guided.suggestion"))
         .accessibilityValue(Text(suggestion.text))
         .accessibilityAddTraits(.isButton)
+    }
+}
+
+
+/// Popover log of past guided-mode suggestions; tapping one opens it as a bubble.
+struct GuidedLogView: View {
+    @ObservedObject var guidedMode: GuidedModeController
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        Group {
+            if guidedMode.log.isEmpty {
+                ContentUnavailableView("ai.guided.log.empty", systemImage: "lightbulb")
+            } else {
+                List(guidedMode.log) { item in
+                    Button {
+                        dismiss()
+                        guidedMode.accept(item)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(item.text)
+                                .font(.subheadline)
+                                .multilineTextAlignment(item.text.isMostlyRTL ? .trailing : .leading)
+                                .frame(maxWidth: .infinity, alignment: item.text.isMostlyRTL ? .trailing : .leading)
+                            Text(item.createdAt, style: .time)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .listStyle(.plain)
+            }
+        }
+        .frame(minWidth: 300, minHeight: 240)
+        .navigationTitle(Text("ai.guided.log"))
     }
 }
