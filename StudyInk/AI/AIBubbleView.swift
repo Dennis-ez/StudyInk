@@ -103,6 +103,8 @@ struct AIBubbleView: View {
             } label: {
                 Image(systemName: bubble.isPinned ? "pin.fill" : "pin")
                     .font(.caption)
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
             }
             .accessibilityLabel(Text("ai.pin"))
             Button {
@@ -112,6 +114,8 @@ struct AIBubbleView: View {
             } label: {
                 Image(systemName: "xmark")
                     .font(.caption.weight(.semibold))
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
             }
             .accessibilityLabel(Text("ai.dismiss"))
         }
@@ -127,7 +131,16 @@ struct AIBubbleView: View {
             .symbolRenderingMode(.hierarchical)
     }
 
+    /// Natural height for short threads; scrolls once content exceeds ~320pt.
     private var thread: some View {
+        ViewThatFits(in: .vertical) {
+            threadContent
+            ScrollView { threadContent }
+        }
+        .frame(maxHeight: 320)
+    }
+
+    private var threadContent: some View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(bubble.thread) { exchange in
                 if let question = exchange.question, !question.isEmpty {
@@ -144,7 +157,6 @@ struct AIBubbleView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 6)
-        .frame(maxHeight: 380)
     }
 
     private var loadingRow: some View {

@@ -161,9 +161,25 @@ final class AITutorController: ObservableObject {
 
     func move(bubbleID: UUID, to point: CGPoint) {
         guard let index = bubbles.firstIndex(where: { $0.id == bubbleID }) else { return }
-        bubbles[index].x = point.x
-        bubbles[index].y = point.y
+        // Clamp inside the page so a bubble can never be dragged out of reach.
+        let pages = note?.sortedPages ?? []
+        let pageSize = pages.indices.contains(bubbles[index].pageIndex)
+            ? PageSize.from(id: pages[bubbles[index].pageIndex].pageSizeID).size
+            : CGSize(width: 800, height: 1100)
+        bubbles[index].x = min(max(point.x, -bubbles[index].width / 2), pageSize.width - 60)
+        bubbles[index].y = min(max(point.y, -20), pageSize.height - 80)
         if bubbles[index].isPinned { persistPinnedBubbles() }
+    }
+
+    /// Asking from the side panel: follow up on the selected thread when it's
+    /// still on the canvas, otherwise open a fresh bubble near the top of the page.
+    func askFromPanel(question: String) async {
+        if let id = panelBubbleID, bubbles.contains(where: { $0.id == id }) {
+            await followUp(bubbleID: id, question: question)
+            return
+        }
+        let pageSize = currentPage.map { PageSize.from(id: $0.pageSizeID).size } ?? CGSize(width: 800, height: 1100)
+        await ask(question: question, anchor: CGPoint(x: pageSize.width - 140, y: 100))
     }
 
     func toggleCollapsed(bubbleID: UUID) {

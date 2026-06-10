@@ -17,12 +17,16 @@ struct KaTeXView: UIViewRepresentable {
         webView.backgroundColor = .clear
         webView.scrollView.isScrollEnabled = false
         webView.navigationDelegate = context.coordinator
+        context.coordinator.markLoaded(content: content, dark: colorScheme == .dark)
         load(into: webView)
         return webView
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
+        // Record what we're loading *before* kicking it off — recording only on
+        // didFinish meant every re-render mid-load restarted the load forever.
         if context.coordinator.lastContent != content || context.coordinator.lastDark != (colorScheme == .dark) {
+            context.coordinator.markLoaded(content: content, dark: colorScheme == .dark)
             load(into: webView)
         }
     }
@@ -82,30 +86,32 @@ struct KaTeXView: UIViewRepresentable {
           });
         </script></body></html>
         """
-        Coordinator.pending[ObjectIdentifier(webView)] = (content, dark)
         webView.loadHTMLString(html, baseURL: nil)
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     final class Coordinator: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
-        static var pending: [ObjectIdentifier: (String, Bool)] = [:]
         let parent: KaTeXView
-        var lastContent: String = ""
-        var lastDark = false
+        private(set) var lastContent: String = ""
+        private(set) var lastDark = false
 
         init(_ parent: KaTeXView) { self.parent = parent }
 
-        func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
-            if message.name == "height", let height = message.body as? CGFloat {
-                DispatchQueue.main.async { self.parent.contentHeight = max(height, 20) }
-            }
+        func markLoaded(content: String, dark: Bool) {
+            lastContent = content
+            lastDark = dark
         }
 
-        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            if let (content, dark) = Self.pending.removeValue(forKey: ObjectIdentifier(webView)) {
-                lastContent = content
-                lastDark = dark
+        func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+            if message.name == "height", let height = message.body as? CGFloat {
+                DispatchQueue.main.async {
+                    let clamped = max(height, 20)
+                    // Ignore sub-point jitter so height updates can't ping-pong layout.
+                    if abs(self.parent.contentHeight - clamped) > 1 {
+                        self.parent.contentHeight = clamped
+                    }
+                }
             }
         }
     }
