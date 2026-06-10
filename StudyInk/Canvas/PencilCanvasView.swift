@@ -47,8 +47,10 @@ final class CanvasController: NSObject, ObservableObject {
     func redo() { canvasView?.undoManager?.redo(); refreshUndoState() }
 
     func refreshUndoState() {
-        canUndo = canvasView?.undoManager?.canUndo ?? false
-        canRedo = canvasView?.undoManager?.canRedo ?? false
+        let undo = canvasView?.undoManager?.canUndo ?? false
+        let redo = canvasView?.undoManager?.canRedo ?? false
+        if canUndo != undo { canUndo = undo }
+        if canRedo != redo { canRedo = redo }
     }
 
     func toggleEraser() {
@@ -103,12 +105,17 @@ struct PencilCanvasView: UIViewRepresentable {
     }
 
     func updateUIView(_ canvas: PKCanvasView, context: Context) {
-        controller.isDarkMode = colorScheme == .dark
+        if controller.isDarkMode != (colorScheme == .dark) {
+            controller.isDarkMode = colorScheme == .dark
+        }
         // Only push the model drawing in when it differs (e.g. page switch) —
-        // never clobber in-flight strokes.
+        // never clobber in-flight strokes. The programmatic flag stops the
+        // delegate from treating this as a user edit mid view-update.
         if context.coordinator.lastPushedDrawing != drawing {
+            context.coordinator.isProgrammaticChange = true
             context.coordinator.lastPushedDrawing = drawing
             canvas.drawing = drawing
+            context.coordinator.isProgrammaticChange = false
         }
         if canvas.contentSize != pageSize { canvas.contentSize = pageSize }
     }
@@ -118,6 +125,7 @@ struct PencilCanvasView: UIViewRepresentable {
     final class Coordinator: NSObject, PKCanvasViewDelegate, UIPencilInteractionDelegate, UIGestureRecognizerDelegate {
         let controller: CanvasController
         var lastPushedDrawing: PKDrawing?
+        var isProgrammaticChange = false
         private var saveWorkItem: DispatchWorkItem?
 
         init(controller: CanvasController) {
@@ -125,14 +133,19 @@ struct PencilCanvasView: UIViewRepresentable {
         }
 
         func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
-            controller.refreshUndoState()
-            if let stroke = canvasView.drawing.strokes.last {
-                controller.onStroke?(stroke)
+            // Programmatic pushes (page switch in updateUIView) arrive while
+            // SwiftUI is mid-update — publishing or saving here would loop.
+            guard !isProgrammaticChange else { return }
+            let drawing = canvasView.drawing
+            lastPushedDrawing = drawing
+            DispatchQueue.main.async { [controller] in
+                controller.refreshUndoState()
+                if let stroke = drawing.strokes.last {
+                    controller.onStroke?(stroke)
+                }
             }
-            lastPushedDrawing = canvasView.drawing
             // Auto-save on every stroke, debounced so fast writing batches into one store write.
             saveWorkItem?.cancel()
-            let drawing = canvasView.drawing
             let work = DispatchWorkItem { [controller] in
                 controller.onDrawingChanged?(drawing)
             }
@@ -140,12 +153,22 @@ struct PencilCanvasView: UIViewRepresentable {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
         }
 
+        // Scroll/zoom callbacks fire synchronously during UIKit layout, which can
+        // happen inside a SwiftUI view update — defer the publish one runloop turn.
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
-            controller.contentOffset = scrollView.contentOffset
+            let offset = scrollView.contentOffset
+            DispatchQueue.main.async { [weak controller] in
+                guard let controller, controller.contentOffset != offset else { return }
+                controller.contentOffset = offset
+            }
         }
 
         func scrollViewDidZoom(_ scrollView: UIScrollView) {
-            controller.zoomScale = scrollView.zoomScale
+            let scale = scrollView.zoomScale
+            DispatchQueue.main.async { [weak controller] in
+                guard let controller, controller.zoomScale != scale else { return }
+                controller.zoomScale = scale
+            }
         }
 
         func pencilInteractionDidTap(_ interaction: UIPencilInteraction) {
