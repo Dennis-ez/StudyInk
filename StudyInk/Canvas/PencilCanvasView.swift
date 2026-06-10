@@ -29,6 +29,8 @@ final class CanvasController: NSObject, ObservableObject {
     weak var canvasView: PKCanvasView?
     var onDrawingChanged: ((PKDrawing) -> Void)?
     var onStroke: ((PKStroke) -> Void)?
+    /// Fired when the Apple Pencil is held still on the canvas for ~1s (ask gesture).
+    var onPencilHold: (() -> Void)?
 
     func attach(_ canvas: PKCanvasView) {
         canvasView = canvas
@@ -87,6 +89,14 @@ struct PencilCanvasView: UIViewRepresentable {
         pencilInteraction.delegate = context.coordinator
         canvas.addInteraction(pencilInteraction)
 
+        // Circle & Ask trigger: hold the Pencil still for 1s to arm the ask-lasso.
+        let hold = UILongPressGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.pencilHeld(_:)))
+        hold.minimumPressDuration = 1.0
+        hold.allowableMovement = 8
+        hold.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.pencil.rawValue)]
+        hold.delegate = context.coordinator
+        canvas.addGestureRecognizer(hold)
+
         controller.isDarkMode = colorScheme == .dark
         controller.attach(canvas)
         return canvas
@@ -105,7 +115,7 @@ struct PencilCanvasView: UIViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator(controller: controller) }
 
-    final class Coordinator: NSObject, PKCanvasViewDelegate, UIPencilInteractionDelegate {
+    final class Coordinator: NSObject, PKCanvasViewDelegate, UIPencilInteractionDelegate, UIGestureRecognizerDelegate {
         let controller: CanvasController
         var lastPushedDrawing: PKDrawing?
         private var saveWorkItem: DispatchWorkItem?
@@ -141,6 +151,16 @@ struct PencilCanvasView: UIViewRepresentable {
         func pencilInteractionDidTap(_ interaction: UIPencilInteraction) {
             guard UIPencilInteraction.preferredTapAction == .switchEraser else { return }
             controller.toggleEraser()
+        }
+
+        @objc func pencilHeld(_ recognizer: UILongPressGestureRecognizer) {
+            guard recognizer.state == .began else { return }
+            controller.onPencilHold?()
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                               shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+            true
         }
     }
 }
