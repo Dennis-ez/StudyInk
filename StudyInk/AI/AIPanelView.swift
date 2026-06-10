@@ -5,6 +5,10 @@ import SwiftUI
 struct AIPanelView: View {
     @ObservedObject var tutor: AITutorController
     @Environment(\.layoutDirection) private var layoutDirection
+    @State private var input = ""
+    @FocusState private var inputFocused: Bool
+
+    private var isLoading: Bool { !tutor.loadingBubbleIDs.isEmpty }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -16,11 +20,51 @@ struct AIPanelView: View {
             } else {
                 historyList
             }
+            Divider()
+            composer
         }
         .frame(width: 320)
         .background(SemanticColor.aiPanelBackground)
         .overlay(alignment: .leading) { Divider() }
         .transition(.move(edge: layoutDirection == .rightToLeft ? .leading : .trailing))
+    }
+
+    /// Ask directly from the panel: follows up on the open thread, or starts a
+    /// new bubble when viewing the history list.
+    private var composer: some View {
+        HStack(spacing: 8) {
+            TextField(
+                tutor.panelBubbleID == nil ? "ai.askPlaceholder" : "ai.askMore",
+                text: $input,
+                axis: .vertical
+            )
+            .textFieldStyle(.plain)
+            .lineLimit(1...4)
+            .focused($inputFocused)
+            .onSubmit(send)
+            Button(action: send) {
+                if isLoading {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(input.isEmpty ? Color.secondary : SemanticColor.accentBlue)
+                }
+            }
+            .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isLoading)
+            .accessibilityLabel(Text("ai.send"))
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(SemanticColor.aiMessageBubble.opacity(0.35))
+    }
+
+    private func send() {
+        let question = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !question.isEmpty, !isLoading else { return }
+        input = ""
+        inputFocused = false
+        Task { await tutor.askFromPanel(question: question) }
     }
 
     private var header: some View {
