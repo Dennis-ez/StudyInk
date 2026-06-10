@@ -1,0 +1,183 @@
+/* StudyInk — English strings */
+
+"app.name" = "StudyInk";
+
+/* Generic actions */
+"action.done" = "Done";
+"action.cancel" = "Cancel";
+"action.delete" = "Delete";
+"action.rename" = "Rename";
+"action.undo" = "Undo";
+"action.redo" = "Redo";
+"action.back" = "Back";
+"action.close" = "Close";
+
+/* Tools */
+"tool.ballpoint" = "Ballpoint Pen";
+"tool.fountain" = "Fountain Pen";
+"tool.monoline" = "Monoline Pen";
+"tool.highlighter" = "Highlighter";
+"tool.pencil" = "Pencil";
+"tool.eraser.pixel" = "Pixel Eraser";
+"tool.eraser.object" = "Object Eraser";
+"tool.lasso" = "Lasso";
+"tool.ruler" = "Ruler";
+"tool.textbox" = "Text Box";
+"tool.color" = "Ink Color";
+"tool.customColor" = "Custom Color";
+"tool.opacity" = "Opacity";
+"tool.width" = "Stroke Width";
+
+/* Toolbar */
+"toolbar.customize" = "Customize Toolbar";
+"toolbar.pencilOnly" = "Apple Pencil Only";
+"toolbar.move" = "Move Toolbar";
+
+/* Text boxes */
+"textbox.accessibility" = "Text box";
+"textbox.alignment" = "Alignment";
+
+/* Editor */
+"editor.fullscreen" = "Distraction-Free Mode";
+"editor.exitFullscreen" = "Exit Full Screen";
+
+/* Templates */
+"template.blank" = "Blank";
+"template.wideRuled" = "Wide Ruled";
+"template.collegeRuled" = "College Ruled";
+"template.narrowRuled" = "Narrow Ruled";
+"template.dotGrid" = "Dot Grid";
+"template.squareGrid" = "Square Grid";
+"template.isometricGrid" = "Isometric Grid";
+"template.musicStaff" = "Music Staff";
+"template.cornell" = "Cornell Notes";
+"template.customPDF" = "Custom PDF";
+
+/* Pages */
+"page.add" = "Add Page";
+"page.addAfter" = "Add Page After";
+"page.duplicate" = "Duplicate Page";
+"page.moveBack" = "Move Back";
+"page.moveForward" = "Move Forward";
+"page.delete" = "Delete Page";
+"page.thumbnail %lld" = "Page %lld";
+"page.template" = "Template";
+"page.size" = "Page Size";
+"page.size.letter" = "Letter";
+"page.size.a4" = "A4";
+"page.size.screen" = "Screen";
+"page.size.custom" = "Custom";
+"page.applyToAll" = "Apply to All Pages";
+"page.settings" = "Page Settings";
+"page.toggleStrip" = "Show/Hide Page Strip";
+
+/* Media */
+"media.insert" = "Insert";
+"media.photo" = "Photo Library";
+"media.camera" = "Camera";
+"media.scan" = "Scan Document";
+"media.stickers" = "Stickers";
+"media.importPDF" = "Import PDF";
+"media.importSticker" = "Import PNG Sticker";
+"media.sticker" = "Sticker";
+"media.image" = "Image";
+
+/* Library */
+"library.allNotes" = "All Notes";
+"library.subjects" = "Subjects";
+"library.searchPrompt" = "Search notes, handwriting, Hebrew or English";
+"library.sort" = "Sort";
+"library.sort.date" = "Date Modified";
+"library.sort.name" = "Name";
+"library.sort.size" = "Size";
+"library.layout" = "Layout";
+"library.layout.grid" = "Grid";
+"library.layout.list" = "List";
+"library.newNote" = "New Note";
+"library.newSubject" = "New Subject";
+"library.newDivider" = "New Divider";
+"library.newNestedSubject" = "New Nested Subject";
+"library.subjectColor" = "Color";
+"library.renameSubject" = "Rename Subject";
+"library.subjectName" = "Subject name";
+"library.renameNote" = "Rename Note";
+"library.noteTitle" = "Note title";
+"library.untitledNote" = "Untitled Note";
+"library.newSubjectName" = "New Subject";
+"library.newDividerName" = "Divider";
+"library.empty" = "No notes yet — tap the pencil to start";
+"library.noResults" = "No results";
+"library.created %@" = "Created %@";
+"library.modified %@" = "Modified %@";
+"library.pageCount %lld" = "%lld pages";
+
+/* Export */
+"export.pdf" = "Export as PDF";
+"export.png" = "Export Page as PNG";
+"export.share" = "Share";
+
+/* Settings */
+"settings.title" = "Settings";
+"settings.appearance" = "Appearance";
+"settings.appearance.system" = "System";
+"settings.appearance.light" = "Light";
+"settings.appearance.dark" = "Dark";
+"settings.backup" = "Backup & Sync";
+"settings.autoBackup" = "Auto-Backup";
+"settings.iCloudSync" = "iCloud Sync";
+"settings.iCloudSync.footnote" = "Syncs notes across your devices with CloudKit. Takes effect after relaunching the app.";
+"settings.ai" = "AI Tutor";
+"settings.ai.status" = "API Key";
+"settings.ai.configured" = "Configured";
+"settings.ai.missingKey" = "Missing";
+"settings.ai.keyHelp" = "Add your Anthropic API key to Config.plist — see the README for setup.";
+
+/* Audio */
+"audio.record" = "Record Audio";
+"audio.stop" = "Stop Recording";
+"audio.recording" = "Recording…";
+"audio.pause" = "Pause Playback";
+"audio.tapHint" = "Tap your writing to jump";
+"audio.recordings %lld" = "%lld recordings";
+
+/* AI tutor */
+"ai.tutorName" = "AI Tutor";
+"ai.menu" = "AI Tutor Menu";
+"ai.ask" = "Ask AI";
+"ai.askPlaceholder" = "Ask about your notes…";
+"ai.askHint" = "The tutor sees all pages of this note.";
+"ai.askMore" = "Ask more…";
+"ai.send" = "Send";
+"ai.thinking" = "Thinking…";
+"ai.pin" = "Pin to page";
+"ai.dismiss" = "Dismiss";
+"ai.insertIntoNote" = "Insert into note";
+"ai.openInPanel" = "Open in panel";
+"ai.bubble.accessibility" = "AI tutor response";
+"ai.history" = "AI History";
+"ai.thread" = "Thread";
+"ai.history.empty" = "No AI conversations in this note yet";
+"ai.history.active" = "On Canvas";
+"ai.history.past" = "Earlier";
+"ai.history.page %lld" = "Page %lld";
+"ai.error" = "AI Tutor Error";
+"ai.error.missingKey" = "No Anthropic API key configured. Copy Config.sample.plist to Config.plist and add your key.";
+"ai.error.api %lld" = "The AI request failed (HTTP %lld).";
+"ai.circleAsk.title" = "Circle & Ask";
+"ai.circleAsk.hint" = "Draw a loop around what you want to ask about";
+"ai.explainPage" = "Explain This Page";
+"ai.explainPage.question" = "Explain this page: summarize it and point out the key concepts.";
+"ai.quizMe" = "Quiz Me";
+"ai.quiz.failed" = "Couldn't generate a quiz from this note yet — try adding more content.";
+"ai.quiz.prefix %lld" = "Question %lld:";
+"ai.guidedMode" = "Guided Mode";
+"ai.guided.suggestion" = "AI tutor suggestion";
+"ai.subject" = "Subject Context";
+"ai.subject.calculus1" = "Calculus 1";
+"ai.subject.discrete1" = "Discrete Math 1";
+"ai.subject.custom" = "Custom…";
+"ai.subject.customPlaceholder" = "e.g. Linear Algebra";
+"ai.suggestion.checkThis" = "Check this for mistakes";
+"ai.suggestion.explainThis" = "Explain this to me";
+"ai.suggestion.nextStep" = "What's the next step?";
+"ai.suggestion.similarExample" = "Show a similar example";

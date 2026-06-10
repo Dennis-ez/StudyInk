@@ -12,6 +12,11 @@
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>he</string>
+	</array>
 	<key>CFBundleName</key>
 	<string>$(PRODUCT_NAME)</string>
 	<key>CFBundlePackageType</key>
@@ -20,13 +25,28 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>NSCameraUsageDescription</key>
+	<string>StudyInk uses the camera to insert photos and scan documents into your notes.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>StudyInk records lecture audio synced to your handwriting so you can replay any moment.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>StudyInk can save exported note images to your photo library.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>StudyInk lets you insert images from your photo library into your notes.</string>
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+		<string>remote-notification</string>
+	</array>
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColorName</key>
 		<string>canvasBackground</string>
 	</dict>
-	<key>UIApplicationSupportsIndirectInputEvents</key>
-	<true/>
 	<key>UIRequiresFullScreen</key>
 	<false/>
 	<key>UISupportedInterfaceOrientations~ipad</key>
@@ -36,20 +56,5 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>remote-notification</string>
-		<string>audio</string>
-	</array>
-	<key>NSCameraUsageDescription</key>
-	<string>StudyInk uses the camera to insert photos and scan documents into your notes.</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>StudyInk records lecture audio synced to your handwriting so you can replay any moment.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>StudyInk lets you insert images from your photo library into your notes.</string>
-	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>StudyInk can save exported note images to your photo library.</string>
-	<key>ITSAppUsesNonExemptEncryption</key>
-	<false/>
 </dict>
 </plist>
