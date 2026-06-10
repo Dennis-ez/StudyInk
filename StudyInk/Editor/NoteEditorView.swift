@@ -23,7 +23,12 @@ struct NoteEditorView: View {
     @State private var showPhotoPicker = false
     @State private var importingPDF = false
     @State private var ocrTask: Task<Void, Never>?
+    @StateObject private var tutor = AITutorController()
+    @State private var showAskField = false
+    @State private var askText = ""
+    @State private var lastStrokeAnchor: CGPoint?
     @Environment(\.managedObjectContext) private var context
+    @Environment(\.colorScheme) private var colorScheme
 
     private var currentPage: Page? {
         let pages = note.sortedPages
@@ -56,6 +61,24 @@ struct NoteEditorView: View {
                     .allowsHitTesting(selectedMediaID == nil)
 
                 TextBoxLayer(boxes: $textBoxes, transform: transform, editingBoxID: $editingBoxID)
+
+                // AI canvas annotations + response bubbles (non-destructive overlays).
+                ForEach(tutor.visibleBubbles) { bubble in
+                    AnnotationOverlay(
+                        annotations: bubble.annotations,
+                        bubbleOrigin: CGPoint(x: bubble.x, y: bubble.y + 60),
+                        transform: transform
+                    )
+                }
+                ForEach(tutor.visibleBubbles) { bubble in
+                    AIBubbleView(
+                        bubble: bubble,
+                        isLoading: tutor.loadingBubbleIDs.contains(bubble.id),
+                        transform: transform,
+                        tutor: tutor,
+                        onInsertTextBox: { textBoxes.append($0) }
+                    )
+                }
             }
 
             if selectedMediaID != nil {
@@ -95,14 +118,31 @@ struct NoteEditorView: View {
             if distractionFree {
                 exitDistractionFreeButton
             }
+
+            // Side AI panel (secondary surface for long explanations + history).
+            if tutor.panelOpen {
+                HStack {
+                    Spacer()
+                    AIPanelView(tutor: tutor)
+                }
+                .ignoresSafeArea(edges: .bottom)
+            }
         }
         .navigationTitle(note.title ?? "")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { editorToolbar }
         .toolbar(distractionFree ? .hidden : .automatic, for: .navigationBar)
         .statusBarHidden(distractionFree)
-        .onAppear(perform: loadPage)
-        .onChange(of: pageIndex) { persistOverlays(); loadPage() }
+        .onAppear {
+            loadPage()
+            tutor.attach(note: note)
+            tutor.isDarkMode = colorScheme == .dark
+            canvasController.onStroke = { stroke in
+                lastStrokeAnchor = CGPoint(x: stroke.renderBounds.midX, y: stroke.renderBounds.midY)
+            }
+        }
+        .onChange(of: colorScheme) { tutor.isDarkMode = colorScheme == .dark }
+        .onChange(of: pageIndex) { persistOverlays(); loadPage(); tutor.pageChanged(to: pageIndex) }
         .onChange(of: textBoxes) { persistOverlays() }
         .onChange(of: mediaItems) { persistOverlays() }
         .onDisappear { persistOverlays(); PersistenceController.shared.save() }
@@ -134,16 +174,54 @@ struct NoteEditorView: View {
             }
             return true
         }
+        .alert(Text("ai.ask"), isPresented: $showAskField) {
+            TextField("ai.askPlaceholder", text: $askText)
+            Button("action.cancel", role: .cancel) { askText = "" }
+            Button("ai.send") { sendAsk() }
+        } message: {
+            Text("ai.askHint")
+        }
+        .alert(Text("ai.error"), isPresented: aiErrorBinding) {
+            Button("action.done", role: .cancel) { tutor.errorMessage = nil }
+        } message: {
+            Text(tutor.errorMessage ?? "")
+        }
+    }
+
+    private var aiErrorBinding: Binding<Bool> {
+        Binding(get: { tutor.errorMessage != nil }, set: { if !$0 { tutor.errorMessage = nil } })
+    }
+
+    private func sendAsk() {
+        let question = askText.trimmingCharacters(in: .whitespacesAndNewlines)
+        askText = ""
+        guard !question.isEmpty else { return }
+        let anchor = askAnchor
+        Task { await tutor.ask(question: question, anchor: anchor) }
     }
 
     // MARK: - Toolbar
 
     private var toolbarExtras: [ToolbarExtraItem] {
         [
+            ToolbarExtraItem(id: "ask-ai", symbolName: "sparkles", labelKey: "ai.ask") {
+                showAskField = true
+            },
+            ToolbarExtraItem(id: "ai-history", symbolName: "bubble.left.and.text.bubble.right", labelKey: "ai.history") {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    tutor.panelBubbleID = nil
+                    tutor.panelOpen.toggle()
+                }
+            },
             ToolbarExtraItem(id: "fullscreen", symbolName: "arrow.up.left.and.arrow.down.right", labelKey: "editor.fullscreen") {
                 withAnimation { distractionFree = true }
             }
         ]
+    }
+
+    /// Anchor for typed questions: the last pen stroke, falling back to viewport center.
+    private var askAnchor: CGPoint {
+        lastStrokeAnchor ?? transform.toPage(CGPoint(x: UIScreen.main.bounds.midX, y: UIScreen.main.bounds.midY * 0.6))
     }
 
     @ToolbarContentBuilder
