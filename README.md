@@ -46,16 +46,12 @@ Full **Hebrew + RTL** support throughout: handwriting OCR, typed text, UI mirror
 - An **Anthropic API key** — get one at <https://console.anthropic.com>
 
 ### API key configuration
-Keys are **never hardcoded or committed**. Copy the sample config and add your key(s):
+Keys are **never hardcoded or committed**. Paste them directly in the app: **Settings → AI Tutor → Paste API key** — they're stored in the iOS **Keychain** (this-device-only, excluded from backups).
 
-```bash
-cp StudyInk/Config.sample.plist StudyInk/Config.plist
-# then edit StudyInk/Config.plist:
-#   ANTHROPIC_API_KEY — from console.anthropic.com (paid credits)
-#   GEMINI_API_KEY    — from aistudio.google.com (free tier available)
-```
+- `ANTHROPIC_API_KEY` — from console.anthropic.com (paid credits)
+- `GEMINI_API_KEY` — from aistudio.google.com (free tier available)
 
-`StudyInk/Config.plist` is listed in `.gitignore`. If no key is configured the app runs with AI features disabled and shows a setup hint in Settings.
+For development you can still pre-seed keys via the gitignored `StudyInk/Config.plist` (copy `Config.sample.plist`); a key pasted in-app always wins. With no key configured the app runs with AI features disabled and shows a setup hint in Settings.
 
 ### AI provider & model
 The tutor supports **two providers — Anthropic Claude and Google Gemini** — selected in **Settings → AI Tutor**, along with the model. "Load Available Models" fetches the live model list from the selected provider's API; a custom model ID can also be entered. Notes on cost:

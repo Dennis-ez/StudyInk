@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// App settings: appearance override, backup, and the AI tutor's provider + model.
+/// App settings: appearance override, backup, and the AI tutor's provider,
+/// API keys (pasted in-app, stored in the Keychain), and model.
 struct SettingsView: View {
     @AppStorage("settings.appearance") private var appearance = "system"
     @AppStorage("settings.autoBackup") private var autoBackup = true
@@ -11,6 +12,8 @@ struct SettingsView: View {
     @State private var models: [String] = []
     @State private var loadingModels = false
     @State private var customModel = ""
+    @State private var keyInput = ""
+    @State private var keyConfigured = false
 
     private var provider: AIProvider { AIProvider(rawValue: providerRaw) ?? .claude }
 
@@ -32,7 +35,8 @@ struct SettingsView: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
-                aiSection
+                aiKeySection
+                aiModelSection
             }
             .navigationTitle(Text("settings.title"))
             .toolbar {
@@ -40,15 +44,15 @@ struct SettingsView: View {
                     Button("action.done") { dismiss() }
                 }
             }
-            .onChange(of: providerRaw) { resetModelList() }
-            .onAppear { resetModelList() }
+            .onChange(of: providerRaw) { refreshProviderState() }
+            .onAppear { refreshProviderState() }
         }
     }
 
-    // MARK: - AI provider & model
+    // MARK: - API key
 
     @ViewBuilder
-    private var aiSection: some View {
+    private var aiKeySection: some View {
         Section(header: Text("settings.ai")) {
             Picker("settings.ai.provider", selection: $providerRaw) {
                 ForEach(AIProvider.allCases) { provider in
@@ -57,10 +61,44 @@ struct SettingsView: View {
             }
 
             LabeledContent("settings.ai.status") {
-                Text(AIConfig.isConfigured(for: provider) ? "settings.ai.configured" : "settings.ai.missingKey")
-                    .foregroundStyle(AIConfig.isConfigured(for: provider) ? .green : .orange)
+                Text(keyConfigured ? "settings.ai.configured" : "settings.ai.missingKey")
+                    .foregroundStyle(keyConfigured ? .green : .orange)
             }
 
+            HStack {
+                SecureField("settings.ai.pasteKey", text: $keyInput)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                Button("settings.ai.saveKey") {
+                    let trimmed = keyInput.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !trimmed.isEmpty else { return }
+                    AIConfig.setAPIKey(trimmed, for: provider)
+                    keyInput = ""
+                    refreshProviderState()
+                }
+                .disabled(keyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+
+            if AIConfig.hasStoredKey(for: provider) {
+                Button(role: .destructive) {
+                    AIConfig.setAPIKey(nil, for: provider)
+                    refreshProviderState()
+                } label: {
+                    Label("settings.ai.removeKey", systemImage: "key.slash")
+                }
+            }
+
+            Text(provider == .claude ? "settings.ai.keyHelp" : "settings.ai.keyHelp.gemini")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: - Model
+
+    @ViewBuilder
+    private var aiModelSection: some View {
+        Section(header: Text("settings.ai.model")) {
             Picker("settings.ai.model", selection: modelBinding) {
                 ForEach(models, id: \.self) { model in
                     Text(verbatim: model).tag(model)
@@ -79,7 +117,7 @@ struct SettingsView: View {
                     if loadingModels { Spacer(); ProgressView().controlSize(.small) }
                 }
             }
-            .disabled(loadingModels || !AIConfig.isConfigured(for: provider))
+            .disabled(loadingModels || !keyConfigured)
 
             HStack {
                 TextField("settings.ai.customModel", text: $customModel)
@@ -93,10 +131,6 @@ struct SettingsView: View {
                 }
                 .disabled(customModel.trimmingCharacters(in: .whitespaces).isEmpty)
             }
-
-            Text(provider == .claude ? "settings.ai.keyHelp" : "settings.ai.keyHelp.gemini")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
         }
     }
 
@@ -107,9 +141,11 @@ struct SettingsView: View {
         )
     }
 
-    private func resetModelList() {
+    private func refreshProviderState() {
+        keyConfigured = AIConfig.isConfigured(for: provider)
+        keyInput = ""
         models = provider.defaultModels
-        if AIConfig.isConfigured(for: provider) { loadModels() }
+        if keyConfigured { loadModels() }
     }
 
     private func loadModels() {
@@ -125,10 +161,14 @@ struct SettingsView: View {
     }
 }
 
-/// Provider configuration: API keys come from the gitignored Config.plist;
-/// the active provider and per-provider model choice live in UserDefaults
-/// (set from Settings, overriding the plist default).
+/// Provider configuration. API keys are pasted in Settings and stored in the
+/// Keychain; the gitignored Config.plist remains a development-only fallback.
+/// The active provider and per-provider model choice live in UserDefaults.
 enum AIConfig {
+    private static func keychainAccount(for provider: AIProvider) -> String {
+        "\(provider.rawValue)_api_key"
+    }
+
     private static var plist: [String: Any] {
         guard let url = Bundle.main.url(forResource: "Config", withExtension: "plist"),
               let data = try? Data(contentsOf: url),
@@ -142,8 +182,34 @@ enum AIConfig {
         return value
     }
 
-    static var claudeKey: String? { plistString("ANTHROPIC_API_KEY") }
-    static var geminiKey: String? { plistString("GEMINI_API_KEY") }
+    static func apiKey(for provider: AIProvider) -> String? {
+        if let stored = KeychainStore.get(keychainAccount(for: provider)) {
+            return stored
+        }
+        // Development fallback: gitignored Config.plist.
+        switch provider {
+        case .claude: return plistString("ANTHROPIC_API_KEY")
+        case .gemini: return plistString("GEMINI_API_KEY")
+        }
+    }
+
+    /// nil removes the stored key (the plist fallback, if any, applies again).
+    static func setAPIKey(_ key: String?, for provider: AIProvider) {
+        let account = keychainAccount(for: provider)
+        if let key, !key.isEmpty {
+            KeychainStore.set(key, account: account)
+        } else {
+            KeychainStore.delete(account)
+        }
+    }
+
+    /// True only when a key was pasted in-app (drives the "Remove Key" button).
+    static func hasStoredKey(for provider: AIProvider) -> Bool {
+        KeychainStore.get(keychainAccount(for: provider)) != nil
+    }
+
+    static var claudeKey: String? { apiKey(for: .claude) }
+    static var geminiKey: String? { apiKey(for: .gemini) }
 
     static var provider: AIProvider {
         AIProvider(rawValue: UserDefaults.standard.string(forKey: "settings.ai.provider") ?? "") ?? .claude
@@ -164,10 +230,7 @@ enum AIConfig {
     }
 
     static func isConfigured(for provider: AIProvider) -> Bool {
-        switch provider {
-        case .claude: return claudeKey != nil
-        case .gemini: return geminiKey != nil
-        }
+        apiKey(for: provider) != nil
     }
 
     /// True when the currently selected provider has a key.
