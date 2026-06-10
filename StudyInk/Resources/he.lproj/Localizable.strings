@@ -81,6 +81,7 @@
 "media.stickers" = "מדבקות";
 "media.importPDF" = "ייבוא PDF";
 "media.importSticker" = "ייבוא מדבקת PNG";
+"media.paste" = "הדבקה";
 "media.sticker" = "מדבקה";
 "media.image" = "תמונה";
 "media.resize" = "שינוי גודל";
