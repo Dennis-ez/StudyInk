@@ -49,11 +49,16 @@ enum OCRService {
     }
 
     /// Recognizes a page's current contents and caches the text for library search.
+    /// The page render + recognition run off the main thread so writing or typing
+    /// (and the keyboard) never stall behind indexing.
     @MainActor
     static func indexPage(_ page: Page) async {
-        let pageSize = PageSize.from(id: page.pageSizeID).size
-        let image = PageRenderer.image(for: page, darkMode: false)
-        let lines = await recognize(image: image, pageSize: pageSize)
+        let snapshot = PageRenderer.Snapshot(page: page)
+        let pageSize = snapshot.pageSize
+        let lines = await Task.detached(priority: .utility) {
+            let image = PageRenderer.render(snapshot, darkMode: false)
+            return await recognize(image: image, pageSize: pageSize)
+        }.value
         let text = lines.map(\.text).joined(separator: "\n")
         if page.ocrText != text {
             page.ocrText = text

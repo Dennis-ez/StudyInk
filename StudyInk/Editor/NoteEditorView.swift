@@ -23,6 +23,7 @@ struct NoteEditorView: View {
     @State private var showPhotoPicker = false
     @State private var importingPDF = false
     @State private var ocrTask: Task<Void, Never>?
+    @State private var overlaySaveTask: Task<Void, Never>?
     @StateObject private var tutor = AITutorController()
     @StateObject private var guidedMode = GuidedModeController()
     @StateObject private var audio = AudioSyncController()
@@ -192,8 +193,8 @@ struct NoteEditorView: View {
             tutor.pageChanged(to: pageIndex)
             guidedMode.pageTurned()
         }
-        .onChange(of: textBoxes) { persistOverlays() }
-        .onChange(of: mediaItems) { persistOverlays() }
+        .onChange(of: textBoxes) { scheduleOverlaySave() }
+        .onChange(of: mediaItems) { scheduleOverlaySave() }
         .onDisappear {
             persistOverlays()
             if audio.isRecording { audio.stopRecording() }
@@ -409,7 +410,21 @@ struct NoteEditorView: View {
         selectedMediaID = nil
     }
 
+    /// Typing in a text box mutates state on every keystroke; encoding JSON,
+    /// rebuilding the note's search text, and hitting Core Data each time
+    /// stalls the main thread (worst right as the keyboard animates in).
+    /// Coalesce to one save shortly after edits go quiet.
+    private func scheduleOverlaySave() {
+        overlaySaveTask?.cancel()
+        overlaySaveTask = Task {
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled else { return }
+            persistOverlays()
+        }
+    }
+
     private func persistOverlays() {
+        overlaySaveTask?.cancel()
         guard let page = currentPage else { return }
         if page.textBoxes != textBoxes { page.textBoxes = textBoxes }
         if page.mediaItems != mediaItems { page.mediaItems = mediaItems }
