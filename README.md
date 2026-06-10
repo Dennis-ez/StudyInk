@@ -112,7 +112,7 @@ graph TD
 ## Roadmap
 
 - [x] **Phase 0** — Repo setup, README, Xcode scaffold
-- [ ] **Phase 1** — Canvas, PencilKit, toolbar, local save (`feature/phase-1-canvas`)
+- [x] **Phase 1** — Canvas, PencilKit, toolbar, local save (`feature/phase-1-canvas`)
 - [ ] **Phase 2** — Templates, media, PDF, typed text, RTL (`feature/phase-2-templates`)
 - [ ] **Phase 3** — Library, folders, Hebrew OCR search, export (`feature/phase-3-library`)
 - [ ] **Phase 4** — Dark mode full implementation (`feature/phase-4-darkmode`)

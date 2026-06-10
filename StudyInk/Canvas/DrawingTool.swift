@@ -1,0 +1,121 @@
+import PencilKit
+import SwiftUI
+
+/// User-facing tool identity. The "logical color" the user picked is stored separately
+/// from the rendered color so dark mode can remap ink (see InkColorAdapter, phase 4).
+enum ToolKind: String, CaseIterable, Codable, Identifiable {
+    case ballpoint, fountain, monoline, highlighter, pencil
+    case eraserPixel, eraserObject, lasso
+
+    var id: String { rawValue }
+
+    var symbolName: String {
+        switch self {
+        case .ballpoint: return "pencil.tip"
+        case .fountain: return "paintbrush.pointed"
+        case .monoline: return "pencil.line"
+        case .highlighter: return "highlighter"
+        case .pencil: return "pencil"
+        case .eraserPixel: return "eraser"
+        case .eraserObject: return "eraser.line.dashed"
+        case .lasso: return "lasso"
+        }
+    }
+
+    var labelKey: LocalizedStringKey {
+        switch self {
+        case .ballpoint: return "tool.ballpoint"
+        case .fountain: return "tool.fountain"
+        case .monoline: return "tool.monoline"
+        case .highlighter: return "tool.highlighter"
+        case .pencil: return "tool.pencil"
+        case .eraserPixel: return "tool.eraser.pixel"
+        case .eraserObject: return "tool.eraser.object"
+        case .lasso: return "tool.lasso"
+        }
+    }
+
+    var isInking: Bool {
+        switch self {
+        case .ballpoint, .fountain, .monoline, .highlighter, .pencil: return true
+        default: return false
+        }
+    }
+}
+
+/// Complete tool state: kind + per-kind color/width/opacity, persisted across launches.
+struct ToolState: Codable, Equatable {
+    var kind: ToolKind = .ballpoint
+    var colorHex: String = "#000000"
+    var width: Double = 4
+    var opacity: Double = 1.0
+
+    /// Builds the PencilKit tool. `darkMode` drives ink remapping: pure black ink
+    /// renders near-white on a dark canvas while the stored logical color is unchanged.
+    func pkTool(darkMode: Bool) -> PKTool {
+        switch kind {
+        case .eraserPixel: return PKEraserTool(.bitmap)
+        case .eraserObject: return PKEraserTool(.vector)
+        case .lasso: return PKLassoTool()
+        case .ballpoint, .fountain, .monoline, .highlighter, .pencil:
+            let base = InkColorAdapter.rendered(from: UIColor(hex: colorHex) ?? .black, darkMode: darkMode)
+            let color = base.withAlphaComponent(kind == .highlighter ? min(opacity, 0.6) : opacity)
+            return PKInkingTool(inkType, color: color, width: width)
+        }
+    }
+
+    private var inkType: PKInkingTool.InkType {
+        switch kind {
+        case .ballpoint: return .pen
+        case .fountain: return .fountainPen
+        case .monoline: return .monoline
+        case .highlighter: return .marker
+        case .pencil: return .pencil
+        default: return .pen
+        }
+    }
+}
+
+/// Maps the user's logical ink color to a rendered color per appearance mode.
+/// Black ↔ near-white swap; saturated colors get a brightness lift in dark mode.
+enum InkColorAdapter {
+    static func rendered(from logical: UIColor, darkMode: Bool) -> UIColor {
+        guard darkMode else { return logical }
+        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        logical.getHue(&h, saturation: &s, brightness: &b, alpha: &a)
+        if s < 0.15 && b < 0.3 {
+            // Black-ish ink → near-white, like Notability.
+            return UIColor(white: 0.92, alpha: a)
+        }
+        return UIColor(hue: h, saturation: s, brightness: min(1.0, b + 0.18), alpha: a)
+    }
+}
+
+// MARK: - Hex color plumbing
+
+extension UIColor {
+    convenience init?(hex: String) {
+        var value = hex.trimmingCharacters(in: .whitespaces)
+        if value.hasPrefix("#") { value.removeFirst() }
+        guard value.count == 6, let rgb = UInt32(value, radix: 16) else { return nil }
+        self.init(
+            red: CGFloat((rgb >> 16) & 0xFF) / 255,
+            green: CGFloat((rgb >> 8) & 0xFF) / 255,
+            blue: CGFloat(rgb & 0xFF) / 255,
+            alpha: 1
+        )
+    }
+
+    var hexString: String {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        getRed(&r, green: &g, blue: &b, alpha: &a)
+        return String(format: "#%02X%02X%02X", Int(round(r * 255)), Int(round(g * 255)), Int(round(b * 255)))
+    }
+}
+
+extension Color {
+    init?(hex: String) {
+        guard let ui = UIColor(hex: hex) else { return nil }
+        self.init(uiColor: ui)
+    }
+}
