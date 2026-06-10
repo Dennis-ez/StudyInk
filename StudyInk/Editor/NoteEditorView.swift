@@ -45,54 +45,66 @@ struct NoteEditorView: View {
     private var pageSize: CGSize { PageSize.from(id: currentPage?.pageSizeID).size }
 
     private var transform: CanvasTransform {
-        CanvasTransform(zoomScale: canvasController.zoomScale, contentOffset: canvasController.contentOffset)
+        canvasController.transform(forPage: pageIndex)
+    }
+
+    /// Engine rebuilds the page stack when this changes (count/size/template).
+    private var layoutSignature: String {
+        note.sortedPages.map {
+            "\($0.pageSizeID ?? "letter")|\($0.templateID ?? "blank")|\($0.customTemplatePDF?.count ?? 0)"
+        }.joined(separator: ",")
+    }
+
+    private func page(at index: Int) -> Page? {
+        let pages = note.sortedPages
+        return pages.indices.contains(index) ? pages[index] : nil
     }
 
     var body: some View {
         ZStack {
             Color("deskBackground").ignoresSafeArea()
 
-            if let page = currentPage {
-                TemplateBackgroundView(
-                    template: page.template,
-                    pageSize: pageSize,
-                    transform: transform,
-                    customPDFData: page.customTemplatePDF
-                )
+            // The stitched document: every page in one continuous scroll.
+            NoteCanvasView(
+                controller: canvasController,
+                pageSizes: note.sortedPages.map { PageSize.from(id: $0.pageSizeID).size },
+                layoutSignature: layoutSignature
+            )
+            .ignoresSafeArea(edges: .bottom)
+            .allowsHitTesting(selectedMediaID == nil)
 
-                MediaLayer(items: $mediaItems, transform: transform, selectedItemID: $selectedMediaID)
-
-                PencilCanvasView(controller: canvasController, drawing: page.drawing, pageSize: pageSize)
-                    .ignoresSafeArea(edges: .bottom)
-                    .allowsHitTesting(selectedMediaID == nil)
-
-                TextBoxLayer(boxes: $textBoxes, transform: transform, editingBoxID: $editingBoxID)
-
-                // AI canvas annotations + response bubbles (non-destructive overlays).
-                ForEach(tutor.visibleBubbles) { bubble in
-                    AnnotationOverlay(
-                        annotations: bubble.annotations,
-                        bubbleOrigin: CGPoint(x: bubble.x, y: bubble.y + 60),
-                        transform: transform
-                    )
-                }
-                ForEach(tutor.visibleBubbles) { bubble in
-                    AIBubbleView(
-                        bubble: bubble,
-                        isLoading: tutor.loadingBubbleIDs.contains(bubble.id),
-                        transform: transform,
-                        tutor: tutor,
-                        onInsertTextBox: { textBoxes.append($0) }
-                    )
-                }
-            }
-
-            if selectedMediaID != nil {
-                // Tap-through catcher to deselect media and resume drawing.
+            // Tap-anywhere catcher to drop the current media/text selection.
+            if selectedMediaID != nil || editingBoxID != nil {
                 Color.clear
                     .contentShape(Rectangle())
-                    .onTapGesture { selectedMediaID = nil }
-                    .allowsHitTesting(false)
+                    .onTapGesture {
+                        selectedMediaID = nil
+                        editingBoxID = nil
+                    }
+            }
+
+            // Current page's editable overlays (other pages render their media
+            // and text inside the engine's cached page images).
+            MediaLayer(items: $mediaItems, transform: transform, selectedItemID: $selectedMediaID)
+            TextBoxLayer(boxes: $textBoxes, transform: transform, editingBoxID: $editingBoxID)
+
+            // AI annotations + bubbles for every page, each anchored through
+            // its own page transform so they ride along while scrolling.
+            ForEach(tutor.bubbles) { bubble in
+                AnnotationOverlay(
+                    annotations: bubble.annotations,
+                    bubbleOrigin: CGPoint(x: bubble.x, y: bubble.y + 60),
+                    transform: canvasController.transform(forPage: bubble.pageIndex)
+                )
+            }
+            ForEach(tutor.bubbles) { bubble in
+                AIBubbleView(
+                    bubble: bubble,
+                    isLoading: tutor.loadingBubbleIDs.contains(bubble.id),
+                    transform: canvasController.transform(forPage: bubble.pageIndex),
+                    tutor: tutor,
+                    onInsertTextBox: { textBoxes.append($0) }
+                )
             }
 
             // Audio playback tap-to-seek: tap any written mark to jump the recording
@@ -227,28 +239,52 @@ struct NoteEditorView: View {
             tutor.isDarkMode = colorScheme == .dark
             guidedMode.tutor = tutor
             audio.attach(note: note)
-            canvasController.onStroke = { stroke in
+            canvasController.onStroke = { index, stroke in
                 let center = CGPoint(x: stroke.renderBounds.midX, y: stroke.renderBounds.midY)
-                lastStrokeAnchor = center
-                audio.logStroke(at: center, pageIndex: pageIndex)
+                if index == pageIndex { lastStrokeAnchor = center }
+                audio.logStroke(at: center, pageIndex: index)
             }
             canvasController.onPencilHold = {
                 withAnimation { askLassoActive = true }
             }
-            canvasController.onPageOverscroll = { direction in
-                let target = pageIndex + direction
-                guard note.sortedPages.indices.contains(target) else { return }
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                    pageIndex = target
+            canvasController.drawingProvider = { [weak note] index in
+                MainActor.assumeIsolated {
+                    guard let note else { return PKDrawing() }
+                    let pages = note.sortedPages
+                    return pages.indices.contains(index) ? pages[index].drawing : PKDrawing()
+                }
+            }
+            canvasController.snapshotProvider = { [weak note] index in
+                MainActor.assumeIsolated {
+                    guard let note else { return nil }
+                    let pages = note.sortedPages
+                    guard pages.indices.contains(index) else { return nil }
+                    return PageRenderer.Snapshot(page: pages[index])
+                }
+            }
+            canvasController.onAddPage = { [weak note] in
+                guard let note else { return }
+                note.addPage()
+                PersistenceController.shared.save()
+                let last = note.sortedPages.count - 1
+                DispatchQueue.main.async {
+                    pageIndex = last
                 }
             }
         }
         .onChange(of: colorScheme) { tutor.isDarkMode = colorScheme == .dark }
-        .onChange(of: pageIndex) {
-            persistOverlays()
+        .onChange(of: pageIndex) { oldIndex, newIndex in
+            persistOverlays(to: page(at: oldIndex))
+            canvasController.engine?.refreshPage(oldIndex)
             loadPage()
-            tutor.pageChanged(to: pageIndex)
+            tutor.pageChanged(to: newIndex)
             guidedMode.pageTurned()
+            if canvasController.currentPageIndex != newIndex {
+                canvasController.scrollToPage(newIndex)
+            }
+        }
+        .onChange(of: canvasController.currentPageIndex) { _, engineIndex in
+            if pageIndex != engineIndex { pageIndex = engineIndex }
         }
         .onChange(of: textBoxes) { scheduleOverlaySave() }
         .onChange(of: mediaItems) { scheduleOverlaySave() }
@@ -490,9 +526,9 @@ struct NoteEditorView: View {
         }
     }
 
-    private func persistOverlays() {
+    private func persistOverlays(to target: Page? = nil) {
         overlaySaveTask?.cancel()
-        guard let page = currentPage else { return }
+        guard let page = target ?? currentPage else { return }
         if page.textBoxes != textBoxes { page.textBoxes = textBoxes }
         if page.mediaItems != mediaItems { page.mediaItems = mediaItems }
         note.searchableText = SearchableTextBuilder.build(for: note)
@@ -500,14 +536,14 @@ struct NoteEditorView: View {
     }
 
     private func wireCanvasSave() {
-        canvasController.onDrawingChanged = { [weak note] drawing in
+        canvasController.onDrawingChanged = { [weak note] index, drawing in
             guard let note else { return }
             let pages = note.sortedPages
-            guard pages.indices.contains(pageIndex) else { return }
-            pages[pageIndex].drawing = drawing
+            guard pages.indices.contains(index) else { return }
+            pages[index].drawing = drawing
             note.searchableText = SearchableTextBuilder.build(for: note)
             PersistenceController.shared.save()
-            scheduleOCR(for: pages[pageIndex])
+            scheduleOCR(for: pages[index])
         }
     }
 

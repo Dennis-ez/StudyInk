@@ -68,13 +68,14 @@ enum PageRenderer {
         image(for: page, darkMode: darkMode, scale: 2).pngData()
     }
 
-    private static func draw(_ snapshot: Snapshot, in cg: CGContext, darkMode: Bool) {
+    /// Paper + template/PDF only — shared by full renders and the live page
+    /// container (which layers the live canvas and SwiftUI overlays on top).
+    static func drawBackground(_ snapshot: Snapshot, in cg: CGContext, darkMode: Bool) {
         let pageRect = CGRect(origin: .zero, size: snapshot.pageSize)
 
         cg.setFillColor(backgroundColor(darkMode: darkMode).cgColor)
         cg.fill(pageRect)
 
-        // Template or custom PDF background.
         if snapshot.template == .customPDF, let data = snapshot.customTemplatePDF,
            let pdfImage = PDFTemplateRenderer.image(from: data, targetWidth: snapshot.pageSize.width * 2) {
             pdfImage.draw(in: pageRect, blendMode: .normal, alpha: darkMode ? 0.85 : 1)
@@ -87,6 +88,12 @@ enum PageRenderer {
                 : UIColor(red: 0, green: 0.478, blue: 1, alpha: 1)
             snapshot.template.drawCG(in: cg, rect: pageRect, scale: 1, lineColor: lineColor.cgColor, accentColor: accent.cgColor)
         }
+    }
+
+    private static func draw(_ snapshot: Snapshot, in cg: CGContext, darkMode: Bool) {
+        let pageRect = CGRect(origin: .zero, size: snapshot.pageSize)
+
+        drawBackground(snapshot, in: cg, darkMode: darkMode)
 
         // Media below ink, matching the editor's layer order.
         for item in snapshot.mediaItems {
