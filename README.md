@@ -116,7 +116,7 @@ graph TD
 - [x] **Phase 2** — Templates, media, PDF, typed text, RTL (`feature/phase-2-templates`)
 - [x] **Phase 3** — Library, folders, Hebrew OCR search, export (`feature/phase-3-library`)
 - [x] **Phase 4** — Dark mode full implementation (`feature/phase-4-darkmode`)
-- [ ] **Phase 5** — AI bubble system, canvas annotations, chips (`feature/phase-5-ai-bubbles`)
+- [x] **Phase 5** — AI bubble system, canvas annotations, chips (`feature/phase-5-ai-bubbles`)
 - [ ] **Phase 6** — Circle & Ask, Guided Mode, Quiz Me (`feature/phase-6-ai-modes`)
 - [ ] **Phase 7** — Hebrew AI responses, RTL bubbles (`feature/phase-7-hebrew-ai`)
 - [ ] **Phase 8** — iCloud sync, audio, polish, accessibility (`feature/phase-8-sync-polish`)
