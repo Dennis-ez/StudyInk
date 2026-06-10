@@ -18,7 +18,7 @@ struct PageNavigatorStrip: View {
                 ForEach(Array(note.sortedPages.enumerated()), id: \.element.objectID) { index, page in
                     thumbnail(for: page, index: index)
                 }
-                Button(action: addPage) {
+                Button(action: { addPage() }) {
                     Image(systemName: "plus")
                         .font(.title3)
                         .frame(width: 54, height: 72)
@@ -141,11 +141,16 @@ struct PageThumbnailView: View {
         Task.detached(priority: .utility) {
             // PKDrawing.image is appearance-sensitive via the trait collection.
             let traits = UITraitCollection(userInterfaceStyle: dark ? .dark : .light)
+            let image = render(in: traits)
+            await MainActor.run { drawingImage = image }
+        }
+
+        @Sendable func render(in traits: UITraitCollection) -> UIImage? {
             var image: UIImage?
             traits.performAsCurrent {
                 image = drawing.image(from: pageRect, scale: 0.2)
             }
-            await MainActor.run { drawingImage = image }
+            return image
         }
     }
 }
