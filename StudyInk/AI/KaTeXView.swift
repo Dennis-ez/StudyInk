@@ -30,7 +30,13 @@ struct KaTeXView: UIViewRepresentable {
     private func load(into webView: WKWebView) {
         let dark = colorScheme == .dark
         let textColor = dark ? "#FFFFFF" : "#000000"
-        let escaped = content
+        // Models (Gemini especially) often emit markdown-escaped delimiters like
+        // \$x\$ — KaTeX's auto-render doesn't treat those as math, so normalize
+        // them back to plain $ before shipping the text to the web view.
+        let normalized = content
+            .replacingOccurrences(of: "\\$", with: "$")
+            .replacingOccurrences(of: "￥", with: "$")
+        let escaped = normalized
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "`", with: "\\`")
             .replacingOccurrences(of: "$", with: "\\$")
@@ -54,7 +60,14 @@ struct KaTeXView: UIViewRepresentable {
         </style></head><body><div id="c"></div>
         <script>
           const raw = `\(escaped)`;
-          document.getElementById('c').innerText = raw;
+          // Minimal markdown: HTML-escape first, then bold / bullets / breaks.
+          // Math delimiters pass through untouched for KaTeX's auto-render.
+          let html = raw
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/\\*\\*([^*\\n]+)\\*\\*/g, '<b>$1</b>')
+            .replace(/(^|\\n)[ \\t]*[*•-][ \\t]+/g, '$1&bull; ')
+            .replace(/\\n/g, '<br>');
+          document.getElementById('c').innerHTML = html;
           window.addEventListener('load', () => {
             renderMathInElement(document.getElementById('c'), {
               delimiters: [
