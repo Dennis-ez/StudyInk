@@ -11,11 +11,10 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		5A00000000000000000000E1 /* Exceptions for "StudyInk" folder */ = {
+		5A00000000000000000000E1 /* Exceptions for "StudyInk" folder in "StudyInk" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
-				StudyInk.entitlements,
 			);
 			target = 5A0000000000000000000005 /* StudyInk */;
 		};
@@ -25,7 +24,7 @@
 		5A0000000000000000000001 /* StudyInk */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				5A00000000000000000000E1 /* Exceptions for "StudyInk" folder */,
+				5A00000000000000000000E1 /* Exceptions for "StudyInk" folder in "StudyInk" target */,
 			);
 			path = StudyInk;
 			sourceTree = "<group>";
