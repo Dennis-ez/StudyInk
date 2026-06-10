@@ -43,10 +43,22 @@ struct NoteGridView: View {
     var body: some View {
         Group {
             if notes.isEmpty {
-                ContentUnavailableView(
-                    searchText.isEmpty ? "library.empty" : "library.noResults",
-                    systemImage: searchText.isEmpty ? "square.and.pencil" : "magnifyingglass"
-                )
+                if searchText.isEmpty {
+                    ContentUnavailableView {
+                        Label("library.empty", systemImage: "pencil.and.outline")
+                    } description: {
+                        Text("library.empty.subtitle")
+                    } actions: {
+                        Button {
+                            createNote()
+                        } label: {
+                            Label("library.newNote", systemImage: "square.and.pencil")
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                } else {
+                    ContentUnavailableView("library.noResults", systemImage: "magnifyingglass")
+                }
             } else if gridLayout {
                 ScrollView {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 20)], spacing: 24) {
@@ -79,6 +91,11 @@ struct NoteGridView: View {
 
     private var renamingBinding: Binding<Bool> {
         Binding(get: { renamingNote != nil }, set: { if !$0 { renamingNote = nil } })
+    }
+
+    private func createNote() {
+        Note.create(in: context, title: String(localized: "library.untitledNote"), subject: subject)
+        PersistenceController.shared.save()
     }
 
     // MARK: - Cells

@@ -143,6 +143,7 @@ final class GuidedModeController: ObservableObject {
     }
 
     private func show(_ new: GuidedSuggestion) {
+        Haptics.tap()
         log.insert(new, at: 0)
         if log.count > 50 { log.removeLast(log.count - 50) }
         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {

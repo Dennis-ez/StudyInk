@@ -99,6 +99,7 @@ struct AIBubbleView: View {
                 .foregroundStyle(.secondary)
             Spacer()
             Button {
+                Haptics.tap()
                 tutor.pin(bubbleID: bubble.id)
             } label: {
                 Image(systemName: bubble.isPinned ? "pin.fill" : "pin")
@@ -108,6 +109,7 @@ struct AIBubbleView: View {
             }
             .accessibilityLabel(Text("ai.pin"))
             Button {
+                Haptics.tap()
                 withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
                     tutor.dismiss(bubbleID: bubble.id)
                 }

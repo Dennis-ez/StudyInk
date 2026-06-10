@@ -46,7 +46,10 @@ struct PageNavigatorStrip: View {
                     .background(.thinMaterial, in: Circle())
                     .padding(2)
             }
-            .onTapGesture { currentIndex = index }
+            .onTapGesture {
+                Haptics.selection()
+                currentIndex = index
+            }
             .contextMenu {
                 Button { addPage(after: index) } label: { Label("page.addAfter", systemImage: "plus.rectangle.portrait") }
                 Button { duplicate(index: index) } label: { Label("page.duplicate", systemImage: "plus.square.on.square") }

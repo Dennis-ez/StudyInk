@@ -13,6 +13,8 @@ struct FloatingToolbar: View {
     @AppStorage("toolbar.tools") private var enabledToolsRaw = ToolKind.allCases.map(\.rawValue).joined(separator: ",")
     @State private var showColorPopover = false
     @State private var showCustomize = false
+    /// Re-tapping the active tool opens its own color/width/opacity popover.
+    @State private var optionsForTool: ToolKind?
     @State private var dragOffset: CGSize = .zero
     @Environment(\.colorScheme) private var colorScheme
 
@@ -57,7 +59,6 @@ struct FloatingToolbar: View {
             }
             Divider().frame(maxHeight: 22).frame(maxWidth: 22)
             colorButton
-            strokeControls
             Divider().frame(maxHeight: 22).frame(maxWidth: 22)
             Button(action: { controller.isRulerActive.toggle() }) {
                 Image(systemName: "ruler")
@@ -123,7 +124,13 @@ struct FloatingToolbar: View {
 
     private func toolButton(_ kind: ToolKind) -> some View {
         Button {
-            controller.select(kind)
+            if controller.toolState.kind == kind {
+                // Second tap on the active tool = open its options.
+                if kind.isInking { optionsForTool = kind }
+            } else {
+                Haptics.selection()
+                controller.select(kind)
+            }
         } label: {
             Image(systemName: kind.symbolName)
                 .foregroundStyle(controller.toolState.kind == kind ? Color.accentColor : Color.primary)
@@ -133,8 +140,19 @@ struct FloatingToolbar: View {
                         .frame(width: 32, height: 32)
                 )
         }
+        .popover(isPresented: optionsBinding(for: kind)) {
+            ColorPickerPopover(toolState: $controller.toolState)
+        }
         .accessibilityLabel(Text(kind.labelKey))
+        .accessibilityHint(controller.toolState.kind == kind ? Text("tool.optionsHint") : Text(""))
         .accessibilityAddTraits(controller.toolState.kind == kind ? .isSelected : [])
+    }
+
+    private func optionsBinding(for kind: ToolKind) -> Binding<Bool> {
+        Binding(
+            get: { optionsForTool == kind },
+            set: { if !$0 { optionsForTool = nil } }
+        )
     }
 
     private var colorButton: some View {
@@ -147,15 +165,6 @@ struct FloatingToolbar: View {
         .accessibilityLabel(Text("tool.color"))
         .popover(isPresented: $showColorPopover) {
             ColorPickerPopover(toolState: $controller.toolState)
-        }
-    }
-
-    @ViewBuilder
-    private var strokeControls: some View {
-        if dock.isHorizontal {
-            Slider(value: $controller.toolState.width, in: 1...24) { Text("tool.width") }
-                .frame(width: 90)
-                .accessibilityLabel(Text("tool.width"))
         }
     }
 
