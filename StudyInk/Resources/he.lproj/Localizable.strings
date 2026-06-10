@@ -193,6 +193,8 @@
 "ai.guided.suggestion" = "הצעת המורה";
 "ai.guided.activated" = "המצב המודרך פועל — אעקוב אחרי העמוד ואציע הצעות תוך כדי כתיבה";
 "ai.guided.disable" = "כיבוי המצב המודרך";
+"ai.guided.log" = "היסטוריית הצעות";
+"ai.guided.log.empty" = "אין הצעות עדיין — המשיכו לכתוב";
 "ai.subject" = "הקשר מקצוע";
 "ai.subject.calculus1" = "חשבון אינפיניטסימלי 1";
 "ai.subject.discrete1" = "מתמטיקה בדידה 1";

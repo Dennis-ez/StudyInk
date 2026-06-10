@@ -193,6 +193,8 @@
 "ai.guided.suggestion" = "AI tutor suggestion";
 "ai.guided.activated" = "Guided Mode is on — I'll watch this page and suggest as you write";
 "ai.guided.disable" = "Turn off Guided Mode";
+"ai.guided.log" = "Suggestion History";
+"ai.guided.log.empty" = "No suggestions yet — keep writing";
 "ai.subject" = "Subject Context";
 "ai.subject.calculus1" = "Calculus 1";
 "ai.subject.discrete1" = "Discrete Math 1";
