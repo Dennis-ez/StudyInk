@@ -24,9 +24,12 @@ struct NoteEditorView: View {
     @State private var importingPDF = false
     @State private var ocrTask: Task<Void, Never>?
     @StateObject private var tutor = AITutorController()
+    @StateObject private var guidedMode = GuidedModeController()
     @State private var showAskField = false
     @State private var askText = ""
     @State private var lastStrokeAnchor: CGPoint?
+    @State private var askLassoActive = false
+    @State private var circleAskRegion: CGRect?
     @Environment(\.managedObjectContext) private var context
     @Environment(\.colorScheme) private var colorScheme
 
@@ -119,6 +122,25 @@ struct NoteEditorView: View {
                 exitDistractionFreeButton
             }
 
+            // Circle & Ask lasso capture layer.
+            AskLassoOverlay(isActive: $askLassoActive, transform: transform) { region in
+                circleAskRegion = region
+            }
+
+            // Guided-mode bottom suggestion card (auto-dismisses after 8s).
+            if let suggestion = guidedMode.suggestion {
+                VStack {
+                    Spacer()
+                    GuidedSuggestionCard(
+                        suggestion: suggestion,
+                        onAccept: { guidedMode.accept(suggestion) },
+                        onDismiss: { withAnimation { guidedMode.suggestion = nil } }
+                    )
+                    .padding(.bottom, showPageStrip ? 130 : 30)
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+
             // Side AI panel (secondary surface for long explanations + history).
             if tutor.panelOpen {
                 HStack {
@@ -137,12 +159,21 @@ struct NoteEditorView: View {
             loadPage()
             tutor.attach(note: note)
             tutor.isDarkMode = colorScheme == .dark
+            guidedMode.tutor = tutor
             canvasController.onStroke = { stroke in
                 lastStrokeAnchor = CGPoint(x: stroke.renderBounds.midX, y: stroke.renderBounds.midY)
             }
+            canvasController.onPencilHold = {
+                withAnimation { askLassoActive = true }
+            }
         }
         .onChange(of: colorScheme) { tutor.isDarkMode = colorScheme == .dark }
-        .onChange(of: pageIndex) { persistOverlays(); loadPage(); tutor.pageChanged(to: pageIndex) }
+        .onChange(of: pageIndex) {
+            persistOverlays()
+            loadPage()
+            tutor.pageChanged(to: pageIndex)
+            guidedMode.pageTurned()
+        }
         .onChange(of: textBoxes) { persistOverlays() }
         .onChange(of: mediaItems) { persistOverlays() }
         .onDisappear { persistOverlays(); PersistenceController.shared.save() }
@@ -181,6 +212,13 @@ struct NoteEditorView: View {
         } message: {
             Text("ai.askHint")
         }
+        .sheet(isPresented: circleAskBinding) {
+            if let region = circleAskRegion {
+                CircleAskSheet(region: region) { question in
+                    sendCircleAsk(question: question, region: region)
+                }
+            }
+        }
         .alert(Text("ai.error"), isPresented: aiErrorBinding) {
             Button("action.done", role: .cancel) { tutor.errorMessage = nil }
         } message: {
@@ -190,6 +228,34 @@ struct NoteEditorView: View {
 
     private var aiErrorBinding: Binding<Bool> {
         Binding(get: { tutor.errorMessage != nil }, set: { if !$0 { tutor.errorMessage = nil } })
+    }
+
+    private var circleAskBinding: Binding<Bool> {
+        Binding(get: { circleAskRegion != nil }, set: { if !$0 { circleAskRegion = nil } })
+    }
+
+    /// Circle & Ask submit: crop the circled region from a fresh page render and
+    /// send it with the question; the bubble anchors to the circled content.
+    private func sendCircleAsk(question: String, region: CGRect) {
+        guard let page = currentPage else { return }
+        let crop = croppedImage(of: region, page: page)
+        let anchor = CGPoint(x: region.midX, y: region.midY)
+        circleAskRegion = nil
+        Task {
+            await tutor.ask(question: question, anchor: anchor, focusRegion: region, focusImage: crop)
+        }
+    }
+
+    private func croppedImage(of region: CGRect, page: Page) -> UIImage? {
+        let full = PageRenderer.image(for: page, darkMode: colorScheme == .dark)
+        guard let cg = full.cgImage else { return nil }
+        let pixelScale = CGFloat(cg.width) / max(full.size.width, 1)
+        let pixelRect = CGRect(
+            x: region.minX * pixelScale, y: region.minY * pixelScale,
+            width: region.width * pixelScale, height: region.height * pixelScale
+        ).intersection(CGRect(x: 0, y: 0, width: cg.width, height: cg.height))
+        guard !pixelRect.isEmpty, let cropped = cg.cropping(to: pixelRect) else { return nil }
+        return UIImage(cgImage: cropped)
     }
 
     private func sendAsk() {
@@ -227,6 +293,29 @@ struct NoteEditorView: View {
     @ToolbarContentBuilder
     private var editorToolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
+            Menu {
+                Button {
+                    withAnimation { askLassoActive = true }
+                } label: { Label("ai.circleAsk.title", systemImage: "lasso.badge.sparkles") }
+
+                Button {
+                    Task { await tutor.explainCurrentPage() }
+                } label: { Label("ai.explainPage", systemImage: "doc.text.magnifyingglass") }
+
+                Button {
+                    Task { await tutor.startQuiz() }
+                } label: { Label("ai.quizMe", systemImage: "questionmark.app") }
+
+                Toggle(isOn: $guidedMode.isEnabled) {
+                    Label("ai.guidedMode", systemImage: "lightbulb")
+                }
+            } label: {
+                Image(systemName: "sparkles")
+            }
+            .accessibilityLabel(Text("ai.menu"))
+
+            SubjectContextMenu(note: note)
+
             Menu {
                 Button { showPhotoPicker = true } label: { Label("media.photo", systemImage: "photo") }
                 Button { showCamera = true } label: { Label("media.camera", systemImage: "camera") }
