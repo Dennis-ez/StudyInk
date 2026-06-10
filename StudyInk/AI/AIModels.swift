@@ -27,10 +27,19 @@ struct AIAnnotationModel: Codable, Equatable, Identifiable {
             return CGRect(x: rectX, y: rectY, width: rectW, height: rectH)
         }
         set {
-            rectX = newValue.map(\.origin.x)
-            rectY = newValue.map(\.origin.y)
-            rectW = newValue.map(\.width)
-            rectH = newValue.map(\.height)
+            // Plain unwrapping; `Optional.map(\.keyPath)` mis-resolves to
+            // SwiftUI's Gesture.map overload and breaks the build.
+            if let rect = newValue {
+                rectX = rect.origin.x
+                rectY = rect.origin.y
+                rectW = rect.width
+                rectH = rect.height
+            } else {
+                rectX = nil
+                rectY = nil
+                rectW = nil
+                rectH = nil
+            }
         }
     }
 
