@@ -136,6 +136,11 @@ final class AITutorController: ObservableObject {
             bubbles[index].annotations = AIResponseParser.resolve(annotations: parsed.annotations, against: ocrLines)
         }
         logToHistory(bubbles[index])
+        // VoiceOver: announce new tutor responses so non-visual users hear them arrive.
+        UIAccessibility.post(
+            notification: .announcement,
+            argument: String(localized: "ai.bubble.accessibility") + ": " + parsed.text
+        )
     }
 
     // MARK: - Lifecycle

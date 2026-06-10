@@ -25,6 +25,7 @@ struct NoteEditorView: View {
     @State private var ocrTask: Task<Void, Never>?
     @StateObject private var tutor = AITutorController()
     @StateObject private var guidedMode = GuidedModeController()
+    @StateObject private var audio = AudioSyncController()
     @State private var showAskField = false
     @State private var askText = ""
     @State private var lastStrokeAnchor: CGPoint?
@@ -92,6 +93,19 @@ struct NoteEditorView: View {
                     .allowsHitTesting(false)
             }
 
+            // Audio playback tap-to-seek: tap any written mark to jump the recording
+            // to the moment it was written.
+            if audio.isPlaying, let recording = audio.activeRecording {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture { location in
+                        let pagePoint = transform.toPage(location)
+                        if let time = audio.time(near: pagePoint, pageIndex: pageIndex, in: recording) {
+                            audio.seek(to: time)
+                        }
+                    }
+            }
+
             if !distractionFree {
                 FloatingToolbar(
                     controller: canvasController,
@@ -99,8 +113,9 @@ struct NoteEditorView: View {
                     extraItems: toolbarExtras
                 )
 
-                VStack {
+                VStack(spacing: 8) {
                     Spacer()
+                    AudioBar(audio: audio, note: note)
                     if showPageStrip {
                         PageNavigatorStrip(note: note, currentIndex: $pageIndex)
                             .padding(.bottom, 8)
@@ -160,8 +175,11 @@ struct NoteEditorView: View {
             tutor.attach(note: note)
             tutor.isDarkMode = colorScheme == .dark
             guidedMode.tutor = tutor
+            audio.attach(note: note)
             canvasController.onStroke = { stroke in
-                lastStrokeAnchor = CGPoint(x: stroke.renderBounds.midX, y: stroke.renderBounds.midY)
+                let center = CGPoint(x: stroke.renderBounds.midX, y: stroke.renderBounds.midY)
+                lastStrokeAnchor = center
+                audio.logStroke(at: center, pageIndex: pageIndex)
             }
             canvasController.onPencilHold = {
                 withAnimation { askLassoActive = true }
@@ -176,7 +194,12 @@ struct NoteEditorView: View {
         }
         .onChange(of: textBoxes) { persistOverlays() }
         .onChange(of: mediaItems) { persistOverlays() }
-        .onDisappear { persistOverlays(); PersistenceController.shared.save() }
+        .onDisappear {
+            persistOverlays()
+            if audio.isRecording { audio.stopRecording() }
+            audio.stopPlayback()
+            PersistenceController.shared.save()
+        }
         .task { wireCanvasSave() }
         .sheet(isPresented: $showPageSettings) {
             if let page = currentPage { PageSettingsSheet(page: page) }

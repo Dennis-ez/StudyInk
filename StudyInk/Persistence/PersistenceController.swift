@@ -12,7 +12,22 @@ final class PersistenceController {
     var viewContext: NSManagedObjectContext { container.viewContext }
 
     init(inMemory: Bool = false) {
-        container = NSPersistentContainer(name: "StudyInk", managedObjectModel: Self.model)
+        // iCloud sync: NSPersistentCloudKitContainer mirrors the same local store
+        // into the user's private CloudKit database. Toggled in Settings; the
+        // store URL is shared, so flipping the toggle never loses data.
+        let useCloud = !inMemory && UserDefaults.standard.bool(forKey: "settings.iCloudSync")
+        if useCloud {
+            container = NSPersistentCloudKitContainer(name: "StudyInk", managedObjectModel: Self.model)
+            if let description = container.persistentStoreDescriptions.first {
+                description.cloudKitContainerOptions = NSPersistentCloudKitContainerOptions(
+                    containerIdentifier: Self.cloudKitContainerID
+                )
+                description.setOption(true as NSNumber, forKey: NSPersistentHistoryTrackingKey)
+                description.setOption(true as NSNumber, forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)
+            }
+        } else {
+            container = NSPersistentContainer(name: "StudyInk", managedObjectModel: Self.model)
+        }
         if inMemory {
             container.persistentStoreDescriptions.first?.url = URL(fileURLWithPath: "/dev/null")
         }
