@@ -95,6 +95,7 @@ final class Page: NSManagedObject {
     @NSManaged var index: Int32
     @NSManaged var drawingData: Data?
     @NSManaged var templateID: String?
+    @NSManaged var templateSpacing: Double
     @NSManaged var pageSizeID: String?
     @NSManaged var customTemplatePDF: Data?
     @NSManaged var textBoxesData: Data?
@@ -127,10 +128,16 @@ final class Page: NSManagedObject {
 
     var template: PageTemplate { PageTemplate.from(id: templateID) }
 
+    /// Line/grid density multiplier (0.75 compact … 1.4 wide); 0 = legacy rows.
+    var effectiveTemplateSpacing: CGFloat {
+        templateSpacing > 0 ? CGFloat(templateSpacing) : 1
+    }
+
     /// Deep copy used by page duplication.
     func copyContents(from other: Page) {
         drawingData = other.drawingData
         templateID = other.templateID
+        templateSpacing = other.templateSpacing
         pageSizeID = other.pageSizeID
         customTemplatePDF = other.customTemplatePDF
         textBoxesData = other.textBoxesData

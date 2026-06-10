@@ -81,6 +81,7 @@ final class PersistenceController {
             attr("index", .integer32, default: 0),
             attr("drawingData", .binaryData, external: true),
             attr("templateID", .string, default: "blank"),
+            attr("templateSpacing", .double, default: 1.0),
             attr("pageSizeID", .string, default: "letter"),
             attr("customTemplatePDF", .binaryData, external: true),
             attr("textBoxesData", .binaryData),         // JSON [TextBoxModel]

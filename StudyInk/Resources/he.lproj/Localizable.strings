@@ -70,6 +70,10 @@
 "page.size.screen" = "מסך";
 "page.size.custom" = "מותאם אישית";
 "page.applyToAll" = "החלה על כל העמודים";
+"page.spacing" = "מרווח שורות ורשת";
+"page.spacing.compact" = "צפוף";
+"page.spacing.normal" = "רגיל";
+"page.spacing.wide" = "מרווח";
 "page.settings" = "הגדרות עמוד";
 "page.toggleStrip" = "הצגה/הסתרה של פס העמודים";
 
