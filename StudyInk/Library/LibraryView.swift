@@ -76,6 +76,8 @@ struct LibraryView: View {
                 }
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(SemanticColor.sidebarBackground)
         .navigationTitle(Text("app.name"))
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {

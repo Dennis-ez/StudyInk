@@ -14,6 +14,7 @@ struct FloatingToolbar: View {
     @State private var showColorPopover = false
     @State private var showCustomize = false
     @State private var dragOffset: CGSize = .zero
+    @Environment(\.colorScheme) private var colorScheme
 
     var onInsertTextBox: () -> Void
     var extraItems: [ToolbarExtraItem] = []
@@ -153,11 +154,20 @@ struct FloatingToolbar: View {
         }
     }
 
+    /// Light mode floats on a soft shadow; dark mode uses an inner border instead,
+    /// matching Notability's toolbar treatment.
     private var toolbarBackground: some View {
         RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .fill(.regularMaterial)
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(.quaternary))
-            .shadow(color: .black.opacity(0.12), radius: 8, y: 2)
+            .fill(SemanticColor.toolbarBackground.opacity(0.92))
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(SemanticColor.toolbarBorder, lineWidth: colorScheme == .dark ? 1 : 0.5)
+            )
+            .shadow(
+                color: colorScheme == .dark ? .clear : .black.opacity(0.12),
+                radius: 8, y: 2
+            )
     }
 }
 
