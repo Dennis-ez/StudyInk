@@ -24,6 +24,11 @@ struct LibraryView: View {
         predicate: NSPredicate(format: "parent == nil")
     ) private var rootSubjects: FetchedResults<Subject>
 
+    @FetchRequest(
+        entity: PersistenceController.model.entitiesByName["Note"]!,
+        sortDescriptors: []
+    ) private var allNotesForCounts: FetchedResults<Note>
+
     @State private var selectedSubject: Subject?
     @State private var searchText = ""
     @AppStorage("library.layout.grid") private var gridLayout = true
@@ -45,7 +50,6 @@ struct LibraryView: View {
             .navigationTitle(selectedSubject?.name.map { Text(verbatim: $0) } ?? Text("library.allNotes"))
             .toolbar { detailToolbar }
         }
-        .searchable(text: $searchText, prompt: Text("library.searchPrompt"))
         .sheet(isPresented: $showSettings) { SettingsView() }
         .alert(Text("library.renameSubject"), isPresented: renamingBinding) {
             TextField("library.subjectName", text: $renameText)
@@ -67,15 +71,22 @@ struct LibraryView: View {
     private var sidebar: some View {
         List(selection: $selectedSubject) {
             Section {
-                Label("library.allNotes", systemImage: "tray.full")
-                    .tag(nil as Subject?)
+                HStack(spacing: 10) {
+                    iconTile(systemName: "tray.full.fill", tint: Color("accentBlue"))
+                    Text("library.allNotes")
+                        .font(.body.weight(.medium))
+                    Spacer()
+                    countBadge(allNotesForCounts.count)
+                }
+                .tag(nil as Subject?)
             }
-            Section(header: Text("library.subjects")) {
+            Section(header: Text("library.subjects").font(.caption.smallCaps()).foregroundStyle(.secondary)) {
                 ForEach(rootSubjects, id: \.objectID) { subject in
                     subjectRows(subject, depth: 0)
                 }
             }
         }
+        .searchable(text: $searchText, placement: .sidebar, prompt: Text("library.searchPrompt"))
         .scrollContentBackground(.hidden)
         .background(SemanticColor.sidebarBackground)
         .navigationTitle(Text("app.name"))
@@ -117,11 +128,12 @@ struct LibraryView: View {
             .padding(.leading, CGFloat(depth) * 16)
             .contextMenu { subjectContextMenu(subject) }
         } else {
-            Label {
+            HStack(spacing: 10) {
+                iconTile(systemName: "folder.fill", tint: Color(hex: subject.colorHex ?? "#0A84FF") ?? .accentColor)
                 Text(verbatim: subject.name ?? "")
-            } icon: {
-                Image(systemName: "folder.fill")
-                    .foregroundStyle(Color(hex: subject.colorHex ?? "#0A84FF") ?? .accentColor)
+                    .lineLimit(1)
+                Spacer()
+                countBadge(subject.notes?.count ?? 0)
             }
             .padding(.leading, CGFloat(depth) * 16)
             .tag(subject as Subject?)
@@ -130,6 +142,28 @@ struct LibraryView: View {
                 moveNotes(ids: ids, to: subject)
             }
         }
+    }
+
+    /// Squircle gradient tile behind a white symbol — the sidebar's visual anchor.
+    private func iconTile(systemName: String, tint: Color) -> some View {
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .fill(LinearGradient(colors: [tint.opacity(0.95), tint.opacity(0.65)], startPoint: .topLeading, endPoint: .bottomTrailing))
+            .frame(width: 30, height: 30)
+            .overlay(
+                Image(systemName: systemName)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+            )
+            .shadow(color: tint.opacity(0.35), radius: 3, y: 1)
+    }
+
+    private func countBadge(_ count: Int) -> some View {
+        Text(verbatim: "\(count)")
+            .font(.caption2.monospacedDigit())
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .background(.quaternary.opacity(0.5), in: Capsule())
     }
 
     @ViewBuilder

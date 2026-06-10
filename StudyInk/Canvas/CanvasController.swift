@@ -25,6 +25,10 @@ final class CanvasController: NSObject, ObservableObject {
     }
     @Published private(set) var canUndo = false
     @Published private(set) var canRedo = false
+    /// Snap hand-drawn shapes (line/circle/rectangle/…) shortly after pen-up.
+    @Published var autoShapes: Bool = (UserDefaults.standard.object(forKey: "settings.autoShapes") as? Bool) ?? true {
+        didSet { UserDefaults.standard.set(autoShapes, forKey: "settings.autoShapes") }
+    }
 
     // MARK: Geometry published by the engine
 

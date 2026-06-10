@@ -21,6 +21,8 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     private var isProgrammaticChange = false
     private var saveWorkItem: DispatchWorkItem?
     private var didSetInitialZoom = false
+    private var shapeWorkItem: DispatchWorkItem?
+    private var lastStrokeCount = 0
     private var lastPublishedOrigins: [CGPoint] = []
     private var keyboardObservers: [NSObjectProtocol] = []
     private weak var holdRecognizer: UILongPressGestureRecognizer?
@@ -84,6 +86,8 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     /// (Re)builds the page stack when the page list/template/sizes change.
     func apply(pageSizes sizes: [CGSize], signature: String) {
         guard signature != layoutSignature else { return }
+        // Never tear down with unsaved ink on the live canvas.
+        if !containers.isEmpty { flushPendingSave() }
         layoutSignature = signature
         pageSizes = sizes
 
@@ -167,6 +171,12 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         canvas.drawing = controller.drawingProvider?(index) ?? PKDrawing()
         isProgrammaticChange = false
         container.imageView.isHidden = true
+        // The undo stack is per-canvas, not per-page: undoing after a page
+        // switch would resurrect the previous page's ink on this one.
+        canvas.undoManager?.removeAllActions()
+        shapeWorkItem?.cancel()
+        lastStrokeCount = canvas.drawing.strokes.count
+        DispatchQueue.main.async { [controller] in controller.refreshUndoState() }
     }
 
     private func activatePage(_ index: Int) {
@@ -229,6 +239,9 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
 
     private func updateCurrentIndex() {
         guard !pageFrames.isEmpty, zoomScale > 0 else { return }
+        // Don't steal the live canvas while the pen is on the page.
+        let drawingState = canvas.drawingGestureRecognizer.state
+        guard drawingState != .began, drawingState != .changed else { return }
         let centerY = (contentOffset.y + bounds.height / 2 - documentView.frame.origin.y) / zoomScale
         var nearest = 0
         var bestDistance = CGFloat.greatestFiniteMagnitude
@@ -315,6 +328,35 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         }
         saveWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
+
+        scheduleShapeRecognition(canvasView)
+    }
+
+    /// Auto-shapes: shortly after a stroke ends (and no new stroke begins),
+    /// try to recognize it as a line/circle/polygon and snap it clean.
+    private func scheduleShapeRecognition(_ canvas: PKCanvasView) {
+        let count = canvas.drawing.strokes.count
+        defer { lastStrokeCount = count }
+        shapeWorkItem?.cancel()
+        guard controller.autoShapes,
+              controller.toolState.kind.isInking,
+              count > lastStrokeCount,
+              let last = canvas.drawing.strokes.last else { return }
+
+        let work = DispatchWorkItem { [weak self, weak canvas] in
+            guard self != nil, let canvas, canvas.drawing.strokes.count == count else { return }
+            guard let shape = ShapeRecognizer.recognize(last) else { return }
+            let old = canvas.drawing
+            var replaced = old
+            replaced.strokes[count - 1] = ShapeRecognizer.idealStroke(for: shape, like: last)
+            canvas.undoManager?.registerUndo(withTarget: canvas) { target in
+                target.drawing = old
+            }
+            canvas.drawing = replaced
+            Haptics.tap()
+        }
+        shapeWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45, execute: work)
     }
 
     // MARK: - Pencil interactions
