@@ -110,16 +110,6 @@ struct FloatingToolbar: View {
                 Image(systemName: "textbox")
             }
             .accessibilityLabel(Text("tool.textbox"))
-            Button(action: controller.undo) {
-                Image(systemName: "arrow.uturn.backward")
-            }
-            .disabled(!controller.canUndo)
-            .accessibilityLabel(Text("action.undo"))
-            Button(action: controller.redo) {
-                Image(systemName: "arrow.uturn.forward")
-            }
-            .disabled(!controller.canRedo)
-            .accessibilityLabel(Text("action.redo"))
             ForEach(extraItems) { item in
                 Button(action: item.action) { Image(systemName: item.symbolName) }
                     .accessibilityLabel(Text(item.labelKey))
@@ -142,6 +132,10 @@ struct FloatingToolbar: View {
     private var grip: some View {
         Image(systemName: "line.3.horizontal")
             .foregroundStyle(.tertiary)
+            // Full button-sized hit target — the bare glyph was ~16pt and
+            // nearly impossible to grab.
+            .frame(width: 34, height: 34)
+            .contentShape(Rectangle())
             .gesture(
                 DragGesture(coordinateSpace: .global)
                     .onChanged { dragOffset = $0.translation }

@@ -18,6 +18,7 @@ struct NoteGridView: View {
 
     @State private var renamingNote: Note?
     @State private var renameText = ""
+    @State private var autoOpenNote: Note?
 
     private var notes: [Note] {
         var result = Array(allNotes)
@@ -80,6 +81,16 @@ struct NoteGridView: View {
                 .listStyle(.plain)
             }
         }
+        // Freshly created notes open straight into the editor.
+        .navigationDestination(isPresented: Binding(
+            get: { autoOpenNote != nil },
+            set: { if !$0 { autoOpenNote = nil } }
+        )) {
+            if let note = autoOpenNote {
+                NoteEditorView(note: note)
+                    .onAppear(perform: onNoteOpened)
+            }
+        }
         .alert(Text("library.renameNote"), isPresented: renamingBinding) {
             TextField("library.noteTitle", text: $renameText)
             Button("action.cancel", role: .cancel) { renamingNote = nil }
@@ -97,8 +108,9 @@ struct NoteGridView: View {
     }
 
     private func createNote() {
-        Note.create(in: context, title: String(localized: "library.untitledNote"), subject: subject)
+        let note = Note.create(in: context, title: String(localized: "library.untitledNote"), subject: subject)
         PersistenceController.shared.save()
+        autoOpenNote = note
     }
 
     // MARK: - Cells

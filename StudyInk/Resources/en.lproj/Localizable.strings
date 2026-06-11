@@ -212,3 +212,7 @@
 "ai.suggestion.explainThis" = "Explain this to me";
 "ai.suggestion.nextStep" = "What's the next step?";
 "ai.suggestion.similarExample" = "Show a similar example";
+
+"editor.more" = "More";
+"page.previous" = "Previous Page";
+"page.next" = "Next Page";

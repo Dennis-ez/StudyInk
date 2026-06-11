@@ -80,6 +80,22 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         shapeTap.delegate = self
         canvas.addGestureRecognizer(shapeTap)
 
+        // Standard iPad editing gestures: two-finger tap undoes, three redoes.
+        let undoTap = UITapGestureRecognizer(target: self, action: #selector(multiFingerUndo(_:)))
+        undoTap.numberOfTouchesRequired = 2
+        undoTap.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.direct.rawValue)]
+        undoTap.cancelsTouchesInView = false
+        undoTap.delegate = self
+        canvas.addGestureRecognizer(undoTap)
+
+        let redoTap = UITapGestureRecognizer(target: self, action: #selector(multiFingerRedo(_:)))
+        redoTap.numberOfTouchesRequired = 3
+        redoTap.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.direct.rawValue)]
+        redoTap.cancelsTouchesInView = false
+        redoTap.delegate = self
+        canvas.addGestureRecognizer(redoTap)
+        undoTap.require(toFail: redoTap)
+
         // Circle & Ask trigger: hold the Pencil still for ~1s.
         let hold = UILongPressGestureRecognizer(target: self, action: #selector(pencilHeld(_:)))
         hold.minimumPressDuration = 1.0
@@ -497,7 +513,6 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
             shape = ShapeRecognizer.snapped(shape, to: metrics)
         }
         guard let inkingTool = controller.toolState.pkTool(darkMode: controller.isDarkMode) as? PKInkingTool else { return }
-        let ideal = ShapeRecognizer.idealStroke(for: shape, ink: inkingTool.ink, width: CGFloat(controller.toolState.width))
 
         let countBeforeCancel = canvas.drawing.strokes.count
         shapeWorkItem?.cancel()
@@ -509,11 +524,18 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
             guard let self else { return }
             let old = self.canvas.drawing
             var replaced = old
-            if replaced.strokes.count > countBeforeCancel {
-                // Cancellation still committed a partial stroke — swap it out.
-                replaced.strokes[replaced.strokes.count - 1] = ideal
+            if replaced.strokes.count > countBeforeCancel, let partial = old.strokes.last {
+                // Cancellation still committed a partial stroke — swap it out,
+                // copying its real (pressure-driven) point size so the shape
+                // matches the user's handwriting weight.
+                replaced.strokes[replaced.strokes.count - 1] = ShapeRecognizer.idealStroke(for: shape, like: partial)
             } else {
-                replaced.strokes.append(ideal)
+                // No partial stroke to copy from: the tool's nominal width
+                // renders heavier than pressure-modulated handwriting, so
+                // take it down to handwriting weight.
+                replaced.strokes.append(ShapeRecognizer.idealStroke(
+                    for: shape, ink: inkingTool.ink, width: CGFloat(controller.toolState.width) * 0.7
+                ))
             }
             self.canvas.undoManager?.registerUndo(withTarget: self.canvas) { target in
                 target.drawing = old
@@ -535,6 +557,18 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         }
     }
 
+    @objc private func multiFingerUndo(_ recognizer: UITapGestureRecognizer) {
+        guard recognizer.state == .ended else { return }
+        Haptics.tap()
+        controller.undo()
+    }
+
+    @objc private func multiFingerRedo(_ recognizer: UITapGestureRecognizer) {
+        guard recognizer.state == .ended else { return }
+        Haptics.tap()
+        controller.redo()
+    }
+
     /// Finger tap: if it lands on a stroke that reads as a clean shape,
     /// reopen it for editing (move / rotate / reshape via nodes).
     @objc private func canvasTapped(_ recognizer: UITapGestureRecognizer) {
@@ -547,7 +581,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
             guard strokeDistance(from: stroke, to: location) <= tolerance else { continue }
             guard let shape = ShapeRecognizer.recognize(stroke) else { return }
             Haptics.selection()
-            controller.onShapeCreated?(
+            controller.onShapeTapped?(
                 activeIndex,
                 index,
                 shape,
