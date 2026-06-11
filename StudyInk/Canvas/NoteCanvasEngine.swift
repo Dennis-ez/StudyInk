@@ -21,6 +21,8 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     private var isProgrammaticChange = false
     private var saveWorkItem: DispatchWorkItem?
     private var didSetInitialZoom = false
+    /// Cached-render resolution multiplier, raised when zoomed in.
+    private var imageRenderScale: CGFloat = 1
     private var shapeWorkItem: DispatchWorkItem?
     private var lastStrokeCount = 0
     private var lastPublishedOrigins: [CGPoint] = []
@@ -256,8 +258,9 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
               let snapshot = controller.snapshotProvider?(index) else { return }
         let dark = traitCollection.userInterfaceStyle == .dark
         let container = containers[index]
+        let renderScale = imageRenderScale
         Task.detached(priority: .utility) {
-            let image = PageRenderer.render(snapshot, darkMode: dark)
+            let image = PageRenderer.render(snapshot, darkMode: dark, scale: renderScale)
             await MainActor.run { [weak self] in
                 guard container.pageIndex == index else { return }
                 container.imageView.image = image
@@ -366,6 +369,33 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
            abs(zoomScale - fit) / fit < 0.12, zoomScale != fit {
             setZoomScale(fit, animated: true)
         }
+        updateRasterScale()
+    }
+
+    /// The document zooms by transform, which magnifies 1x rasterizations into
+    /// blur. After a pinch settles, re-rasterize templates, cached renders,
+    /// and the live canvas layer tree at the effective zoom (capped at 3x).
+    private func updateRasterScale() {
+        let effectiveZoom = min(max(zoomScale, 1), 3)
+        let raster = effectiveZoom * UIScreen.main.scale
+        for container in containers {
+            container.contentScaleFactor = raster
+            container.layer.contentsScale = raster
+            container.imageView.layer.contentsScale = raster
+            container.setNeedsDisplay()
+        }
+        canvas.contentScaleFactor = raster
+        canvas.layer.contentsScale = raster
+        for subview in canvas.subviews {
+            subview.contentScaleFactor = raster
+            subview.layer.contentsScale = raster
+        }
+        if abs(effectiveZoom - imageRenderScale) > 0.5 {
+            imageRenderScale = effectiveZoom
+            for index in containers.indices where index != activeIndex {
+                renderImage(for: index)
+            }
+        }
     }
 
     // MARK: - PKCanvasViewDelegate
@@ -388,6 +418,17 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
 
         scheduleShapeRecognition(canvasView)
+
+        // Momentary eraser: once the erase gesture has fully ended, hop back
+        // to the tool that was active before the Pencil double-tap.
+        if controller.toolState.kind == .eraserPixel || controller.toolState.kind == .eraserObject {
+            let state = canvasView.drawingGestureRecognizer.state
+            if state != .began && state != .changed {
+                DispatchQueue.main.async { [controller] in
+                    controller.eraseGestureFinished()
+                }
+            }
+        }
     }
 
     /// Auto-shapes: shortly after a stroke ends (and no new stroke begins),
