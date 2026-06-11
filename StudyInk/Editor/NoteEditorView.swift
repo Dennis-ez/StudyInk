@@ -181,7 +181,8 @@ struct NoteEditorView: View {
                         PageNavigatorStrip(
                             note: note,
                             currentIndex: $pageIndex,
-                            horizontal: false
+                            horizontal: false,
+                            onWillMutatePages: { canvasController.commitPendingInk() }
                         )
                         .padding(.trailing, 6)
                         .transition(.move(edge: .trailing).combined(with: .opacity))

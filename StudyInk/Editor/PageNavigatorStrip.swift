@@ -7,6 +7,9 @@ struct PageNavigatorStrip: View {
     @ObservedObject var note: Note
     @Binding var currentIndex: Int
     var horizontal = true
+    /// Runs before any page-list mutation so the editor can flush the live
+    /// canvas's debounced ink save while indices still mean the same pages.
+    var onWillMutatePages: () -> Void = {}
 
     var body: some View {
         let layout = horizontal
@@ -67,6 +70,7 @@ struct PageNavigatorStrip: View {
     }
 
     private func addPage(after index: Int? = nil) {
+        onWillMutatePages()
         let target = Int32(index ?? note.sortedPages.count - 1)
         note.addPage(after: target)
         PersistenceController.shared.save()
@@ -74,6 +78,7 @@ struct PageNavigatorStrip: View {
     }
 
     private func duplicate(index: Int) {
+        onWillMutatePages()
         let source = note.sortedPages[index]
         let copy = note.addPage(after: Int32(index))
         copy.copyContents(from: source)
@@ -82,6 +87,7 @@ struct PageNavigatorStrip: View {
     }
 
     private func move(from: Int, to: Int) {
+        onWillMutatePages()
         let pages = note.sortedPages
         guard pages.indices.contains(from), pages.indices.contains(to) else { return }
         pages[from].index = Int32(to)
@@ -92,6 +98,7 @@ struct PageNavigatorStrip: View {
     }
 
     private func delete(index: Int) {
+        onWillMutatePages()
         note.deletePage(note.sortedPages[index])
         PersistenceController.shared.save()
         currentIndex = min(index, note.sortedPages.count - 1)

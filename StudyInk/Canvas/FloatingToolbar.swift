@@ -171,9 +171,7 @@ struct FloatingToolbar: View {
 
         layout {
             grip
-            ForEach(displayTools) { kind in
-                toolButton(kind)
-            }
+            toolsSection
             Divider().frame(maxHeight: 22).frame(maxWidth: 22)
             Button(action: { controller.isRulerActive.toggle() }) {
                 Image(systemName: "ruler")
@@ -198,9 +196,36 @@ struct FloatingToolbar: View {
             }
         }
         .buttonStyle(ToolbarButtonStyle())
-        .padding(8)
-        .studyGlass(cornerRadius: 18)
+        .padding(6)
+        .studyGlass(cornerRadius: 16)
         .sheet(isPresented: $showCustomize) { CustomizeToolbarSheet(enabledToolsRaw: $enabledToolsRaw) }
+    }
+
+    /// At most five tool slots are visible; more tools scroll in page-sized
+    /// steps along the bar's axis, keeping the bar itself compact.
+    @ViewBuilder
+    private var toolsSection: some View {
+        let stack = dock.isHorizontal
+            ? AnyLayout(HStackLayout(spacing: 4))
+            : AnyLayout(VStackLayout(spacing: 4))
+        let buttons = stack {
+            ForEach(displayTools) { kind in
+                toolButton(kind)
+            }
+        }
+        if displayTools.count > 5 {
+            // 5 × (30pt button + 4pt spacing) per "page" of tools.
+            ScrollView(dock.isHorizontal ? .horizontal : .vertical, showsIndicators: false) {
+                buttons
+            }
+            .frame(
+                maxWidth: dock.isHorizontal ? 166 : nil,
+                maxHeight: dock.isHorizontal ? nil : 166
+            )
+            .scrollTargetBehavior(.paging)
+        } else {
+            buttons
+        }
     }
 
     private var grip: some View {
@@ -208,7 +233,7 @@ struct FloatingToolbar: View {
             .foregroundStyle(.tertiary)
             // Full button-sized hit target — the bare glyph was ~16pt and
             // nearly impossible to grab.
-            .frame(width: 34, height: 34)
+            .frame(width: 30, height: 30)
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(coordinateSpace: .global)
@@ -265,9 +290,9 @@ struct FloatingToolbar: View {
             Image(systemName: kind.symbolName)
                 .foregroundStyle(isActive ? Color.accentColor : Color.primary)
                 .background(
-                    RoundedRectangle(cornerRadius: 8)
+                    RoundedRectangle(cornerRadius: 7)
                         .fill(isActive ? Color.accentColor.opacity(0.16) : .clear)
-                        .frame(width: 32, height: 32)
+                        .frame(width: 28, height: 28)
                 )
         }
         .accessibilityLabel(Text(kind.labelKey))
@@ -518,24 +543,18 @@ struct ToolbarExtraItem: Identifiable {
 private struct ToolbarButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 17, weight: .medium))
-            .frame(width: 34, height: 34)
-            .background(configuration.isPressed ? Color.primary.opacity(0.08) : .clear, in: RoundedRectangle(cornerRadius: 8))
+            .font(.system(size: 15, weight: .medium))
+            .frame(width: 30, height: 30)
+            .background(configuration.isPressed ? Color.primary.opacity(0.08) : .clear, in: RoundedRectangle(cornerRadius: 7))
             .contentShape(Rectangle())
     }
 }
 
-/// Options for the active tool: color presets, custom color, width, opacity —
-/// writing straight through the controller so changes always reach the canvas.
+/// Fine-grained options for the active tool: width and opacity sliders.
+/// (Colors live in the inline strip — no duplicate swatches here.)
 struct ToolOptionsPanel: View {
     @ObservedObject var controller: CanvasController
     var onClose: () -> Void = {}
-    @State private var customColor: Color = .black
-
-    private static let presets = [
-        "#000000", "#FFFFFF", "#0A84FF", "#FF453A", "#30D158",
-        "#FFD60A", "#FF9F0A", "#BF5AF2", "#5E5CE6", "#8E8E93",
-    ]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -551,33 +570,6 @@ struct ToolOptionsPanel: View {
                 }
                 .accessibilityLabel(Text("action.close"))
             }
-
-            LazyVGrid(columns: Array(repeating: GridItem(.fixed(34)), count: 5), spacing: 10) {
-                ForEach(Self.presets, id: \.self) { hex in
-                    Button {
-                        Haptics.selection()
-                        controller.toolState.colorHex = hex
-                    } label: {
-                        Circle()
-                            .fill(Color(hex: hex) ?? .black)
-                            .frame(width: 30, height: 30)
-                            .overlay(Circle().strokeBorder(.quaternary))
-                            .overlay {
-                                if controller.toolState.colorHex == hex {
-                                    Image(systemName: "checkmark")
-                                        .font(.caption.bold())
-                                        .foregroundStyle((hex == "#FFFFFF" || hex == "#FFD60A") ? .black : .white)
-                                }
-                            }
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-
-            ColorPicker("tool.customColor", selection: $customColor, supportsOpacity: false)
-                .onChange(of: customColor) { _, newValue in
-                    controller.toolState.colorHex = UIColor(newValue).hexString
-                }
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
@@ -598,7 +590,6 @@ struct ToolOptionsPanel: View {
         }
         .padding(16)
         .frame(width: 260)
-        .onAppear { customColor = Color(hex: controller.toolState.colorHex) ?? .black }
     }
 }
 
