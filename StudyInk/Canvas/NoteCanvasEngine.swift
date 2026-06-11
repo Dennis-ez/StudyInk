@@ -96,6 +96,15 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         canvas.addGestureRecognizer(redoTap)
         undoTap.require(toFail: redoTap)
 
+        // Eraser cursor: ride along with the system drawing gesture so the
+        // circle tracks exactly where erasing happens, sized like the eraser.
+        canvas.drawingGestureRecognizer.addTarget(self, action: #selector(drawingGestureMoved(_:)))
+        eraserCursor.isUserInteractionEnabled = false
+        eraserCursor.isHidden = true
+        eraserCursor.layer.borderWidth = 1.5
+        eraserCursor.backgroundColor = UIColor.systemGray.withAlphaComponent(0.12)
+        canvas.addSubview(eraserCursor)
+
         // Circle & Ask trigger: hold the Pencil still for ~1s.
         let hold = UILongPressGestureRecognizer(target: self, action: #selector(pencilHeld(_:)))
         hold.minimumPressDuration = 1.0
@@ -427,10 +436,13 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     /// blur. After a pinch settles, re-rasterize templates, cached renders,
     /// and the live canvas layer tree at the effective zoom (capped at 3x).
     private func updateRasterScale() {
-        // Track the full zoom range: PencilKit tiles its ink layers, so a high
-        // contentsScale only rasterizes visible tiles — capping at 3 left ink
-        // soft between 3x and the 5x zoom limit.
-        let effectiveZoom = min(max(zoomScale, 1), maximumZoomScale)
+        // Sharpen as far as Metal allows: a layer's backing store must stay
+        // under the ~8192px texture limit or it silently renders NOTHING
+        // (which presented as "no ink at all"). Cap the raster zoom so
+        // pageMaxDimension × zoom × screenScale stays inside the limit.
+        let maxPageDimension = pageSizes.map { max($0.width, $0.height) }.max() ?? 800
+        let textureCap = 8192 / (maxPageDimension * UIScreen.main.scale)
+        let effectiveZoom = min(max(zoomScale, 1), min(maximumZoomScale, textureCap))
         let raster = effectiveZoom * UIScreen.main.scale
         for container in containers {
             container.contentScaleFactor = raster
@@ -587,6 +599,31 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
                 self.controller.toolState.width,
                 self.controller.toolState.colorHex
             )
+        }
+    }
+
+    /// Circle the size of the eraser stroke, following the touch while erasing.
+    private let eraserCursor = UIView()
+
+    @objc private func drawingGestureMoved(_ recognizer: UIGestureRecognizer) {
+        guard controller.toolState.kind == .eraserPixel || controller.toolState.kind == .eraserObject else {
+            eraserCursor.isHidden = true
+            return
+        }
+        switch recognizer.state {
+        case .began, .changed:
+            // Pixel eraser uses its real width; the object eraser gets a small
+            // fixed reticle (it erases whole strokes, not an area).
+            let diameter = controller.toolState.kind == .eraserPixel ? max(controller.toolState.width, 6) : 14
+            let location = recognizer.location(in: canvas)
+            eraserCursor.bounds = CGRect(x: 0, y: 0, width: diameter, height: diameter)
+            eraserCursor.layer.cornerRadius = CGFloat(diameter) / 2
+            eraserCursor.layer.borderColor = UIColor.systemGray.cgColor
+            eraserCursor.center = location
+            canvas.bringSubviewToFront(eraserCursor)
+            eraserCursor.isHidden = false
+        default:
+            eraserCursor.isHidden = true
         }
     }
 
