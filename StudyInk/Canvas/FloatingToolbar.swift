@@ -12,7 +12,10 @@ enum ToolbarDock: String, CaseIterable, Codable {
 struct FloatingToolbar: View {
     @ObservedObject var controller: CanvasController
     @AppStorage("toolbar.dock") private var dockRaw = ToolbarDock.top.rawValue
-    @AppStorage("toolbar.tools") private var enabledToolsRaw = ToolKind.allCases.map(\.rawValue).joined(separator: ",")
+    // v2: hand tool added, eraser collapsed to one slot (object/pixel toggles inline).
+    @AppStorage("toolbar.tools.v2") private var enabledToolsRaw = ToolKind.allCases
+        .filter { $0 != .eraserObject }
+        .map(\.rawValue).joined(separator: ",")
     @State private var showToolOptions = false
     @State private var showCustomize = false
     @State private var dragOffset: CGSize = .zero
@@ -26,6 +29,18 @@ struct FloatingToolbar: View {
     private var dock: ToolbarDock { ToolbarDock(rawValue: dockRaw) ?? .top }
     private var enabledTools: [ToolKind] {
         enabledToolsRaw.split(separator: ",").compactMap { ToolKind(rawValue: String($0)) }
+    }
+    /// Bar slots: both eraser variants collapse into one button that shows the
+    /// variant currently in use (inline strip switches between them).
+    private var displayTools: [ToolKind] {
+        var eraserShown = false
+        return enabledTools.compactMap { kind in
+            guard kind == .eraserPixel || kind == .eraserObject else { return kind }
+            if eraserShown { return nil }
+            eraserShown = true
+            let active = controller.toolState.kind
+            return (active == .eraserPixel || active == .eraserObject) ? active : controller.lastEraserKind
+        }
     }
 
     var body: some View {
@@ -66,13 +81,31 @@ struct FloatingToolbar: View {
     private var content: some View {
         switch dock {
         case .top:
-            VStack(spacing: 8) { bar; optionsPanelIfNeeded }
+            VStack(spacing: 8) { bar; inlineStrip; optionsPanelIfNeeded }
         case .bottom:
-            VStack(spacing: 8) { optionsPanelIfNeeded; bar }
+            VStack(spacing: 8) { optionsPanelIfNeeded; inlineStrip; bar }
         case .leading:
-            HStack(alignment: .top, spacing: 8) { bar; optionsPanelIfNeeded }
+            HStack(alignment: .top, spacing: 8) { bar; VStack(spacing: 8) { inlineStrip; optionsPanelIfNeeded } }
         case .trailing:
-            HStack(alignment: .top, spacing: 8) { optionsPanelIfNeeded; bar }
+            HStack(alignment: .top, spacing: 8) { VStack(spacing: 8) { inlineStrip; optionsPanelIfNeeded }; bar }
+        }
+    }
+
+    /// Per-tool quick options that live with the bar (no popup): colors and
+    /// sizes for inking tools, mode + sizes for the eraser.
+    @ViewBuilder
+    private var inlineStrip: some View {
+        let kind = controller.toolState.kind
+        if kind.isInking {
+            InkOptionsStrip(controller: controller) {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { showToolOptions.toggle() }
+            }
+            .studyGlass(cornerRadius: 18)
+            .transition(.scale(scale: 0.92, anchor: dock == .bottom ? .bottom : .top).combined(with: .opacity))
+        } else if kind == .eraserPixel || kind == .eraserObject {
+            EraserOptionsStrip(controller: controller)
+                .studyGlass(cornerRadius: 18)
+                .transition(.scale(scale: 0.92, anchor: dock == .bottom ? .bottom : .top).combined(with: .opacity))
         }
     }
 
@@ -95,11 +128,9 @@ struct FloatingToolbar: View {
 
         layout {
             grip
-            ForEach(enabledTools) { kind in
+            ForEach(displayTools) { kind in
                 toolButton(kind)
             }
-            Divider().frame(maxHeight: 22).frame(maxWidth: 22)
-            colorButton
             Divider().frame(maxHeight: 22).frame(maxWidth: 22)
             Button(action: { controller.isRulerActive.toggle() }) {
                 Image(systemName: "ruler")
@@ -159,9 +190,10 @@ struct FloatingToolbar: View {
     }
 
     private func toolButton(_ kind: ToolKind) -> some View {
-        Button {
-            if controller.toolState.kind == kind {
-                // Second tap on the active tool = toggle its options.
+        let isActive = controller.toolState.kind == kind
+        return Button {
+            if isActive {
+                // Second tap on the active tool = toggle its full options panel.
                 if kind.isInking {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { showToolOptions.toggle() }
                 } else if kind == .lasso {
@@ -170,7 +202,7 @@ struct FloatingToolbar: View {
             } else {
                 Haptics.selection()
                 controller.select(kind)
-                // Eraser/lasso have no color options — a stale open panel
+                // Only inking tools have a color panel — a stale open panel
                 // would show the previous pen's colors.
                 if !kind.isInking, showToolOptions {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { showToolOptions = false }
@@ -178,31 +210,188 @@ struct FloatingToolbar: View {
             }
         } label: {
             Image(systemName: kind.symbolName)
-                .foregroundStyle(controller.toolState.kind == kind ? Color.accentColor : Color.primary)
+                .foregroundStyle(isActive ? Color.accentColor : Color.primary)
                 .background(
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(controller.toolState.kind == kind ? Color.accentColor.opacity(0.16) : .clear)
+                        .fill(isActive ? Color.accentColor.opacity(0.16) : .clear)
                         .frame(width: 32, height: 32)
                 )
         }
         .accessibilityLabel(Text(kind.labelKey))
-        .accessibilityHint(controller.toolState.kind == kind ? Text("tool.optionsHint") : Text(""))
-        .accessibilityAddTraits(controller.toolState.kind == kind ? .isSelected : [])
+        .accessibilityHint(isActive ? Text("tool.optionsHint") : Text(""))
+        .accessibilityAddTraits(isActive ? .isSelected : [])
+    }
+}
+
+/// Inline quick options for inking tools: scrollable color dots, a custom-color
+/// well, stroke-size dots, pressure toggle, and a button into the full panel.
+private struct InkOptionsStrip: View {
+    @ObservedObject var controller: CanvasController
+    var onMoreOptions: () -> Void
+    @State private var customColor: Color = .black
+
+    private static let presets = [
+        "#000000", "#FFFFFF", "#0A84FF", "#FF453A", "#30D158",
+        "#FFD60A", "#FF9F0A", "#BF5AF2", "#5E5CE6", "#8E8E93",
+    ]
+    private static let widths: [Double] = [2, 4, 7, 11, 16]
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(Self.presets, id: \.self) { hex in
+                        colorDot(hex)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+            .frame(maxWidth: 216)
+            ColorPicker("tool.customColor", selection: $customColor, supportsOpacity: false)
+                .labelsHidden()
+                .frame(width: 30)
+                .onChange(of: customColor) { _, newValue in
+                    controller.toolState.colorHex = UIColor(newValue).hexString
+                }
+
+            Divider().frame(height: 22)
+
+            ForEach(Self.widths, id: \.self) { width in
+                widthDot(width)
+            }
+
+            if controller.toolState.kind == .ballpoint || controller.toolState.kind == .fountain {
+                Divider().frame(height: 22)
+                Button {
+                    Haptics.selection()
+                    controller.toolState.pressureSensitive.toggle()
+                } label: {
+                    Image(systemName: "scribble.variable")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(controller.toolState.pressureSensitive ? Color.accentColor : Color.secondary)
+                        .frame(width: 30, height: 30)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(controller.toolState.pressureSensitive ? Color.accentColor.opacity(0.16) : .clear)
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text("tool.pressure"))
+                .accessibilityAddTraits(controller.toolState.pressureSensitive ? .isSelected : [])
+            }
+
+            Button(action: onMoreOptions) {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 30, height: 30)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text("tool.optionsHint"))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .onAppear { customColor = Color(hex: controller.toolState.colorHex) ?? .black }
+        .onChange(of: controller.toolState.kind) { _, _ in
+            customColor = Color(hex: controller.toolState.colorHex) ?? .black
+        }
     }
 
-    private var colorButton: some View {
+    private func colorDot(_ hex: String) -> some View {
         Button {
-            if !controller.toolState.kind.isInking {
-                controller.select(.ballpoint)
-            }
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { showToolOptions.toggle() }
+            Haptics.selection()
+            controller.toolState.colorHex = hex
         } label: {
             Circle()
-                .fill(Color(hex: controller.toolState.colorHex) ?? .black)
-                .frame(width: 22, height: 22)
+                .fill(Color(hex: hex) ?? .black)
+                .frame(width: 26, height: 26)
                 .overlay(Circle().strokeBorder(.quaternary))
+                .overlay {
+                    if controller.toolState.colorHex == hex {
+                        Image(systemName: "checkmark")
+                            .font(.caption2.bold())
+                            .foregroundStyle((hex == "#FFFFFF" || hex == "#FFD60A") ? .black : .white)
+                    }
+                }
         }
-        .accessibilityLabel(Text("tool.color"))
+        .buttonStyle(.plain)
+    }
+
+    private func widthDot(_ width: Double) -> some View {
+        let selected = abs(controller.toolState.width - width) < 0.5
+        return Button {
+            Haptics.selection()
+            controller.toolState.width = width
+        } label: {
+            Circle()
+                .fill(selected ? Color.accentColor : Color.primary.opacity(0.7))
+                // Dot diameter tracks the stroke width it sets (8…22pt).
+                .frame(width: 6 + width, height: 6 + width)
+                .frame(width: 26, height: 26)
+                .background {
+                    if selected {
+                        Circle().fill(Color.accentColor.opacity(0.16))
+                    }
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("tool.width"))
+        .accessibilityValue(Text("\(Int(width))"))
+    }
+}
+
+/// Inline eraser options: pixel/object mode and (for pixel) eraser size.
+private struct EraserOptionsStrip: View {
+    @ObservedObject var controller: CanvasController
+
+    private static let widths: [Double] = [8, 16, 28]
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Picker("tool.eraser.mode", selection: modeBinding) {
+                Text("tool.eraser.pixel").tag(ToolKind.eraserPixel)
+                Text("tool.eraser.object").tag(ToolKind.eraserObject)
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 180)
+
+            if controller.toolState.kind == .eraserPixel {
+                Divider().frame(height: 22)
+                ForEach(Self.widths, id: \.self) { width in
+                    sizeDot(width)
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+    }
+
+    private var modeBinding: Binding<ToolKind> {
+        Binding(
+            get: { controller.toolState.kind == .eraserObject ? .eraserObject : .eraserPixel },
+            set: { controller.select($0) }
+        )
+    }
+
+    private func sizeDot(_ width: Double) -> some View {
+        let selected = abs(controller.toolState.width - width) < 0.5
+        return Button {
+            Haptics.selection()
+            controller.toolState.width = width
+        } label: {
+            Circle()
+                .strokeBorder(selected ? Color.accentColor : Color.secondary, lineWidth: 2)
+                .frame(width: 8 + width / 2, height: 8 + width / 2)
+                .frame(width: 28, height: 28)
+                .background {
+                    if selected {
+                        Circle().fill(Color.accentColor.opacity(0.16))
+                    }
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("tool.eraserSize"))
+        .accessibilityValue(Text("\(Int(width))"))
     }
 }
 
@@ -307,7 +496,8 @@ struct CustomizeToolbarSheet: View {
 
     var body: some View {
         NavigationStack {
-            List(ToolKind.allCases) { kind in
+            // One eraser slot — pixel/object is an inline toggle, not two buttons.
+            List(ToolKind.allCases.filter { $0 != .eraserObject }) { kind in
                 Toggle(isOn: binding(for: kind)) {
                     Label { Text(kind.labelKey) } icon: { Image(systemName: kind.symbolName) }
                 }

@@ -73,6 +73,8 @@ final class PersistenceController {
             attr("modifiedAt", .date),
             attr("searchableText", .string),            // typed text + OCR cache for library search
             attr("subjectContext", .string),            // AI tutor subject: calculus1 | discrete1 | custom
+            attr("isFavorite", .boolean, default: false),
+            attr("deletedAt", .date),                   // soft delete — purged 30 days later
         ]
 
         let page = NSEntityDescription(name: "Page", class: Page.self)

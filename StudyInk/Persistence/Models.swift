@@ -39,6 +39,8 @@ final class Note: NSManagedObject {
     @NSManaged var modifiedAt: Date?
     @NSManaged var searchableText: String?
     @NSManaged var subjectContext: String?
+    @NSManaged var isFavorite: Bool
+    @NSManaged var deletedAt: Date?
     @NSManaged var subject: Subject?
     @NSManaged var pages: Set<Page>?
     @NSManaged var recordings: Set<Recording>?

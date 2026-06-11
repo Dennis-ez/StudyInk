@@ -21,6 +21,10 @@
 "tool.eraser.pixel" = "Pixel Eraser";
 "tool.eraser.object" = "Object Eraser";
 "tool.lasso" = "Lasso";
+"tool.hand" = "Hand";
+"tool.pressure" = "Pressure Sensitivity";
+"tool.eraser.mode" = "Eraser Mode";
+"tool.eraserSize" = "Eraser Size";
 "tool.ruler" = "Ruler";
 "tool.textbox" = "Text Box";
 "tool.color" = "Ink Color";
@@ -76,6 +80,7 @@
 "page.size.custom" = "Custom";
 "page.applyToAll" = "Apply to All Pages";
 "page.spacing" = "Line & Grid Spacing";
+"page.spacing.hint" = "Steps of 0.1× — the preview updates live.";
 "page.spacing.compact" = "Compact";
 "page.spacing.normal" = "Normal";
 "page.spacing.wide" = "Wide";
@@ -99,6 +104,16 @@
 
 /* Library */
 "library.allNotes" = "All Notes";
+"library.recents" = "Recents";
+"library.favorites" = "Favorites";
+"library.recentlyDeleted" = "Recently Deleted";
+"library.favorite" = "Add to Favorites";
+"library.unfavorite" = "Remove from Favorites";
+"library.restore" = "Restore";
+"library.deleteForever" = "Delete Permanently";
+"library.trashEmpty" = "Nothing here";
+"library.trashEmpty.subtitle" = "Deleted notes stay here for 30 days before being removed.";
+"library.toggleChildren" = "Show or hide nested subjects";
 "library.subjects" = "Subjects";
 "library.searchPrompt" = "Search notes, handwriting, Hebrew or English";
 "library.sort" = "Sort";
@@ -150,6 +165,9 @@
 "settings.ai.missingKey" = "Missing";
 "settings.ai.keyHelp" = "Paste your Anthropic API key from console.anthropic.com. It is stored securely in the device Keychain.";
 "settings.ai.keyHelp.gemini" = "Paste a Gemini API key — free-tier keys are available at aistudio.google.com. It is stored securely in the device Keychain.";
+"settings.ai.keyHelp.custom" = "Any OpenAI-compatible API works: Groq (free keys at console.groq.com), OpenAI, Together, or a local server. Set the base URL and paste its key.";
+"settings.ai.provider.custom" = "Custom (OpenAI-compatible)";
+"settings.ai.baseURL" = "Base URL";
 "settings.ai.provider" = "Provider";
 "settings.ai.model" = "Model";
 "settings.ai.loadModels" = "Load Available Models";
@@ -189,6 +207,7 @@
 "ai.error" = "AI Tutor Error";
 "ai.error.missingKey" = "No Anthropic API key configured. Paste your key in Settings → AI Tutor.";
 "ai.error.missingKey.gemini" = "No Gemini API key configured. Paste your key in Settings → AI Tutor (free keys at aistudio.google.com).";
+"ai.error.missingKey.custom" = "No API key configured for the custom provider. Paste your key in Settings → AI Tutor.";
 "ai.error.api %lld" = "The AI request failed (HTTP %lld).";
 "ai.circleAsk.title" = "Circle & Ask";
 "ai.circleAsk.hint" = "Draw a loop around what you want to ask about";

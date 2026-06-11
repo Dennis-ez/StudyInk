@@ -21,6 +21,10 @@
 "tool.eraser.pixel" = "מחק פיקסלים";
 "tool.eraser.object" = "מחק אובייקטים";
 "tool.lasso" = "לאסו";
+"tool.hand" = "יד";
+"tool.pressure" = "רגישות ללחץ";
+"tool.eraser.mode" = "מצב מחק";
+"tool.eraserSize" = "גודל מחק";
 "tool.ruler" = "סרגל";
 "tool.textbox" = "תיבת טקסט";
 "tool.color" = "צבע דיו";
@@ -76,6 +80,7 @@
 "page.size.custom" = "מותאם אישית";
 "page.applyToAll" = "החלה על כל העמודים";
 "page.spacing" = "מרווח שורות ורשת";
+"page.spacing.hint" = "צעדים של ‎0.1×‎ — התצוגה המקדימה מתעדכנת מיידית.";
 "page.spacing.compact" = "צפוף";
 "page.spacing.normal" = "רגיל";
 "page.spacing.wide" = "מרווח";
@@ -99,6 +104,16 @@
 
 /* ספרייה */
 "library.allNotes" = "כל המחברות";
+"library.recents" = "אחרונים";
+"library.favorites" = "מועדפים";
+"library.recentlyDeleted" = "נמחקו לאחרונה";
+"library.favorite" = "הוספה למועדפים";
+"library.unfavorite" = "הסרה מהמועדפים";
+"library.restore" = "שחזור";
+"library.deleteForever" = "מחיקה לצמיתות";
+"library.trashEmpty" = "אין כאן כלום";
+"library.trashEmpty.subtitle" = "מחברות שנמחקו נשמרות כאן 30 יום לפני הסרה סופית.";
+"library.toggleChildren" = "הצגה או הסתרה של נושאים מקוננים";
 "library.subjects" = "מקצועות";
 "library.searchPrompt" = "חיפוש במחברות, בכתב יד, בעברית או באנגלית";
 "library.sort" = "מיון";
@@ -150,6 +165,9 @@
 "settings.ai.missingKey" = "חסר";
 "settings.ai.keyHelp" = "הדביקו את מפתח ה-API של Anthropic מ-console.anthropic.com. המפתח נשמר באופן מאובטח ב-Keychain של המכשיר.";
 "settings.ai.keyHelp.gemini" = "הדביקו מפתח API של Gemini — מפתחות חינמיים זמינים ב-aistudio.google.com. המפתח נשמר באופן מאובטח ב-Keychain של המכשיר.";
+"settings.ai.keyHelp.custom" = "כל API תואם OpenAI עובד: Groq (מפתחות חינמיים ב-console.groq.com)‏, OpenAI‏, Together או שרת מקומי. הגדירו את כתובת הבסיס והדביקו את המפתח.";
+"settings.ai.provider.custom" = "מותאם אישית (תואם OpenAI)";
+"settings.ai.baseURL" = "כתובת בסיס";
 "settings.ai.provider" = "ספק";
 "settings.ai.model" = "מודל";
 "settings.ai.loadModels" = "טעינת מודלים זמינים";
@@ -189,6 +207,7 @@
 "ai.error" = "שגיאת מורה AI";
 "ai.error.missingKey" = "לא הוגדר מפתח API של Anthropic. הדביקו את המפתח בהגדרות ← מורה AI.";
 "ai.error.missingKey.gemini" = "לא הוגדר מפתח API של Gemini. הדביקו את המפתח בהגדרות ← מורה AI (מפתחות חינמיים ב-aistudio.google.com).";
+"ai.error.missingKey.custom" = "לא הוגדר מפתח API לספק המותאם אישית. הדביקו את המפתח בהגדרות ← מורה AI.";
 "ai.error.api %lld" = "בקשת ה-AI נכשלה ‏(HTTP %lld).";
 "ai.circleAsk.title" = "הקיפו ושאלו";
 "ai.circleAsk.hint" = "ציירו עיגול סביב מה שתרצו לשאול עליו";

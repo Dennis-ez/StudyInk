@@ -1,10 +1,10 @@
 import SwiftUI
 import CoreData
 
-/// Notes of the selected subject (or all notes), as a grid or list, filtered by
-/// search text against title + typed text + handwriting OCR (Hebrew and Latin).
+/// Notes of the selected section (subject, smart list, or trash), as a grid or
+/// list, filtered by search against title + typed text + handwriting OCR.
 struct NoteGridView: View {
-    let subject: Subject?
+    let section: LibrarySection
     let searchText: String
     let gridLayout: Bool
     let sort: LibrarySort
@@ -20,10 +20,22 @@ struct NoteGridView: View {
     @State private var renameText = ""
     @State private var autoOpenNote: Note?
 
+    private var inTrash: Bool { section == .deleted }
+
     private var notes: [Note] {
-        var result = Array(allNotes)
-        if let subject {
-            result = result.filter { $0.subject == subject }
+        var result: [Note]
+        switch section {
+        case .all:
+            result = allNotes.filter { $0.deletedAt == nil }
+        case .recents:
+            let cutoff = Date().addingTimeInterval(-7 * 24 * 3600)
+            result = allNotes.filter { $0.deletedAt == nil && ($0.modifiedAt ?? .distantPast) > cutoff }
+        case .favorites:
+            result = allNotes.filter { $0.deletedAt == nil && $0.isFavorite }
+        case .deleted:
+            result = allNotes.filter { $0.deletedAt != nil }
+        case .subject(let subject):
+            result = allNotes.filter { $0.deletedAt == nil && $0.subject == subject }
         }
         if !searchText.isEmpty {
             // localizedStandardContains: case-, diacritic- (niqqud), and
@@ -47,7 +59,15 @@ struct NoteGridView: View {
     var body: some View {
         Group {
             if notes.isEmpty {
-                if searchText.isEmpty {
+                if !searchText.isEmpty {
+                    ContentUnavailableView("library.noResults", systemImage: "magnifyingglass")
+                } else if inTrash {
+                    ContentUnavailableView {
+                        Label("library.trashEmpty", systemImage: "trash")
+                    } description: {
+                        Text("library.trashEmpty.subtitle")
+                    }
+                } else {
                     ContentUnavailableView {
                         Label("library.empty", systemImage: "pencil.and.outline")
                     } description: {
@@ -60,8 +80,6 @@ struct NoteGridView: View {
                         }
                         .buttonStyle(.borderedProminent)
                     }
-                } else {
-                    ContentUnavailableView("library.noResults", systemImage: "magnifyingglass")
                 }
             } else if gridLayout {
                 ScrollView {
@@ -108,7 +126,10 @@ struct NoteGridView: View {
     }
 
     private func createNote() {
+        var subject: Subject?
+        if case .subject(let s) = section { subject = s }
         let note = Note.create(in: context, title: String(localized: "library.untitledNote"), subject: subject)
+        if section == .favorites { note.isFavorite = true }
         PersistenceController.shared.save()
         autoOpenNote = note
     }
@@ -179,22 +200,43 @@ struct NoteGridView: View {
 
     @ViewBuilder
     private func noteContextMenu(_ note: Note) -> some View {
-        Button {
-            renameText = note.title ?? ""
-            renamingNote = note
-        } label: { Label("action.rename", systemImage: "pencil") }
+        if inTrash {
+            Button {
+                note.deletedAt = nil
+                PersistenceController.shared.save()
+            } label: { Label("library.restore", systemImage: "arrow.uturn.backward") }
 
-        ShareLink(
-            item: PDFExportFile(note: note),
-            preview: SharePreview(note.title ?? "StudyInk")
-        ) {
-            Label("export.pdf", systemImage: "square.and.arrow.up")
+            Button(role: .destructive) {
+                context.delete(note)
+                PersistenceController.shared.save()
+            } label: { Label("library.deleteForever", systemImage: "trash.slash") }
+        } else {
+            Button {
+                note.isFavorite.toggle()
+                PersistenceController.shared.save()
+            } label: {
+                Label(note.isFavorite ? "library.unfavorite" : "library.favorite",
+                      systemImage: note.isFavorite ? "star.slash" : "star")
+            }
+
+            Button {
+                renameText = note.title ?? ""
+                renamingNote = note
+            } label: { Label("action.rename", systemImage: "pencil") }
+
+            ShareLink(
+                item: PDFExportFile(note: note),
+                preview: SharePreview(note.title ?? "StudyInk")
+            ) {
+                Label("export.pdf", systemImage: "square.and.arrow.up")
+            }
+
+            // Soft delete: the note sits in Recently Deleted for 30 days.
+            Button(role: .destructive) {
+                note.deletedAt = Date()
+                PersistenceController.shared.save()
+            } label: { Label("action.delete", systemImage: "trash") }
         }
-
-        Button(role: .destructive) {
-            context.delete(note)
-            PersistenceController.shared.save()
-        } label: { Label("action.delete", systemImage: "trash") }
     }
 
     private func dateString(_ date: Date?) -> String {
