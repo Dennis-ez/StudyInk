@@ -809,8 +809,9 @@ extension NoteEditorView {
                 .frame(width: 34, height: 34)
         }
         // Menus restyle their label's foreground — .tint is the channel that
-        // actually survives, so the record button reads red like one.
-        .tint(Color("errorRed"))
+        // actually survives. Accent like the rest of the chrome; the pulse
+        // (and the audio bar) signal a live recording.
+        .tint(Color.accentColor)
         .accessibilityLabel(Text(audio.isRecording ? "audio.stop" : "audio.record"))
     }
 
