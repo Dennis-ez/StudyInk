@@ -7,6 +7,8 @@ import UniformTypeIdentifiers
 /// the floating toolbar, page navigation, and (phase 5+) AI overlays.
 struct NoteEditorView: View {
     @ObservedObject var note: Note
+    /// Asks the hosting container to swap the open note (left-edge notes pane).
+    var onSwitchNote: (Note) -> Void = { _ in }
     @StateObject private var canvasController = CanvasController()
     @State private var pageIndex = 0
     @State private var textBoxes: [TextBoxModel] = []
@@ -15,6 +17,7 @@ struct NoteEditorView: View {
     @State private var selectedMediaID: UUID?
     @State private var distractionFree = false
     @State private var showPageStrip = true
+    @State private var showNotesPane = false
     @State private var showPageSettings = false
     @State private var showStickers = false
     @State private var showCamera = false
@@ -26,6 +29,7 @@ struct NoteEditorView: View {
     @State private var overlaySaveTask: Task<Void, Never>?
     @StateObject private var tutor = AITutorController()
     @StateObject private var guidedMode = GuidedModeController()
+    @StateObject private var quiz = QuizController()
     @StateObject private var audio = AudioSyncController()
     @State private var showAskField = false
     @State private var askText = ""
@@ -33,6 +37,7 @@ struct NoteEditorView: View {
     @State private var askLassoActive = false
     @State private var showGuidedLog = false
     @State private var transformLassoActive = false
+    @State private var rectLassoActive = false
     @State private var strokeSelection: StrokeSelection?
     @State private var strokeRotation: Double = 0
     @State private var editingShape: EditingShape?
@@ -82,7 +87,7 @@ struct NoteEditorView: View {
                 layoutSignature: layoutSignature
             )
             .ignoresSafeArea(edges: .bottom)
-            .allowsHitTesting(selectedMediaID == nil && strokeSelection == nil && !transformLassoActive && editingShape == nil)
+            .allowsHitTesting(selectedMediaID == nil && strokeSelection == nil && !transformLassoActive && !rectLassoActive && editingShape == nil)
 
             // Tap-anywhere catcher to drop the current media/text selection.
             if selectedMediaID != nil || editingBoxID != nil {
@@ -141,6 +146,9 @@ struct NoteEditorView: View {
                     onTransformSelection: {
                         withAnimation { transformLassoActive = true }
                     },
+                    onRectSelect: {
+                        withAnimation { rectLassoActive = true }
+                    },
                     extraItems: toolbarExtras
                 )
 
@@ -178,6 +186,22 @@ struct NoteEditorView: View {
                         .transition(.move(edge: .trailing).combined(with: .opacity))
                     }
                 }
+
+                // Notes pane docks on the leading edge; the handle rides its edge.
+                HStack(spacing: 0) {
+                    if showNotesPane {
+                        NotesPane(currentNote: note) { selected in
+                            withAnimation { showNotesPane = false }
+                            guard selected.objectID != note.objectID else { return }
+                            onSwitchNote(selected)
+                        }
+                        .padding(.leading, 6)
+                        .padding(.vertical, 70)
+                        .transition(.move(edge: .leading).combined(with: .opacity))
+                    }
+                    notesPaneHandle
+                    Spacer()
+                }
             }
 
             if let editingID = editingBoxID,
@@ -200,6 +224,10 @@ struct NoteEditorView: View {
 
             // Select & rotate: lasso capture, then live rotation preview.
             TransformLassoOverlay(isActive: $transformLassoActive, transform: transform) { polygon in
+                beginStrokeTransform(with: polygon)
+            }
+            // Rectangle-marquee variant of the same flow.
+            TransformLassoOverlay(isActive: $rectLassoActive, transform: transform, rectangular: true) { polygon in
                 beginStrokeTransform(with: polygon)
             }
             // Node editing for freshly created shapes.
@@ -327,6 +355,7 @@ struct NoteEditorView: View {
         // No system navigation bar — the canvas owns the full screen; actions
         // live in the floating glass action bar (top-trailing).
         .toolbar(.hidden, for: .navigationBar)
+        .sheet(isPresented: $quiz.isPresented) { QuizView(quiz: quiz) }
         .statusBarHidden(distractionFree)
         .onAppear {
             loadPage()
@@ -658,7 +687,7 @@ struct NoteEditorView: View {
                     Task { await tutor.explainCurrentPage() }
                 } label: { Label("ai.explainPage", systemImage: "doc.text.magnifyingglass") }
                 Button {
-                    Task { await tutor.startQuiz() }
+                    Task { await quiz.start(note: note, pageIndex: pageIndex, darkMode: colorScheme == .dark) }
                 } label: { Label("ai.quizMe", systemImage: "questionmark.app") }
                 Toggle(isOn: $guidedMode.isEnabled) {
                     Label("ai.guidedMode", systemImage: "lightbulb")
@@ -713,6 +742,30 @@ struct NoteEditorView: View {
     }
 
     /// Bottom-right: current page out of total, with up/down paging.
+    /// Slim tab at the vertical center of the left edge that opens/closes the
+    /// sibling-notes drawer.
+    private var notesPaneHandle: some View {
+        VStack {
+            Spacer()
+            Button {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showNotesPane.toggle() }
+            } label: {
+                Image(systemName: showNotesPane ? "chevron.compact.left" : "chevron.compact.right")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 22, height: 64)
+                    .background(.regularMaterial, in: UnevenRoundedRectangle(
+                        topLeadingRadius: 0, bottomLeadingRadius: 0,
+                        bottomTrailingRadius: 12, topTrailingRadius: 12
+                    ))
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text("editor.notesPane"))
+            Spacer()
+        }
+    }
+
     private var pageIndicator: some View {
         VStack(spacing: 0) {
             Button {

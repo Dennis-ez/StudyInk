@@ -18,64 +18,8 @@ extension AITutorController {
         )
     }
 
-    /// Generates 3–5 questions from the note and stacks them as bubble cards on
-    /// the current page. The student answers inside each bubble via Ask More;
-    /// Claude grades inline with annotations pointing back into the note.
-    func startQuiz() async {
-        guard let note, let page = currentPage else { return }
-        let pageSize = PageSize.from(id: page.pageSizeID).size
-
-        do {
-            let context = await NoteContextBuilder.build(note: note, currentPageIndex: currentPageIndex, darkMode: isDarkMode)
-            var blocks = context.blocks
-            blocks.append(.text("""
-            QUIZ MODE: Generate 3-5 quiz questions testing understanding of this note's content, in the language the note is written in.
-            Respond with ONLY a JSON object:
-            {"questions": [{"question": "<question text, LaTeX allowed>", "match_string": "<exact related string from the note OCR, or null>"}]}
-            """))
-
-            let raw = try await AIService.send(
-                system: SystemPrompt.tutor(subjectContext: note.subjectContext ?? "calculus1"),
-                messages: [.user(blocks)],
-                maxTokens: 1200
-            )
-            guard let start = raw.firstIndex(of: "{"), let end = raw.lastIndex(of: "}"),
-                  let data = String(raw[start...end]).data(using: .utf8),
-                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let questions = object["questions"] as? [[String: Any]], !questions.isEmpty else {
-                errorMessage = String(localized: "ai.quiz.failed")
-                return
-            }
-
-            let lines = await NoteContextBuilder.ocrLines(for: page)
-            for (index, item) in questions.prefix(5).enumerated() {
-                guard let questionText = item["question"] as? String else { continue }
-
-                // Anchor at the related note content when it resolves; cascade otherwise.
-                var anchor = CGPoint(x: pageSize.width - 180, y: 90 + Double(index) * 60)
-                if let match = item["match_string"] as? String {
-                    var probe = AIAnnotationModel(kind: .highlight, matchString: match, colorToken: "aiHighlightBlue")
-                    probe = AIResponseParser.resolve(annotations: [probe], against: lines).first ?? probe
-                    if let rect = probe.rect { anchor = CGPoint(x: rect.midX, y: rect.midY) }
-                }
-
-                var bubble = AIBubbleModel(
-                    pageIndex: currentPageIndex,
-                    anchorX: anchor.x, anchorY: anchor.y,
-                    x: Double(pageSize.width) - 360,
-                    y: 70 + Double(index) * 130
-                )
-                bubble.tone = .explanation
-                bubble.thread = [AIExchange(question: nil, answer: String(localized: "ai.quiz.prefix \(index + 1)") + " " + questionText)]
-                bubble.chips = []
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7).delay(Double(index) * 0.08)) {
-                    bubbles.append(bubble)
-                }
-            }
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
+    // Quiz Me grew out of the bubble system into its own card flow — see
+    // QuizController / QuizView.
 }
 
 /// Subject context selector (Calculus 1 / Discrete Math 1 / custom) for the note.
