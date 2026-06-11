@@ -29,6 +29,10 @@ final class CanvasController: NSObject, ObservableObject {
     @Published var autoShapes: Bool = (UserDefaults.standard.object(forKey: "settings.autoShapes") as? Bool) ?? true {
         didSet { UserDefaults.standard.set(autoShapes, forKey: "settings.autoShapes") }
     }
+    /// Magnetically align shapes and element borders with the template lines/grid.
+    @Published var snapToGrid: Bool = (UserDefaults.standard.object(forKey: "settings.snapToGrid") as? Bool) ?? true {
+        didSet { UserDefaults.standard.set(snapToGrid, forKey: "settings.snapToGrid") }
+    }
 
     // MARK: Geometry published by the engine
 

@@ -64,6 +64,12 @@ struct NoteEditorView: View {
         return pages.indices.contains(index) ? pages[index] : nil
     }
 
+    /// Magnetic alignment for element borders, from the current page's template.
+    private var snapMetrics: SnapMetrics? {
+        guard canvasController.snapToGrid, let page = currentPage else { return nil }
+        return SnapMetrics.metrics(for: page.template, spacing: page.effectiveTemplateSpacing)
+    }
+
     var body: some View {
         ZStack {
             Color("deskBackground").ignoresSafeArea()
@@ -89,8 +95,8 @@ struct NoteEditorView: View {
 
             // Current page's editable overlays (other pages render their media
             // and text inside the engine's cached page images).
-            MediaLayer(items: $mediaItems, transform: transform, selectedItemID: $selectedMediaID)
-            TextBoxLayer(boxes: $textBoxes, transform: transform, editingBoxID: $editingBoxID)
+            MediaLayer(items: $mediaItems, transform: transform, selectedItemID: $selectedMediaID, snap: snapMetrics)
+            TextBoxLayer(boxes: $textBoxes, transform: transform, editingBoxID: $editingBoxID, snap: snapMetrics)
 
             // AI annotations + bubbles for every page, each anchored through
             // its own page transform so they ride along while scrolling.

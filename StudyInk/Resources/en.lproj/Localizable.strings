@@ -34,6 +34,7 @@
 "toolbar.customize" = "Customize Toolbar";
 "toolbar.pencilOnly" = "Apple Pencil Only";
 "tool.autoShapes" = "Auto Shapes";
+"tool.snapToGrid" = "Snap to Lines & Grid";
 "toolbar.move" = "Move Toolbar";
 
 /* Text boxes */

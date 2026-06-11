@@ -344,8 +344,14 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
               let last = canvas.drawing.strokes.last else { return }
 
         let work = DispatchWorkItem { [weak self, weak canvas] in
-            guard self != nil, let canvas, canvas.drawing.strokes.count == count else { return }
-            guard let shape = ShapeRecognizer.recognize(last) else { return }
+            guard let self, let canvas, canvas.drawing.strokes.count == count else { return }
+            guard var shape = ShapeRecognizer.recognize(last) else { return }
+            // Align the clean shape with the page's lines/grid.
+            if self.controller.snapToGrid,
+               let snapshot = self.controller.snapshotProvider?(self.activeIndex),
+               let metrics = SnapMetrics.metrics(for: snapshot.template, spacing: snapshot.templateSpacing) {
+                shape = ShapeRecognizer.snapped(shape, to: metrics)
+            }
             let old = canvas.drawing
             var replaced = old
             replaced.strokes[count - 1] = ShapeRecognizer.idealStroke(for: shape, like: last)
