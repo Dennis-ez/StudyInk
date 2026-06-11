@@ -129,8 +129,16 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     /// (Re)builds the page stack when the page list/template/sizes change.
     func apply(pageSizes sizes: [CGSize], signature: String) {
         guard signature != layoutSignature else { return }
-        // Never tear down with unsaved ink on the live canvas.
-        if !containers.isEmpty { flushPendingSave() }
+        // Never tear down with unsaved ink on the live canvas — but only when
+        // the page under the canvas is still the same one. Saves resolve by
+        // index, so flushing across a reorder/insert/delete would stamp this
+        // canvas's ink onto whatever page just moved into our slot (ink
+        // duplication on one page, loss on the other). Page mutations commit
+        // up front instead (see PageNavigatorStrip / commitPendingInk).
+        let samePageAtActiveIndex = pageID(at: activeIndex, in: layoutSignature) == pageID(at: activeIndex, in: signature)
+        if !containers.isEmpty, samePageAtActiveIndex { flushPendingSave() }
+        saveWorkItem?.cancel()
+        saveWorkItem = nil
         layoutSignature = signature
         pageSizes = sizes
 
@@ -270,6 +278,22 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         saveWorkItem?.cancel()
         saveWorkItem = nil
         controller.onDrawingChanged?(activeIndex, canvas.drawing)
+    }
+
+    /// Saves are debounced and keyed by page *index* — reordering, duplicating,
+    /// or deleting pages while one is pending would write the live ink onto
+    /// whatever page ends up at that index. Callers mutating the page list must
+    /// commit first.
+    func commitPendingInk() {
+        flushPendingSave()
+    }
+
+    /// First component of a page's entry in the layout signature is its UUID
+    /// (see NoteEditorView.layoutSignature).
+    private func pageID(at index: Int, in signature: String) -> Substring? {
+        let entries = signature.split(separator: ",")
+        guard entries.indices.contains(index) else { return nil }
+        return entries[index].split(separator: "|").first
     }
 
     private func renderImage(for index: Int, revealWhenReady: Bool = false) {

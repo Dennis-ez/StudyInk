@@ -108,6 +108,12 @@ final class CanvasController: NSObject, ObservableObject {
         engine?.scrollToPage(index, animated: animated)
     }
 
+    /// Flush the engine's debounced ink save while the index→page mapping is
+    /// still valid. Must run before any reorder/duplicate/delete of pages.
+    func commitPendingInk() {
+        engine?.commitPendingInk()
+    }
+
     /// Switch tools, restoring that tool's own remembered color/width/opacity.
     func select(_ kind: ToolKind) {
         if kind == .eraserPixel || kind == .eraserObject {
