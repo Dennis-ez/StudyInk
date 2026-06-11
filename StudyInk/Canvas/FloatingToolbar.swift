@@ -25,7 +25,6 @@ struct FloatingToolbar: View {
     @AppStorage("toolbar.tools.v2") private var enabledToolsRaw = ToolKind.allCases
         .filter { $0 != .eraserObject }
         .map(\.rawValue).joined(separator: ",")
-    @State private var showToolOptions = false
     /// The quick strip (colors/sizes) — opened by re-tapping the active tool.
     @State private var showInlineOptions = false
     @State private var showCustomize = false
@@ -63,13 +62,12 @@ struct FloatingToolbar: View {
             ZStack {
                 // While options are open, the first tap anywhere outside
                 // dismisses (popover behavior).
-                if showToolOptions || showInlineOptions {
+                if showInlineOptions {
                     Color.clear
                         .contentShape(Rectangle())
                         .ignoresSafeArea()
                         .onTapGesture {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                                showToolOptions = false
                                 showInlineOptions = false
                             }
                         }
@@ -107,19 +105,19 @@ struct FloatingToolbar: View {
         .transition(.opacity)
     }
 
-    /// The bar plus (when open) its inline options panel — no UIKit popover,
+    /// The bar plus (when open) its inline options strip — no UIKit popover,
     /// which mis-anchored inside the floating/draggable bar.
     @ViewBuilder
     private var content: some View {
         switch dock {
         case .top:
-            VStack(spacing: 8) { bar; inlineStrip; optionsPanelIfNeeded }
+            VStack(spacing: 8) { bar; inlineStrip }
         case .bottom:
-            VStack(spacing: 8) { optionsPanelIfNeeded; inlineStrip; bar }
+            VStack(spacing: 8) { inlineStrip; bar }
         case .leading:
-            HStack(alignment: .top, spacing: 8) { bar; VStack(spacing: 8) { inlineStrip; optionsPanelIfNeeded } }
+            HStack(alignment: .top, spacing: 8) { bar; inlineStrip }
         case .trailing:
-            HStack(alignment: .top, spacing: 8) { VStack(spacing: 8) { inlineStrip; optionsPanelIfNeeded }; bar }
+            HStack(alignment: .top, spacing: 8) { inlineStrip; bar }
         }
     }
 
@@ -131,27 +129,14 @@ struct FloatingToolbar: View {
         let kind = controller.toolState.kind
         if showInlineOptions {
             if kind.isInking {
-                InkOptionsStrip(controller: controller, horizontal: dock.isHorizontal) {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { showToolOptions.toggle() }
-                }
-                .studyGlass(cornerRadius: 18)
-                .transition(.scale(scale: 0.92, anchor: dock == .bottom ? .bottom : .top).combined(with: .opacity))
+                InkOptionsStrip(controller: controller, horizontal: dock.isHorizontal)
+                    .studyGlass(cornerRadius: 18)
+                    .transition(.scale(scale: 0.92, anchor: dock == .bottom ? .bottom : .top).combined(with: .opacity))
             } else if kind == .eraserPixel || kind == .eraserObject {
                 EraserOptionsStrip(controller: controller, horizontal: dock.isHorizontal)
                     .studyGlass(cornerRadius: 18)
                     .transition(.scale(scale: 0.92, anchor: dock == .bottom ? .bottom : .top).combined(with: .opacity))
             }
-        }
-    }
-
-    @ViewBuilder
-    private var optionsPanelIfNeeded: some View {
-        if showToolOptions {
-            ToolOptionsPanel(controller: controller) {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { showToolOptions = false }
-            }
-            .studyGlass(cornerRadius: 18)
-            .transition(.scale(scale: 0.92, anchor: dock == .bottom ? .bottom : .top).combined(with: .opacity))
         }
     }
 
@@ -263,7 +248,6 @@ struct FloatingToolbar: View {
                 if hasOptions {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
                         showInlineOptions.toggle()
-                        if !showInlineOptions { showToolOptions = false }
                     }
                 } else if kind == .lasso {
                     onTransformSelection()
@@ -273,10 +257,9 @@ struct FloatingToolbar: View {
                 controller.select(kind)
                 // Options belong to the tool that was tapped twice — switching
                 // tools always starts with them closed.
-                if showInlineOptions || showToolOptions {
+                if showInlineOptions {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
                         showInlineOptions = false
-                        showToolOptions = false
                     }
                 }
             }
@@ -296,12 +279,11 @@ struct FloatingToolbar: View {
 }
 
 /// Inline quick options for inking tools: scrollable color dots, a custom-color
-/// well, stroke-size dots, pressure toggle, and a button into the full panel.
-/// Runs along the same axis as the bar it belongs to.
+/// well, stroke-size dots, and a pressure toggle — the whole story, no second
+/// panel. Runs along the same axis as the bar it belongs to.
 private struct InkOptionsStrip: View {
     @ObservedObject var controller: CanvasController
     var horizontal = true
-    var onMoreOptions: () -> Void
     @State private var customColor: Color = .black
 
     private static let presets = [
@@ -356,14 +338,6 @@ private struct InkOptionsStrip: View {
                 .accessibilityAddTraits(controller.toolState.pressureSensitive ? .isSelected : [])
             }
 
-            Button(action: onMoreOptions) {
-                Image(systemName: "slider.horizontal.3")
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 30, height: 30)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(Text("tool.optionsHint"))
         }
         .padding(.horizontal, horizontal ? 12 : 6)
         .padding(.vertical, horizontal ? 6 : 12)
@@ -510,49 +484,6 @@ private struct ToolbarButtonStyle: ButtonStyle {
             .frame(width: 30, height: 30)
             .background(configuration.isPressed ? Color.primary.opacity(0.08) : .clear, in: RoundedRectangle(cornerRadius: 7))
             .contentShape(Rectangle())
-    }
-}
-
-/// Fine-grained options for the active tool: width and opacity sliders.
-/// (Colors live in the inline strip — no duplicate swatches here.)
-struct ToolOptionsPanel: View {
-    @ObservedObject var controller: CanvasController
-    var onClose: () -> Void = {}
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 8) {
-                Image(systemName: controller.toolState.kind.symbolName)
-                    .foregroundStyle(Color.accentColor)
-                Text(controller.toolState.kind.labelKey)
-                    .font(.headline)
-                Spacer()
-                Button(action: onClose) {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                }
-                .accessibilityLabel(Text("action.close"))
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text("tool.width").font(.caption).foregroundStyle(.secondary)
-                    Spacer()
-                    // Live stroke preview at the chosen width and color.
-                    Capsule()
-                        .fill(Color(hex: controller.toolState.colorHex) ?? .black)
-                        .frame(width: 56, height: min(max(controller.toolState.width, 2), 20))
-                }
-                Slider(value: $controller.toolState.width, in: 1...24)
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("tool.opacity").font(.caption).foregroundStyle(.secondary)
-                Slider(value: $controller.toolState.opacity, in: 0.1...1)
-            }
-        }
-        .padding(16)
-        .frame(width: 260)
     }
 }
 
