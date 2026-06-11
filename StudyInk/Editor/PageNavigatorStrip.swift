@@ -20,6 +20,14 @@ struct PageNavigatorStrip: View {
             layout {
                 ForEach(Array(note.sortedPages.enumerated()), id: \.element.objectID) { index, page in
                     thumbnail(for: page, index: index)
+                        // Drag a thumbnail onto another to reorder pages.
+                        .draggable("studyink.page:\(index)")
+                        .dropDestination(for: String.self) { items, _ in
+                            guard let item = items.first, item.hasPrefix("studyink.page:"),
+                                  let from = Int(item.dropFirst("studyink.page:".count)) else { return false }
+                            reorder(from: from, to: index)
+                            return true
+                        }
                 }
                 Button(action: { addPage() }) {
                     Image(systemName: "plus")
@@ -94,6 +102,21 @@ struct PageNavigatorStrip: View {
         pages[to].index = Int32(from)
         note.touch()
         PersistenceController.shared.save()
+        currentIndex = to
+    }
+
+    /// Drag-and-drop reorder: remove at `from`, insert at `to`, reindex all.
+    private func reorder(from: Int, to: Int) {
+        guard from != to else { return }
+        onWillMutatePages()
+        var pages = note.sortedPages
+        guard pages.indices.contains(from), pages.indices.contains(to) else { return }
+        let moved = pages.remove(at: from)
+        pages.insert(moved, at: to)
+        for (index, page) in pages.enumerated() { page.index = Int32(index) }
+        note.touch()
+        PersistenceController.shared.save()
+        Haptics.success()
         currentIndex = to
     }
 
