@@ -53,6 +53,16 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         pencilInteraction.delegate = self
         addInteraction(pencilInteraction)
 
+        // Apple-Notes-style: pause mid-stroke and the shape snaps while the
+        // pencil is still touching the page.
+        let holdSnap = StationaryStrokeRecognizer(target: nil, action: nil)
+        holdSnap.cancelsTouchesInView = false
+        holdSnap.delegate = self
+        holdSnap.onHold = { [weak self] points in
+            self?.handleHoldSnap(rawPoints: points)
+        }
+        canvas.addGestureRecognizer(holdSnap)
+
         // Circle & Ask trigger: hold the Pencil still for ~1s.
         let hold = UILongPressGestureRecognizer(target: self, action: #selector(pencilHeld(_:)))
         hold.minimumPressDuration = 1.0
@@ -360,9 +370,79 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
             }
             canvas.drawing = replaced
             Haptics.tap()
+            self.controller.onShapeCreated?(self.activeIndex, count - 1, shape)
         }
         shapeWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.45, execute: work)
+    }
+
+    /// Mid-stroke hold detected: recognize from raw touch points, cancel the
+    /// in-flight PencilKit stroke, and lay down the clean shape immediately.
+    private func handleHoldSnap(rawPoints: [CGPoint]) {
+        guard controller.autoShapes, controller.toolState.kind.isInking else { return }
+        guard var shape = ShapeRecognizer.recognize(points: rawPoints) else { return }
+        if controller.snapToGrid,
+           let snapshot = controller.snapshotProvider?(activeIndex),
+           let metrics = SnapMetrics.metrics(for: snapshot.template, spacing: snapshot.templateSpacing) {
+            shape = ShapeRecognizer.snapped(shape, to: metrics)
+        }
+        guard let inkingTool = controller.toolState.pkTool(darkMode: controller.isDarkMode) as? PKInkingTool else { return }
+        let ideal = ShapeRecognizer.idealStroke(for: shape, ink: inkingTool.ink, width: CGFloat(controller.toolState.width))
+
+        let countBeforeCancel = canvas.drawing.strokes.count
+        shapeWorkItem?.cancel()
+        // Toggling the drawing recognizer cancels the live stroke.
+        canvas.drawingGestureRecognizer.isEnabled = false
+        canvas.drawingGestureRecognizer.isEnabled = true
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            let old = self.canvas.drawing
+            var replaced = old
+            if replaced.strokes.count > countBeforeCancel {
+                // Cancellation still committed a partial stroke — swap it out.
+                replaced.strokes[replaced.strokes.count - 1] = ideal
+            } else {
+                replaced.strokes.append(ideal)
+            }
+            self.canvas.undoManager?.registerUndo(withTarget: self.canvas) { target in
+                target.drawing = old
+            }
+            self.isProgrammaticChange = true
+            self.canvas.drawing = replaced
+            self.isProgrammaticChange = false
+            self.lastStrokeCount = replaced.strokes.count
+            self.controller.onDrawingChanged?(self.activeIndex, replaced)
+            Haptics.tap()
+            self.controller.onShapeCreated?(self.activeIndex, replaced.strokes.count - 1, shape)
+        }
+    }
+
+    // MARK: - Node editing of created shapes
+
+    /// Captures the pre-edit drawing once so the whole node-edit session is one undo.
+    func beginStrokeEdit() {
+        let old = canvas.drawing
+        canvas.undoManager?.registerUndo(withTarget: canvas) { target in
+            target.drawing = old
+        }
+    }
+
+    /// Live-updates a stroke while its shape nodes are dragged (no side effects).
+    func updateEditedStroke(at strokeIndex: Int, on pageIndex: Int, with stroke: PKStroke) {
+        guard pageIndex == activeIndex, canvas.drawing.strokes.indices.contains(strokeIndex) else { return }
+        isProgrammaticChange = true
+        var drawing = canvas.drawing
+        drawing.strokes[strokeIndex] = stroke
+        canvas.drawing = drawing
+        isProgrammaticChange = false
+    }
+
+    /// Commits the node-edit session: persist + refresh undo state.
+    func endStrokeEdit() {
+        lastStrokeCount = canvas.drawing.strokes.count
+        controller.onDrawingChanged?(activeIndex, canvas.drawing)
+        DispatchQueue.main.async { [controller] in controller.refreshUndoState() }
     }
 
     // MARK: - Pencil interactions
@@ -459,5 +539,67 @@ struct NoteCanvasView: UIViewRepresentable {
             controller.isDarkMode = colorScheme == .dark
         }
         engine.apply(pageSizes: pageSizes, signature: layoutSignature)
+    }
+}
+
+
+import UIKit.UIGestureRecognizerSubclass
+
+/// Observes an in-progress stroke and fires once the touch has been stationary
+/// for ~0.45s (without ever claiming the gesture — PencilKit keeps drawing).
+final class StationaryStrokeRecognizer: UIGestureRecognizer {
+    var onHold: (([CGPoint]) -> Void)?
+
+    private var samples: [CGPoint] = []
+    private var lastMoveAt = Date()
+    private var lastLocation = CGPoint.zero
+    private var fired = false
+    private var timer: Timer?
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard let touch = touches.first else { return }
+        samples = [touch.location(in: view)]
+        lastLocation = samples[0]
+        lastMoveAt = Date()
+        fired = false
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            self?.checkHold()
+        }
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard let touch = touches.first else { return }
+        let location = touch.location(in: view)
+        samples.append(location)
+        if hypot(location.x - lastLocation.x, location.y - lastLocation.y) > 2.5 {
+            lastLocation = location
+            lastMoveAt = Date()
+        }
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) { reset() }
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) { reset() }
+
+    override func reset() {
+        timer?.invalidate()
+        timer = nil
+        samples = []
+        fired = false
+        state = .failed
+    }
+
+    private func checkHold() {
+        guard !fired, samples.count >= 12,
+              Date().timeIntervalSince(lastMoveAt) > 0.45 else { return }
+        // Ignore dots/taps — require some drawn extent before snapping.
+        let xs = samples.map(\.x), ys = samples.map(\.y)
+        guard let minX = xs.min(), let maxX = xs.max(),
+              let minY = ys.min(), let maxY = ys.max(),
+              hypot(maxX - minX, maxY - minY) > 40 else { return }
+        fired = true
+        timer?.invalidate()
+        timer = nil
+        onHold?(samples)
     }
 }

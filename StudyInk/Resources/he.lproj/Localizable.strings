@@ -29,6 +29,7 @@
 "tool.width" = "עובי קו";
 "tool.optionsHint" = "הקישו שוב לאפשרויות צבע ועובי";
 "lasso.transform.hint" = "הקיפו את הקווים שתרצו לסובב";
+"shape.node" = "נקודת צורה";
 
 /* סרגל כלים */
 "toolbar.customize" = "התאמת סרגל הכלים";

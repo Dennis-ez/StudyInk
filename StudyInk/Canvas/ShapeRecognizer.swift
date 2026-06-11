@@ -5,7 +5,7 @@ import UIKit
 /// style "snap after a beat"): straight lines, circles/ellipses, triangles,
 /// rectangles, and general polygons up to six corners.
 enum ShapeRecognizer {
-    enum Shape {
+    enum Shape: Equatable {
         case line(from: CGPoint, to: CGPoint)
         case ellipse(center: CGPoint, radiusX: CGFloat, radiusY: CGFloat)
         case polygon([CGPoint])   // closed, ordered corners
@@ -14,7 +14,12 @@ enum ShapeRecognizer {
     // MARK: - Recognition
 
     static func recognize(_ stroke: PKStroke) -> Shape? {
-        let points = sample(stroke)
+        recognize(points: sample(stroke))
+    }
+
+    /// Core recognizer over raw points — also used for in-flight (pencil still
+    /// touching) detection where no PKStroke exists yet.
+    static func recognize(points: [CGPoint]) -> Shape? {
         guard points.count >= 10 else { return nil }
         let box = boundingBox(points)
         let diagonal = hypot(box.width, box.height)
@@ -74,6 +79,15 @@ enum ShapeRecognizer {
     /// Rebuilds the stroke along the ideal geometry, keeping the original ink
     /// and average width so the snap doesn't change the pen's character.
     static func idealStroke(for shape: Shape, like stroke: PKStroke) -> PKStroke {
+        idealStroke(for: shape, ink: stroke.ink, pointSize: averagePointSize(of: stroke))
+    }
+
+    /// Variant for in-flight detection (no committed stroke to copy from).
+    static func idealStroke(for shape: Shape, ink: PKInk, width: CGFloat) -> PKStroke {
+        idealStroke(for: shape, ink: ink, pointSize: CGSize(width: max(width, 1), height: max(width, 1)))
+    }
+
+    private static func idealStroke(for shape: Shape, ink: PKInk, pointSize: CGSize) -> PKStroke {
         var path: [CGPoint] = []
         switch shape {
         case .line(let from, let to):
@@ -87,19 +101,18 @@ enum ShapeRecognizer {
             }
         }
 
-        let size = averagePointSize(of: stroke)
         let controlPoints = path.enumerated().map { index, location in
             PKStrokePoint(
                 location: location,
                 timeOffset: TimeInterval(index) * 0.01,
-                size: size,
+                size: pointSize,
                 opacity: 1,
                 force: 1,
                 azimuth: 0,
                 altitude: .pi / 2
             )
         }
-        return PKStroke(ink: stroke.ink, path: PKStrokePath(controlPoints: controlPoints, creationDate: Date()))
+        return PKStroke(ink: ink, path: PKStrokePath(controlPoints: controlPoints, creationDate: Date()))
     }
 
     // MARK: - Fits
