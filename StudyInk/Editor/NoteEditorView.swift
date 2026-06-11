@@ -33,6 +33,8 @@ struct NoteEditorView: View {
     @StateObject private var audio = AudioSyncController()
     @State private var showAskField = false
     @State private var askText = ""
+    @State private var showAIDrawPrompt = false
+    @State private var aiDrawText = ""
     @State private var lastStrokeAnchor: CGPoint?
     @State private var askLassoActive = false
     @State private var showGuidedLog = false
@@ -356,6 +358,15 @@ struct NoteEditorView: View {
         // live in the floating glass action bar (top-trailing).
         .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $quiz.isPresented) { QuizView(quiz: quiz) }
+        .alert(Text("ai.draw"), isPresented: $showAIDrawPrompt) {
+            TextField("ai.draw.placeholder", text: $aiDrawText)
+            Button("action.cancel", role: .cancel) {}
+            Button("ai.draw.go") {
+                let request = aiDrawText.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !request.isEmpty else { return }
+                Task { await tutor.drawSketch(request: request, on: canvasController.canvasView) }
+            }
+        }
         .statusBarHidden(distractionFree)
         .onAppear {
             loadPage()
@@ -689,6 +700,10 @@ struct NoteEditorView: View {
                 Button {
                     Task { await quiz.start(note: note, pageIndex: pageIndex, darkMode: colorScheme == .dark) }
                 } label: { Label("ai.quizMe", systemImage: "questionmark.app") }
+                Button {
+                    aiDrawText = ""
+                    showAIDrawPrompt = true
+                } label: { Label("ai.draw", systemImage: "pencil.and.sparkles") }
                 Toggle(isOn: $guidedMode.isEnabled) {
                     Label("ai.guidedMode", systemImage: "lightbulb")
                 }

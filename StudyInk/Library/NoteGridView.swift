@@ -19,6 +19,7 @@ struct NoteGridView: View {
     @State private var renamingNote: Note?
     @State private var renameText = ""
     @State private var autoOpenNote: Note?
+    @Namespace private var zoomNamespace
 
     private var inTrash: Bool { section == .deleted }
 
@@ -140,6 +141,7 @@ struct NoteGridView: View {
         NavigationLink {
             NoteEditorContainer(note: note)
                 .onAppear(perform: onNoteOpened)
+                .noteZoomDestination(id: note.objectID, in: zoomNamespace)
         } label: {
             VStack(alignment: .leading, spacing: 8) {
                 if let first = note.sortedPages.first {
@@ -161,6 +163,7 @@ struct NoteGridView: View {
                 }
                 .padding(.horizontal, 2)
             }
+            .noteZoomSource(id: note.objectID, in: zoomNamespace)
         }
         .buttonStyle(.plain)
         .draggable((note.id ?? UUID()).uuidString)
@@ -172,6 +175,7 @@ struct NoteGridView: View {
         NavigationLink {
             NoteEditorContainer(note: note)
                 .onAppear(perform: onNoteOpened)
+                .noteZoomDestination(id: note.objectID, in: zoomNamespace)
         } label: {
             HStack(spacing: 14) {
                 if let first = note.sortedPages.first {
@@ -193,6 +197,7 @@ struct NoteGridView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            .noteZoomSource(id: note.objectID, in: zoomNamespace)
         }
         .draggable((note.id ?? UUID()).uuidString)
         .contextMenu { noteContextMenu(note) }
@@ -245,6 +250,28 @@ struct NoteGridView: View {
 
     private func approximateSize(_ note: Note) -> Int {
         note.sortedPages.reduce(0) { $0 + ($1.drawingData?.count ?? 0) + ($1.customTemplatePDF?.count ?? 0) }
+    }
+}
+
+/// Zoom transition between a library cell and the editor (iOS 18+); silently
+/// a no-op on iOS 17 so the deployment target stays put.
+extension View {
+    @ViewBuilder
+    func noteZoomSource(id: some Hashable, in namespace: Namespace.ID) -> some View {
+        if #available(iOS 18.0, *) {
+            matchedTransitionSource(id: id, in: namespace)
+        } else {
+            self
+        }
+    }
+
+    @ViewBuilder
+    func noteZoomDestination(id: some Hashable, in namespace: Namespace.ID) -> some View {
+        if #available(iOS 18.0, *) {
+            navigationTransition(.zoom(sourceID: id, in: namespace))
+        } else {
+            self
+        }
     }
 }
 
