@@ -4,6 +4,7 @@ import SwiftUI
 /// API keys (pasted in-app, stored in the Keychain), and model.
 struct SettingsView: View {
     @AppStorage("settings.appearance") private var appearance = "system"
+    @AppStorage("settings.theme") private var themeRaw = AppTheme.classic.rawValue
     @AppStorage("settings.autoBackup") private var autoBackup = true
     @AppStorage("settings.iCloudSync") private var iCloudSync = false
     @AppStorage("settings.ai.provider") private var providerRaw = AIProvider.claude.rawValue
@@ -37,6 +38,32 @@ struct SettingsView: View {
                         Text("settings.appearance.dark").tag("dark")
                     }
                     .pickerStyle(.segmented)
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("settings.theme")
+                        HStack(spacing: 14) {
+                            ForEach(AppTheme.allCases) { theme in
+                                Button {
+                                    themeRaw = theme.rawValue
+                                } label: {
+                                    Circle()
+                                        .fill(theme.accent)
+                                        .frame(width: 32, height: 32)
+                                        .overlay {
+                                            if themeRaw == theme.rawValue {
+                                                Image(systemName: "checkmark")
+                                                    .font(.caption.bold())
+                                                    .foregroundStyle(.white)
+                                            }
+                                        }
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel(Text(theme.labelKey))
+                                .accessibilityAddTraits(themeRaw == theme.rawValue ? .isSelected : [])
+                            }
+                        }
+                    }
+                    .padding(.vertical, 4)
                 }
                 Section(header: Label("settings.backup", systemImage: "icloud")) {
                     Toggle("settings.autoBackup", isOn: $autoBackup)

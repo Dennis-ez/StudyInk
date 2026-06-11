@@ -79,7 +79,7 @@ struct LibraryView: View {
                 set: { if !$0 { autoOpenNote = nil } }
             )) {
                 if let note = autoOpenNote {
-                    NoteEditorView(note: note)
+                    NoteEditorContainer(note: note)
                         .onAppear { withAnimation { columnVisibility = .detailOnly } }
                 }
             }
