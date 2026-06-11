@@ -3,6 +3,15 @@ import SwiftUI
 enum ToolbarDock: String, CaseIterable, Codable {
     case top, bottom, leading, trailing
     var isHorizontal: Bool { self == .top || self == .bottom }
+
+    var alignment: Alignment {
+        switch self {
+        case .top: return .top
+        case .bottom: return .bottom
+        case .leading: return .leading
+        case .trailing: return .trailing
+        }
+    }
 }
 
 /// Floating, repositionable glass toolbar. Drag the grip toward a screen edge
@@ -17,8 +26,13 @@ struct FloatingToolbar: View {
         .filter { $0 != .eraserObject }
         .map(\.rawValue).joined(separator: ",")
     @State private var showToolOptions = false
+    /// The quick strip (colors/sizes) — opened by re-tapping the active tool.
+    @State private var showInlineOptions = false
     @State private var showCustomize = false
     @State private var dragOffset: CGSize = .zero
+    /// Global finger position while the grip is being dragged; drives the
+    /// edge indicators that show where the bar can dock.
+    @State private var gripDragLocation: CGPoint?
     @Environment(\.colorScheme) private var colorScheme
 
     var onInsertTextBox: () -> Void
@@ -46,19 +60,25 @@ struct FloatingToolbar: View {
     var body: some View {
         GeometryReader { geo in
             ZStack {
-                // While the options panel is open, the first tap anywhere
-                // outside it dismisses (popover behavior).
-                if showToolOptions {
+                // While options are open, the first tap anywhere outside
+                // dismisses (popover behavior).
+                if showToolOptions || showInlineOptions {
                     Color.clear
                         .contentShape(Rectangle())
                         .ignoresSafeArea()
                         .onTapGesture {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { showToolOptions = false }
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                showToolOptions = false
+                                showInlineOptions = false
+                            }
                         }
+                }
+                if let location = gripDragLocation {
+                    dockIndicators(highlighting: nearestDock(for: location))
                 }
                 content
                     .offset(dragOffset)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: dock.alignment)
                     .padding(12)
                     .animation(.spring(response: 0.3, dampingFraction: 0.8), value: dockRaw)
             }
@@ -66,13 +86,24 @@ struct FloatingToolbar: View {
         .allowsHitTesting(true)
     }
 
-    private var alignment: Alignment {
-        switch dock {
-        case .top: return .top
-        case .bottom: return .bottom
-        case .leading: return .leading
-        case .trailing: return .trailing
+    /// Four edge capsules shown while the grip is dragged; the dock the bar
+    /// would snap to on release lights up.
+    private func dockIndicators(highlighting target: ToolbarDock) -> some View {
+        ZStack {
+            ForEach(ToolbarDock.allCases, id: \.self) { edge in
+                Capsule()
+                    .fill(edge == target ? Color.accentColor : Color.secondary.opacity(0.3))
+                    .frame(
+                        width: edge.isHorizontal ? 160 : 5,
+                        height: edge.isHorizontal ? 5 : 160
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: edge.alignment)
+                    .padding(4)
+                    .animation(.easeOut(duration: 0.15), value: target)
+            }
         }
+        .allowsHitTesting(false)
+        .transition(.opacity)
     }
 
     /// The bar plus (when open) its inline options panel — no UIKit popover,
@@ -91,21 +122,24 @@ struct FloatingToolbar: View {
         }
     }
 
-    /// Per-tool quick options that live with the bar (no popup): colors and
-    /// sizes for inking tools, mode + sizes for the eraser.
+    /// Per-tool quick options laid out parallel to the bar (same axis): colors
+    /// and sizes for inking tools, mode + sizes for the eraser. Hidden until
+    /// the active tool is tapped a second time.
     @ViewBuilder
     private var inlineStrip: some View {
         let kind = controller.toolState.kind
-        if kind.isInking {
-            InkOptionsStrip(controller: controller) {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { showToolOptions.toggle() }
-            }
-            .studyGlass(cornerRadius: 18)
-            .transition(.scale(scale: 0.92, anchor: dock == .bottom ? .bottom : .top).combined(with: .opacity))
-        } else if kind == .eraserPixel || kind == .eraserObject {
-            EraserOptionsStrip(controller: controller)
+        if showInlineOptions {
+            if kind.isInking {
+                InkOptionsStrip(controller: controller, horizontal: dock.isHorizontal) {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { showToolOptions.toggle() }
+                }
                 .studyGlass(cornerRadius: 18)
                 .transition(.scale(scale: 0.92, anchor: dock == .bottom ? .bottom : .top).combined(with: .opacity))
+            } else if kind == .eraserPixel || kind == .eraserObject {
+                EraserOptionsStrip(controller: controller, horizontal: dock.isHorizontal)
+                    .studyGlass(cornerRadius: 18)
+                    .transition(.scale(scale: 0.92, anchor: dock == .bottom ? .bottom : .top).combined(with: .opacity))
+            }
         }
     }
 
@@ -169,9 +203,13 @@ struct FloatingToolbar: View {
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(coordinateSpace: .global)
-                    .onChanged { dragOffset = $0.translation }
+                    .onChanged { value in
+                        dragOffset = value.translation
+                        withAnimation(.easeOut(duration: 0.15)) { gripDragLocation = value.location }
+                    }
                     .onEnded { value in
                         dragOffset = .zero
+                        withAnimation(.easeOut(duration: 0.15)) { gripDragLocation = nil }
                         dockRaw = nearestDock(for: value.location).rawValue
                     }
             )
@@ -191,21 +229,28 @@ struct FloatingToolbar: View {
 
     private func toolButton(_ kind: ToolKind) -> some View {
         let isActive = controller.toolState.kind == kind
+        let hasOptions = kind.isInking || kind == .eraserPixel || kind == .eraserObject
         return Button {
             if isActive {
-                // Second tap on the active tool = toggle its full options panel.
-                if kind.isInking {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { showToolOptions.toggle() }
+                // Second tap on the active tool = toggle its quick options strip.
+                if hasOptions {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                        showInlineOptions.toggle()
+                        if !showInlineOptions { showToolOptions = false }
+                    }
                 } else if kind == .lasso {
                     onTransformSelection()
                 }
             } else {
                 Haptics.selection()
                 controller.select(kind)
-                // Only inking tools have a color panel — a stale open panel
-                // would show the previous pen's colors.
-                if !kind.isInking, showToolOptions {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { showToolOptions = false }
+                // Options belong to the tool that was tapped twice — switching
+                // tools always starts with them closed.
+                if showInlineOptions || showToolOptions {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                        showInlineOptions = false
+                        showToolOptions = false
+                    }
                 }
             }
         } label: {
@@ -225,8 +270,10 @@ struct FloatingToolbar: View {
 
 /// Inline quick options for inking tools: scrollable color dots, a custom-color
 /// well, stroke-size dots, pressure toggle, and a button into the full panel.
+/// Runs along the same axis as the bar it belongs to.
 private struct InkOptionsStrip: View {
     @ObservedObject var controller: CanvasController
+    var horizontal = true
     var onMoreOptions: () -> Void
     @State private var customColor: Color = .black
 
@@ -237,16 +284,18 @@ private struct InkOptionsStrip: View {
     private static let widths: [Double] = [2, 4, 7, 11, 16]
 
     var body: some View {
-        HStack(spacing: 10) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
+        let layout = horizontal ? AnyLayout(HStackLayout(spacing: 10)) : AnyLayout(VStackLayout(spacing: 10))
+        let dotsLayout = horizontal ? AnyLayout(HStackLayout(spacing: 8)) : AnyLayout(VStackLayout(spacing: 8))
+        layout {
+            ScrollView(horizontal ? .horizontal : .vertical, showsIndicators: false) {
+                dotsLayout {
                     ForEach(Self.presets, id: \.self) { hex in
                         colorDot(hex)
                     }
                 }
-                .padding(.vertical, 2)
+                .padding(horizontal ? .vertical : .horizontal, 2)
             }
-            .frame(maxWidth: 216)
+            .frame(maxWidth: horizontal ? 216 : nil, maxHeight: horizontal ? nil : 216)
             ColorPicker("tool.customColor", selection: $customColor, supportsOpacity: false)
                 .labelsHidden()
                 .frame(width: 30)
@@ -254,14 +303,14 @@ private struct InkOptionsStrip: View {
                     controller.toolState.colorHex = UIColor(newValue).hexString
                 }
 
-            Divider().frame(height: 22)
+            stripDivider
 
             ForEach(Self.widths, id: \.self) { width in
                 widthDot(width)
             }
 
             if controller.toolState.kind == .ballpoint || controller.toolState.kind == .fountain {
-                Divider().frame(height: 22)
+                stripDivider
                 Button {
                     Haptics.selection()
                     controller.toolState.pressureSensitive.toggle()
@@ -289,12 +338,19 @@ private struct InkOptionsStrip: View {
             .buttonStyle(.plain)
             .accessibilityLabel(Text("tool.optionsHint"))
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.horizontal, horizontal ? 12 : 6)
+        .padding(.vertical, horizontal ? 6 : 12)
         .onAppear { customColor = Color(hex: controller.toolState.colorHex) ?? .black }
         .onChange(of: controller.toolState.kind) { _, _ in
             customColor = Color(hex: controller.toolState.colorHex) ?? .black
         }
+    }
+
+    private var stripDivider: some View {
+        Divider().frame(
+            maxWidth: horizontal ? nil : 22,
+            maxHeight: horizontal ? 22 : nil
+        )
     }
 
     private func colorDot(_ hex: String) -> some View {
@@ -341,36 +397,54 @@ private struct InkOptionsStrip: View {
 }
 
 /// Inline eraser options: pixel/object mode and (for pixel) eraser size.
+/// Runs along the same axis as the bar it belongs to.
 private struct EraserOptionsStrip: View {
     @ObservedObject var controller: CanvasController
+    var horizontal = true
 
     private static let widths: [Double] = [8, 16, 28]
 
     var body: some View {
-        HStack(spacing: 10) {
-            Picker("tool.eraser.mode", selection: modeBinding) {
-                Text("tool.eraser.pixel").tag(ToolKind.eraserPixel)
-                Text("tool.eraser.object").tag(ToolKind.eraserObject)
-            }
-            .pickerStyle(.segmented)
-            .frame(width: 180)
+        let layout = horizontal ? AnyLayout(HStackLayout(spacing: 10)) : AnyLayout(VStackLayout(spacing: 10))
+        layout {
+            // Icon buttons instead of a segmented picker: they stack along
+            // either axis without forcing a wide control onto a vertical bar.
+            modeButton(.eraserPixel)
+            modeButton(.eraserObject)
 
             if controller.toolState.kind == .eraserPixel {
-                Divider().frame(height: 22)
+                Divider().frame(
+                    maxWidth: horizontal ? nil : 22,
+                    maxHeight: horizontal ? 22 : nil
+                )
                 ForEach(Self.widths, id: \.self) { width in
                     sizeDot(width)
                 }
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.horizontal, horizontal ? 12 : 6)
+        .padding(.vertical, horizontal ? 6 : 12)
     }
 
-    private var modeBinding: Binding<ToolKind> {
-        Binding(
-            get: { controller.toolState.kind == .eraserObject ? .eraserObject : .eraserPixel },
-            set: { controller.select($0) }
-        )
+    private func modeButton(_ kind: ToolKind) -> some View {
+        let isActive = controller.toolState.kind == kind
+        return Button {
+            guard !isActive else { return }
+            Haptics.selection()
+            controller.select(kind)
+        } label: {
+            Image(systemName: kind.symbolName)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(isActive ? Color.accentColor : Color.primary)
+                .frame(width: 30, height: 30)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(isActive ? Color.accentColor.opacity(0.16) : .clear)
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(kind.labelKey))
+        .accessibilityAddTraits(isActive ? .isSelected : [])
     }
 
     private func sizeDot(_ width: Double) -> some View {
