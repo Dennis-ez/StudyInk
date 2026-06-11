@@ -80,7 +80,16 @@ enum PageRenderer {
 
         if snapshot.template == .customPDF, let data = snapshot.customTemplatePDF,
            let pdfImage = PDFTemplateRenderer.image(from: data, targetWidth: snapshot.pageSize.width * 2, darkMode: darkMode) {
-            pdfImage.draw(in: pageRect)
+            // Aspect-fit: a PDF must never run wider (or taller) than the page.
+            let imageSize = pdfImage.size
+            let fit = min(pageRect.width / max(imageSize.width, 1), pageRect.height / max(imageSize.height, 1))
+            let drawSize = CGSize(width: imageSize.width * fit, height: imageSize.height * fit)
+            pdfImage.draw(in: CGRect(
+                x: pageRect.midX - drawSize.width / 2,
+                y: pageRect.midY - drawSize.height / 2,
+                width: drawSize.width,
+                height: drawSize.height
+            ))
         } else {
             let lineColor = darkMode
                 ? UIColor(red: 0.227, green: 0.227, blue: 0.235, alpha: 1)

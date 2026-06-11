@@ -14,14 +14,15 @@ struct AIPanelView: View {
         VStack(spacing: 0) {
             header
             Divider()
+            // Composer up top — at the bottom of a tall drawer it was a reach.
+            composer
+            Divider()
             if let bubbleID = tutor.panelBubbleID,
                let bubble = tutor.bubbles.first(where: { $0.id == bubbleID }) ?? tutor.history.first(where: { $0.id == bubbleID }) {
                 threadDetail(bubble)
             } else {
                 historyList
             }
-            Divider()
-            composer
         }
         .frame(width: 320)
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))

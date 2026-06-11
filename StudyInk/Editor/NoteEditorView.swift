@@ -132,6 +132,8 @@ struct NoteEditorView: View {
             }
 
             if !distractionFree {
+                actionBar
+
                 FloatingToolbar(
                     controller: canvasController,
                     onInsertTextBox: insertTextBox,
@@ -151,9 +153,14 @@ struct NoteEditorView: View {
                 HStack {
                     Spacer()
                     if showPageStrip {
-                        PageNavigatorStrip(note: note, currentIndex: $pageIndex, horizontal: false)
-                            .padding(.trailing, 6)
-                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                        PageNavigatorStrip(
+                            note: note,
+                            currentIndex: $pageIndex,
+                            horizontal: false,
+                            onExit: { dismiss() }
+                        )
+                        .padding(.trailing, 6)
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
                     }
                 }
             }
@@ -303,10 +310,9 @@ struct NoteEditorView: View {
                 .ignoresSafeArea(edges: .bottom)
             }
         }
-        .navigationTitle(note.title ?? "")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar { editorToolbar }
-        .toolbar(distractionFree ? .hidden : .automatic, for: .navigationBar)
+        // No system navigation bar — the canvas owns the full screen; actions
+        // live in the floating glass action bar (top-trailing).
+        .toolbar(.hidden, for: .navigationBar)
         .statusBarHidden(distractionFree)
         .onAppear {
             loadPage()
@@ -527,18 +533,11 @@ struct NoteEditorView: View {
         lastStrokeAnchor ?? transform.toPage(CGPoint(x: UIScreen.main.bounds.midX, y: UIScreen.main.bounds.midY * 0.6))
     }
 
-    @ToolbarContentBuilder
-    private var editorToolbar: some ToolbarContent {
-        ToolbarItem(placement: .topBarLeading) {
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "books.vertical.fill")
-            }
-            .accessibilityLabel(Text("editor.backToLibrary"))
-        }
-        ToolbarItemGroup(placement: .primaryAction) {
-            Menu {
+    /// Floating glass action bar (top-trailing) — replaces the navigation bar.
+    private var actionBar: some View {
+        VStack {
+            HStack(spacing: 2) {
+                Menu {
                 Button {
                     withAnimation { askLassoActive = true }
                 } label: { Label("ai.circleAsk.title", systemImage: "lasso.badge.sparkles") }
@@ -554,14 +553,16 @@ struct NoteEditorView: View {
                 Toggle(isOn: $guidedMode.isEnabled) {
                     Label("ai.guidedMode", systemImage: "lightbulb")
                 }
-            } label: {
-                Image(systemName: "sparkles")
-            }
-            .accessibilityLabel(Text("ai.menu"))
+                } label: {
+                    Image(systemName: "sparkles")
+                        .frame(width: 34, height: 34)
+                }
+                .accessibilityLabel(Text("ai.menu"))
 
-            SubjectContextMenu(note: note)
+                SubjectContextMenu(note: note)
+                    .frame(width: 34, height: 34)
 
-            Menu {
+                Menu {
                 Button { showPhotoPicker = true } label: { Label("media.photo", systemImage: "photo") }
                 Button { showCamera = true } label: { Label("media.camera", systemImage: "camera") }
                 Button { showScanner = true } label: { Label("media.scan", systemImage: "doc.viewfinder") }
@@ -569,12 +570,13 @@ struct NoteEditorView: View {
                 Button { importingPDF = true } label: { Label("media.importPDF", systemImage: "doc.badge.plus") }
                 Divider()
                 Button { pasteFromClipboard() } label: { Label("media.paste", systemImage: "doc.on.clipboard") }
-            } label: {
-                Image(systemName: "plus")
-            }
-            .accessibilityLabel(Text("media.insert"))
+                } label: {
+                    Image(systemName: "plus")
+                        .frame(width: 34, height: 34)
+                }
+                .accessibilityLabel(Text("media.insert"))
 
-            Menu {
+                Menu {
                 ShareLink(
                     item: PDFExportFile(note: note),
                     preview: SharePreview(note.title ?? "StudyInk")
@@ -589,20 +591,34 @@ struct NoteEditorView: View {
                         Label("export.png", systemImage: "photo")
                     }
                 }
-            } label: {
-                Image(systemName: "square.and.arrow.up")
-            }
-            .accessibilityLabel(Text("export.share"))
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                        .frame(width: 34, height: 34)
+                }
+                .accessibilityLabel(Text("export.share"))
 
-            Button { showPageSettings = true } label: { Image(systemName: "doc.badge.gearshape") }
+                Button { showPageSettings = true } label: {
+                    Image(systemName: "doc.badge.gearshape")
+                        .frame(width: 34, height: 34)
+                }
                 .accessibilityLabel(Text("page.settings"))
 
-            Button {
-                withAnimation { showPageStrip.toggle() }
-            } label: {
-                Image(systemName: "rectangle.bottomthird.inset.filled")
+                Button {
+                    withAnimation { showPageStrip.toggle() }
+                } label: {
+                    Image(systemName: "rectangle.trailingthird.inset.filled")
+                        .frame(width: 34, height: 34)
+                }
+                .accessibilityLabel(Text("page.toggleStrip"))
             }
-            .accessibilityLabel(Text("page.toggleStrip"))
+            .font(.system(size: 16, weight: .medium))
+            .padding(6)
+            .studyGlass(cornerRadius: 16)
+            .frame(maxWidth: .infinity, alignment: .trailing)
+            .padding(.trailing, 12)
+            .padding(.top, 8)
+
+            Spacer()
         }
     }
 

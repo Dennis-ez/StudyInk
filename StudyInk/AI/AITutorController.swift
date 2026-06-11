@@ -184,6 +184,12 @@ final class AITutorController: ObservableObject {
         await ask(question: question, anchor: CGPoint(x: pageSize.width - 140, y: 100))
     }
 
+    func resize(bubbleID: UUID, width: Double) {
+        guard let index = bubbles.firstIndex(where: { $0.id == bubbleID }) else { return }
+        bubbles[index].width = min(max(width, 240), 540)
+        if bubbles[index].isPinned { persistPinnedBubbles() }
+    }
+
     func toggleCollapsed(bubbleID: UUID) {
         guard let index = bubbles.firstIndex(where: { $0.id == bubbleID }) else { return }
         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
