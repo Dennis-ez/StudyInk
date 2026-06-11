@@ -57,17 +57,18 @@ struct PageSettingsSheet: View {
                             .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.quaternary))
 
                             VStack(alignment: .leading, spacing: 6) {
-                                Stepper(value: $spacingValue, in: 0.6...1.8, step: 0.1) {
-                                    Text(verbatim: String(format: "%.1f×", spacingValue))
-                                        .font(.body.monospacedDigit())
-                                } onEditingChanged: { editing in
-                                    // Commit on release: each change rebuilds the
-                                    // page stack, so live-commit would stutter.
-                                    if !editing { commitSpacing() }
+                                HStack {
+                                    Slider(value: $spacingValue, in: 0.6...1.8) { editing in
+                                        // Commit on release: each change rebuilds the
+                                        // page stack, so live-commit would stutter.
+                                        // The thumbnail previews every tick instead.
+                                        if !editing { commitSpacing() }
+                                    }
+                                    Text(verbatim: String(format: "%.2f×", spacingValue))
+                                        .font(.caption.monospacedDigit())
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 48, alignment: .trailing)
                                 }
-                                Text("page.spacing.hint")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
                             }
                         }
                     }
