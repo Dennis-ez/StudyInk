@@ -388,7 +388,14 @@ struct NoteEditorView: View {
             Button("ai.draw.go") {
                 let request = aiDrawText.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !request.isEmpty else { return }
-                Task { await tutor.drawSketch(request: request, on: canvasController.canvasView) }
+                Task {
+                    await tutor.answerInInk(
+                        request: request,
+                        on: canvasController.canvasView,
+                        colorHex: canvasController.toolState.colorHex,
+                        penWidth: canvasController.toolState.width
+                    )
+                }
             }
         }
         .statusBarHidden(distractionFree)
@@ -741,7 +748,7 @@ struct NoteEditorView: View {
             Button {
                 aiDrawText = ""
                 showAIDrawPrompt = true
-            } label: { Label("ai.draw", systemImage: "pencil.and.sparkles") }
+            } label: { Label("ai.draw", systemImage: "pencil.and.outline") }
             Toggle(isOn: $guidedMode.isEnabled) {
                 Label("ai.guidedMode", systemImage: "lightbulb")
             }
