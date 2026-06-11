@@ -39,7 +39,6 @@ struct NoteEditorView: View {
     @State private var askLassoActive = false
     @State private var showGuidedLog = false
     @State private var transformLassoActive = false
-    @State private var rectLassoActive = false
     @State private var strokeSelection: StrokeSelection?
     @State private var strokeRotation: Double = 0
     @State private var editingShape: EditingShape?
@@ -89,7 +88,7 @@ struct NoteEditorView: View {
                 layoutSignature: layoutSignature
             )
             .ignoresSafeArea(edges: .bottom)
-            .allowsHitTesting(selectedMediaID == nil && strokeSelection == nil && !transformLassoActive && !rectLassoActive && editingShape == nil)
+            .allowsHitTesting(selectedMediaID == nil && strokeSelection == nil && !transformLassoActive && editingShape == nil)
 
             // Tap-anywhere catcher to drop the current media/text selection.
             if selectedMediaID != nil || editingBoxID != nil {
@@ -148,9 +147,6 @@ struct NoteEditorView: View {
                     onTransformSelection: {
                         withAnimation { transformLassoActive = true }
                     },
-                    onRectSelect: {
-                        withAnimation { rectLassoActive = true }
-                    },
                     extraItems: toolbarExtras
                 )
 
@@ -190,14 +186,15 @@ struct NoteEditorView: View {
                 }
 
                 // Notes drawer: no handle — swipe in from the left edge like a
-                // sidebar; scrim tap or swipe-back dismisses.
+                // sidebar. A tap anywhere on the page (no dimming) or a swipe
+                // back closes it; it slides exactly like the page strip.
                 if showNotesPane {
-                    Color.black.opacity(0.18)
+                    Color.clear
+                        .contentShape(Rectangle())
                         .ignoresSafeArea()
                         .onTapGesture {
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showNotesPane = false }
                         }
-                        .transition(.opacity)
                     HStack(spacing: 0) {
                         NotesPane(currentNote: note) { selected in
                             withAnimation { showNotesPane = false }
@@ -206,7 +203,7 @@ struct NoteEditorView: View {
                         }
                         .padding(.leading, 6)
                         .padding(.vertical, 24)
-                        .transition(.move(edge: .leading).combined(with: .opacity))
+                        .transition(.move(edge: .leading))
                         .gesture(
                             DragGesture(minimumDistance: 20)
                                 .onEnded { value in
@@ -254,12 +251,9 @@ struct NoteEditorView: View {
                 circleAskRegion = region
             }
 
-            // Select & rotate: lasso capture, then live rotation preview.
+            // Select & rotate: lasso capture (freeform or marquee, switchable
+            // inline), then live rotation preview.
             TransformLassoOverlay(isActive: $transformLassoActive, transform: transform) { polygon in
-                beginStrokeTransform(with: polygon)
-            }
-            // Rectangle-marquee variant of the same flow.
-            TransformLassoOverlay(isActive: $rectLassoActive, transform: transform, rectangular: true) { polygon in
                 beginStrokeTransform(with: polygon)
             }
             // Node editing for freshly created shapes.
@@ -470,6 +464,15 @@ struct NoteEditorView: View {
         }
         .onChange(of: canvasController.currentPageIndex) { _, engineIndex in
             if pageIndex != engineIndex { pageIndex = engineIndex }
+        }
+        // Rotation should feel like part of the lasso, not a second mode:
+        // picking the lasso arms select-and-rotate right away.
+        .onChange(of: canvasController.toolState.kind) { _, kind in
+            if kind == .lasso {
+                withAnimation { transformLassoActive = true }
+            } else if transformLassoActive {
+                withAnimation { transformLassoActive = false }
+            }
         }
         .onChange(of: textBoxes) { scheduleOverlaySave() }
         .onChange(of: mediaItems) { scheduleOverlaySave() }

@@ -69,6 +69,9 @@ struct LibraryView: View {
                 onNoteOpened: {
                     // The canvas deserves the whole screen.
                     withAnimation { columnVisibility = .detailOnly }
+                },
+                onNoteClosed: {
+                    withAnimation { columnVisibility = .all }
                 }
             )
             .navigationTitle(detailTitle)
@@ -81,6 +84,7 @@ struct LibraryView: View {
                 if let note = autoOpenNote {
                     NoteEditorContainer(note: note)
                         .onAppear { withAnimation { columnVisibility = .detailOnly } }
+                        .onDisappear { withAnimation { columnVisibility = .all } }
                 }
             }
         }
@@ -125,9 +129,11 @@ struct LibraryView: View {
         // selecting once rows became custom HStacks.
         List {
             Section {
-                sectionRow(.all, systemName: "tray.full.fill", tint: Color("accentBlue"), count: activeNotes.count)
-                sectionRow(.recents, systemName: "clock.fill", tint: .orange, count: recentsCount)
-                sectionRow(.favorites, systemName: "star.fill", tint: .yellow, count: favoritesCount)
+                // One tint across the smart sections — the sidebar reads as a
+                // set, not a rainbow.
+                sectionRow(.all, systemName: "tray.full.fill", count: activeNotes.count)
+                sectionRow(.recents, systemName: "clock.fill", count: recentsCount)
+                sectionRow(.favorites, systemName: "star.fill", count: favoritesCount)
             }
             Section(header: Text("library.subjects").font(.caption.smallCaps()).foregroundStyle(.secondary)) {
                 ForEach(rootSubjects, id: \.objectID) { subject in
@@ -135,12 +141,15 @@ struct LibraryView: View {
                 }
             }
             Section {
-                sectionRow(.deleted, systemName: "trash.fill", tint: .gray, count: deletedCount)
+                sectionRow(.deleted, systemName: "trash.fill", count: deletedCount)
             }
         }
         .searchable(text: $searchText, placement: .sidebar, prompt: Text("library.searchPrompt"))
         .scrollContentBackground(.hidden)
         .background(SemanticColor.sidebarBackground)
+        // The sidebar is the library's spine — it can't be hidden from the
+        // main screen (the editor still takes the full screen when a note opens).
+        .hideSidebarToggle()
         .navigationTitle(Text("app.name"))
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
@@ -156,12 +165,12 @@ struct LibraryView: View {
         }
     }
 
-    private func sectionRow(_ section: LibrarySection, systemName: String, tint: Color, count: Int) -> some View {
+    private func sectionRow(_ section: LibrarySection, systemName: String, count: Int) -> some View {
         Button {
             selection = section
         } label: {
             HStack(spacing: 10) {
-                iconTile(systemName: systemName, tint: tint)
+                iconTile(systemName: systemName, tint: .accentColor)
                 Text(section.titleKey)
                     .font(.body.weight(.medium))
                     .foregroundStyle(.primary)
@@ -364,5 +373,18 @@ struct LibraryView: View {
         for note in notes { note.subject = subject }
         PersistenceController.shared.save()
         return true
+    }
+}
+
+private extension View {
+    /// Removes the system sidebar-toggle button (iOS 17.4+); earlier systems
+    /// keep it — there's no public API to remove it there.
+    @ViewBuilder
+    func hideSidebarToggle() -> some View {
+        if #available(iOS 17.4, *) {
+            toolbar(removing: .sidebarToggle)
+        } else {
+            self
+        }
     }
 }
