@@ -427,7 +427,10 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     /// blur. After a pinch settles, re-rasterize templates, cached renders,
     /// and the live canvas layer tree at the effective zoom (capped at 3x).
     private func updateRasterScale() {
-        let effectiveZoom = min(max(zoomScale, 1), 3)
+        // Track the full zoom range: PencilKit tiles its ink layers, so a high
+        // contentsScale only rasterizes visible tiles — capping at 3 left ink
+        // soft between 3x and the 5x zoom limit.
+        let effectiveZoom = min(max(zoomScale, 1), maximumZoomScale)
         let raster = effectiveZoom * UIScreen.main.scale
         for container in containers {
             container.contentScaleFactor = raster
@@ -438,8 +441,12 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         // PencilKit renders ink in nested internal views — the scale bump must
         // reach the whole tree or zoomed ink stays soft.
         applyRasterScale(raster, to: canvas)
-        if abs(effectiveZoom - imageRenderScale) > 0.5 {
-            imageRenderScale = effectiveZoom
+        // Cached full-page bitmaps of inactive pages are NOT tiled — cap their
+        // render scale to keep memory sane (zoomed that far, you're looking at
+        // the live page anyway).
+        let imageZoom = min(effectiveZoom, 4)
+        if abs(imageZoom - imageRenderScale) > 0.5 {
+            imageRenderScale = imageZoom
             for index in containers.indices where index != activeIndex {
                 renderImage(for: index)
             }

@@ -133,6 +133,9 @@ struct PageThumbnailView: View {
     @ObservedObject var page: Page
     @Environment(\.colorScheme) private var colorScheme
     @State private var drawingImage: UIImage?
+    /// Measured display width — the ink renders at this size (× screen scale),
+    /// not a fixed tiny raster that upscales into blur.
+    @State private var displayWidth: CGFloat = 0
 
     var body: some View {
         GeometryReader { geo in
@@ -157,11 +160,17 @@ struct PageThumbnailView: View {
                         .scaledToFit()
                 }
             }
+            .onAppear { displayWidth = geo.size.width }
+            .onChange(of: geo.size.width) { _, width in displayWidth = width }
         }
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.quaternary))
         .task(id: page.drawingData) { renderDrawing() }
         .onChange(of: colorScheme) { renderDrawing() }
+        .onChange(of: displayWidth) { oldWidth, newWidth in
+            // Re-render when the cell grows enough to expose the old raster.
+            if newWidth > oldWidth * 1.3 { renderDrawing() }
+        }
     }
 
     private func renderDrawing() {
@@ -171,6 +180,8 @@ struct PageThumbnailView: View {
             return
         }
         let pageRect = CGRect(origin: .zero, size: PageSize.from(id: page.pageSizeID).size)
+        // Pixels-per-page-point that fills the actual cell on this screen.
+        let renderScale = min(2, max(0.2, displayWidth * UIScreen.main.scale / max(pageRect.width, 1)))
         let dark = colorScheme == .dark
         Task.detached(priority: .utility) {
             // PKDrawing.image is appearance-sensitive via the trait collection.
@@ -182,7 +193,7 @@ struct PageThumbnailView: View {
         @Sendable func render(in traits: UITraitCollection) -> UIImage? {
             var image: UIImage?
             traits.performAsCurrent {
-                image = drawing.image(from: pageRect, scale: 0.2)
+                image = drawing.image(from: pageRect, scale: renderScale)
             }
             return image
         }
