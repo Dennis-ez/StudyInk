@@ -42,6 +42,33 @@ enum ShapeRecognizer {
         return ellipseFit(points, box: box)
     }
 
+    /// Aligns recognized geometry with the page's template lines/grid.
+    static func snapped(_ shape: Shape, to metrics: SnapMetrics) -> Shape {
+        switch shape {
+        case .line(let from, let to):
+            return .line(from: metrics.snappedPoint(from), to: metrics.snappedPoint(to))
+        case .polygon(let corners):
+            return .polygon(corners.map(metrics.snappedPoint))
+        case .ellipse(let center, let rx, let ry):
+            let box = CGRect(x: center.x - rx, y: center.y - ry, width: rx * 2, height: ry * 2)
+            let snappedBox = metrics.snappedRect(box)
+            let wasCircle = abs(rx - ry) < 0.5
+            var newRX = snappedBox.width / 2
+            var newRY = snappedBox.height / 2
+            if wasCircle {
+                // Keep circles circular even when only one axis snapped.
+                let r = min(newRX, newRY)
+                newRX = r
+                newRY = r
+            }
+            return .ellipse(
+                center: CGPoint(x: snappedBox.midX, y: snappedBox.midY),
+                radiusX: newRX,
+                radiusY: newRY
+            )
+        }
+    }
+
     // MARK: - Ideal stroke construction
 
     /// Rebuilds the stroke along the ideal geometry, keeping the original ink

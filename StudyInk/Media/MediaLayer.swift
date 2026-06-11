@@ -7,6 +7,7 @@ struct MediaLayer: View {
     @Binding var items: [MediaItemModel]
     let transform: CanvasTransform
     @Binding var selectedItemID: UUID?
+    var snap: SnapMetrics?
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -15,6 +16,7 @@ struct MediaLayer: View {
                     item: $item,
                     isSelected: selectedItemID == item.id,
                     transform: transform,
+                    snap: snap,
                     onSelect: { selectedItemID = item.id },
                     onDelete: {
                         MediaStore.delete(fileName: item.fileName)
@@ -31,6 +33,7 @@ private struct MediaItemView: View {
     @Binding var item: MediaItemModel
     let isSelected: Bool
     let transform: CanvasTransform
+    var snap: SnapMetrics?
     let onSelect: () -> Void
     let onDelete: () -> Void
 
@@ -119,8 +122,14 @@ private struct MediaItemView: View {
             .onChanged { value in
                 if dragStart == nil { dragStart = CGPoint(x: item.x, y: item.y) }
                 guard let start = dragStart else { return }
-                item.x = start.x + value.translation.width / transform.zoomScale
-                item.y = start.y + value.translation.height / transform.zoomScale
+                var x = start.x + value.translation.width / transform.zoomScale
+                var y = start.y + value.translation.height / transform.zoomScale
+                if let snap {
+                    x = snap.snappedX(x)
+                    y = snap.snappedY(y)
+                }
+                item.x = x
+                item.y = y
             }
             .onEnded { _ in dragStart = nil }
     }
@@ -131,7 +140,12 @@ private struct MediaItemView: View {
                 if resizeStart == nil { resizeStart = CGSize(width: item.width, height: item.height) }
                 guard let start = resizeStart else { return }
                 let aspect = start.height / max(start.width, 1)
-                let newWidth = max(32, start.width + value.translation.width / transform.zoomScale)
+                var newWidth = max(32, start.width + value.translation.width / transform.zoomScale)
+                if let snap {
+                    // Magnetize the trailing edge to the grid.
+                    let snappedRight = snap.snappedX(item.x + newWidth)
+                    newWidth = max(32, snappedRight - item.x)
+                }
                 item.width = newWidth
                 item.height = newWidth * aspect
             }
