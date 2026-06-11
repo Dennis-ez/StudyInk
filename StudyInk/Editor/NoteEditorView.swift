@@ -193,7 +193,7 @@ struct NoteEditorView: View {
                         guard let editing = editingShape else { return }
                         let stroke = ShapeRecognizer.idealStroke(
                             for: shape,
-                            ink: currentInk(),
+                            ink: editing.ink,
                             width: CGFloat(editing.width)
                         )
                         canvasController.engine?.updateEditedStroke(
@@ -338,14 +338,15 @@ struct NoteEditorView: View {
                     return PageRenderer.Snapshot(page: pages[index])
                 }
             }
-            canvasController.onShapeCreated = { pageIndex, strokeIndex, shape in
+            canvasController.onShapeCreated = { pageIndex, strokeIndex, shape, ink, width, colorHex in
                 canvasController.engine?.beginStrokeEdit()
                 editingShape = EditingShape(
                     pageIndex: pageIndex,
                     strokeIndex: strokeIndex,
                     shape: shape,
-                    colorHex: canvasController.toolState.colorHex,
-                    width: canvasController.toolState.width
+                    ink: ink,
+                    colorHex: colorHex,
+                    width: width
                 )
             }
             canvasController.onAddPage = { [weak note] in
@@ -492,14 +493,6 @@ struct NoteEditorView: View {
         }
         canvas.drawing = StrokeSelector.applyRotation(strokeRotation, selection: selection, to: old)
         Haptics.success()
-    }
-
-    /// Current inking tool's PKInk (for rebuilding edited shape strokes).
-    private func currentInk() -> PKInk {
-        if let tool = canvasController.toolState.pkTool(darkMode: colorScheme == .dark) as? PKInkingTool {
-            return tool.ink
-        }
-        return PKInk(.pen, color: .label)
     }
 
     private func sendAsk() {
