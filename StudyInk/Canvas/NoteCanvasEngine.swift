@@ -70,6 +70,13 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         }
         canvas.addGestureRecognizer(holdSnap)
 
+        // Finger-tap a committed shape to re-select it for move/rotate/reshape.
+        let shapeTap = UITapGestureRecognizer(target: self, action: #selector(canvasTapped(_:)))
+        shapeTap.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.direct.rawValue)]
+        shapeTap.cancelsTouchesInView = false
+        shapeTap.delegate = self
+        canvas.addGestureRecognizer(shapeTap)
+
         // Circle & Ask trigger: hold the Pencil still for ~1s.
         let hold = UILongPressGestureRecognizer(target: self, action: #selector(pencilHeld(_:)))
         hold.minimumPressDuration = 1.0
@@ -411,7 +418,14 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
             }
             canvas.drawing = replaced
             Haptics.tap()
-            self.controller.onShapeCreated?(self.activeIndex, count - 1, shape)
+            self.controller.onShapeCreated?(
+                self.activeIndex,
+                count - 1,
+                shape,
+                last.ink,
+                Double(self.averageWidth(of: last)),
+                self.displayHex(for: last.ink)
+            )
         }
         shapeWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.45, execute: work)
@@ -455,8 +469,72 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
             self.lastStrokeCount = replaced.strokes.count
             self.controller.onDrawingChanged?(self.activeIndex, replaced)
             Haptics.tap()
-            self.controller.onShapeCreated?(self.activeIndex, replaced.strokes.count - 1, shape)
+            self.controller.onShapeCreated?(
+                self.activeIndex,
+                replaced.strokes.count - 1,
+                shape,
+                inkingTool.ink,
+                self.controller.toolState.width,
+                self.controller.toolState.colorHex
+            )
         }
+    }
+
+    /// Finger tap: if it lands on a stroke that reads as a clean shape,
+    /// reopen it for editing (move / rotate / reshape via nodes).
+    @objc private func canvasTapped(_ recognizer: UITapGestureRecognizer) {
+        let location = recognizer.location(in: canvas)
+        let drawing = canvas.drawing
+        let tolerance: CGFloat = max(14, 10 / max(zoomScale, 0.1))
+
+        for (index, stroke) in drawing.strokes.enumerated().reversed() {
+            guard stroke.renderBounds.insetBy(dx: -tolerance, dy: -tolerance).contains(location) else { continue }
+            guard strokeDistance(from: stroke, to: location) <= tolerance else { continue }
+            guard let shape = ShapeRecognizer.recognize(stroke) else { return }
+            Haptics.selection()
+            controller.onShapeCreated?(
+                activeIndex,
+                index,
+                shape,
+                stroke.ink,
+                Double(averageWidth(of: stroke)),
+                displayHex(for: stroke.ink)
+            )
+            return
+        }
+    }
+
+    private func strokeDistance(from stroke: PKStroke, to point: CGPoint) -> CGFloat {
+        let path = stroke.path
+        let step = max(1, path.count / 80)
+        var best = CGFloat.greatestFiniteMagnitude
+        for i in stride(from: 0, to: path.count, by: step) {
+            let p = path[i].location.applying(stroke.transform)
+            best = min(best, hypot(p.x - point.x, p.y - point.y))
+        }
+        return best
+    }
+
+    private func averageWidth(of stroke: PKStroke) -> CGFloat {
+        let path = stroke.path
+        guard path.count > 0 else { return 4 }
+        let step = max(1, path.count / 16)
+        var total: CGFloat = 0
+        var count: CGFloat = 0
+        for i in stride(from: 0, to: path.count, by: step) {
+            total += path[i].size.width
+            count += 1
+        }
+        return total / max(count, 1)
+    }
+
+    /// PencilKit stores light-variant colors; report what's actually on screen.
+    private func displayHex(for ink: PKInk) -> String {
+        var color = ink.color
+        if traitCollection.userInterfaceStyle == .dark {
+            color = PKInkingTool.convertColor(color, from: .light, to: .dark)
+        }
+        return color.hexString
     }
 
     // MARK: - Node editing of created shapes
