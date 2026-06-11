@@ -235,6 +235,10 @@
 "quiz.missed" = "פספסתי";
 "quiz.score %lld %lld" = "ענית נכון על %1$lld מתוך %2$lld";
 "quiz.again" = "בוחן חדש";
+"ai.draw" = "ציור על הקנבס";
+"ai.draw.placeholder" = "מה לצייר?";
+"ai.draw.go" = "ציור";
+"ai.draw.failed" = "לא הצלחתי להפוך את זה לסקיצה — נסו לתאר אחרת.";
 "ai.quiz.prefix %lld" = "שאלה %lld:";
 "ai.guidedMode" = "מצב מודרך";
 "ai.guided.suggestion" = "הצעת המורה";
