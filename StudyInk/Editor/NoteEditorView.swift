@@ -453,6 +453,9 @@ struct NoteEditorView: View {
         }
         .onChange(of: colorScheme) { tutor.isDarkMode = colorScheme == .dark }
         .onChange(of: pageIndex) { oldIndex, newIndex in
+            // An open shape edit holds its stroke OUT of the ink — commit it
+            // before the page (and its drawing) is saved and swapped.
+            commitOpenShapeEdit()
             persistOverlays(to: page(at: oldIndex))
             canvasController.engine?.refreshPage(oldIndex)
             loadPage()
@@ -477,6 +480,7 @@ struct NoteEditorView: View {
         .onChange(of: textBoxes) { scheduleOverlaySave() }
         .onChange(of: mediaItems) { scheduleOverlaySave() }
         .onDisappear {
+            commitOpenShapeEdit()
             persistOverlays()
             if audio.isRecording { audio.stopRecording() }
             audio.stopPlayback()
@@ -873,6 +877,16 @@ struct NoteEditorView: View {
         if page.mediaItems != mediaItems { page.mediaItems = mediaItems }
         note.searchableText = SearchableTextBuilder.build(for: note)
         PersistenceController.shared.save()
+    }
+
+    /// Commits an in-progress shape edit (its stroke is lifted out of the ink
+    /// while the node overlay is up) so navigation can't persist the page
+    /// without it.
+    private func commitOpenShapeEdit() {
+        guard let editing = editingShape else { return }
+        let stroke = ShapeRecognizer.idealStroke(for: editing.shape, ink: editing.ink, width: CGFloat(editing.width))
+        canvasController.engine?.endStrokeEdit(with: stroke)
+        editingShape = nil
     }
 
     private func wireCanvasSave() {
