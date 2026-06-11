@@ -105,7 +105,7 @@ struct NoteGridView: View {
             set: { if !$0 { autoOpenNote = nil } }
         )) {
             if let note = autoOpenNote {
-                NoteEditorView(note: note)
+                NoteEditorContainer(note: note)
                     .onAppear(perform: onNoteOpened)
             }
         }
@@ -138,7 +138,7 @@ struct NoteGridView: View {
 
     private func noteCell(_ note: Note) -> some View {
         NavigationLink {
-            NoteEditorView(note: note)
+            NoteEditorContainer(note: note)
                 .onAppear(perform: onNoteOpened)
         } label: {
             VStack(alignment: .leading, spacing: 8) {
@@ -170,7 +170,7 @@ struct NoteGridView: View {
 
     private func noteListRow(_ note: Note) -> some View {
         NavigationLink {
-            NoteEditorView(note: note)
+            NoteEditorContainer(note: note)
                 .onAppear(perform: onNoteOpened)
         } label: {
             HStack(spacing: 14) {

@@ -33,6 +33,9 @@
 "tool.width" = "Stroke Width";
 "tool.optionsHint" = "Tap again for color and width options";
 "lasso.transform.hint" = "Circle the strokes you want to rotate";
+"lasso.rect.hint" = "Drag a rectangle around the strokes you want to rotate";
+"tool.lasso.freeform" = "Freeform select";
+"tool.lasso.rect" = "Rectangle select";
 "shape.node" = "Shape node";
 
 /* Toolbar */
@@ -114,6 +117,7 @@
 "library.trashEmpty" = "Nothing here";
 "library.trashEmpty.subtitle" = "Deleted notes stay here for 30 days before being removed.";
 "library.toggleChildren" = "Show or hide nested subjects";
+"editor.notesPane" = "Notes drawer";
 "library.subjects" = "Subjects";
 "library.searchPrompt" = "Search notes, handwriting, Hebrew or English";
 "library.sort" = "Sort";
@@ -153,6 +157,13 @@
 "settings.appearance.system" = "System";
 "settings.appearance.light" = "Light";
 "settings.appearance.dark" = "Dark";
+"settings.theme" = "Accent Theme";
+"theme.classic" = "Classic Blue";
+"theme.violet" = "Violet";
+"theme.forest" = "Forest";
+"theme.sunset" = "Sunset";
+"theme.rose" = "Rose";
+"theme.graphite" = "Graphite";
 "settings.backup" = "Backup & Sync";
 "settings.notes" = "Notes";
 "settings.defaultTemplate" = "Default Page Template";
@@ -215,6 +226,15 @@
 "ai.explainPage.question" = "Explain this page: summarize it and point out the key concepts.";
 "ai.quizMe" = "Quiz Me";
 "ai.quiz.failed" = "Couldn't generate a quiz from this note yet — try adding more content.";
+"quiz.title" = "Quiz";
+"quiz.loading" = "Writing questions from your note…";
+"quiz.retry" = "Try Again";
+"quiz.answer" = "Answer";
+"quiz.showAnswer" = "Show Answer";
+"quiz.gotIt" = "I got it";
+"quiz.missed" = "Missed it";
+"quiz.score %lld %lld" = "You got %1$lld of %2$lld";
+"quiz.again" = "New Quiz";
 "ai.quiz.prefix %lld" = "Question %lld:";
 "ai.guidedMode" = "Guided Mode";
 "ai.guided.suggestion" = "AI tutor suggestion";

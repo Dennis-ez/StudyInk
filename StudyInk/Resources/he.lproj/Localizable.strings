@@ -33,6 +33,9 @@
 "tool.width" = "עובי קו";
 "tool.optionsHint" = "הקישו שוב לאפשרויות צבע ועובי";
 "lasso.transform.hint" = "הקיפו את הקווים שתרצו לסובב";
+"lasso.rect.hint" = "גררו מלבן סביב הקווים שתרצו לסובב";
+"tool.lasso.freeform" = "בחירה חופשית";
+"tool.lasso.rect" = "בחירה מלבנית";
 "shape.node" = "נקודת צורה";
 
 /* סרגל כלים */
@@ -114,6 +117,7 @@
 "library.trashEmpty" = "אין כאן כלום";
 "library.trashEmpty.subtitle" = "מחברות שנמחקו נשמרות כאן 30 יום לפני הסרה סופית.";
 "library.toggleChildren" = "הצגה או הסתרה של נושאים מקוננים";
+"editor.notesPane" = "מגירת מחברות";
 "library.subjects" = "מקצועות";
 "library.searchPrompt" = "חיפוש במחברות, בכתב יד, בעברית או באנגלית";
 "library.sort" = "מיון";
@@ -153,6 +157,13 @@
 "settings.appearance.system" = "מערכת";
 "settings.appearance.light" = "בהיר";
 "settings.appearance.dark" = "כהה";
+"settings.theme" = "ערכת צבע";
+"theme.classic" = "כחול קלאסי";
+"theme.violet" = "סגול";
+"theme.forest" = "ירוק יער";
+"theme.sunset" = "שקיעה";
+"theme.rose" = "ורוד";
+"theme.graphite" = "גרפיט";
 "settings.backup" = "גיבוי וסנכרון";
 "settings.notes" = "מחברות";
 "settings.defaultTemplate" = "תבנית עמוד ברירת מחדל";
@@ -215,6 +226,15 @@
 "ai.explainPage.question" = "הסבר את העמוד הזה: סכם אותו והצבע על המושגים המרכזיים.";
 "ai.quizMe" = "בחן אותי";
 "ai.quiz.failed" = "עדיין אי אפשר ליצור בוחן מהמחברת הזו — נסו להוסיף עוד תוכן.";
+"quiz.title" = "בוחן";
+"quiz.loading" = "כותב שאלות מהמחברת…";
+"quiz.retry" = "ניסיון נוסף";
+"quiz.answer" = "תשובה";
+"quiz.showAnswer" = "הצגת תשובה";
+"quiz.gotIt" = "ידעתי";
+"quiz.missed" = "פספסתי";
+"quiz.score %lld %lld" = "ענית נכון על %1$lld מתוך %2$lld";
+"quiz.again" = "בוחן חדש";
 "ai.quiz.prefix %lld" = "שאלה %lld:";
 "ai.guidedMode" = "מצב מודרך";
 "ai.guided.suggestion" = "הצעת המורה";

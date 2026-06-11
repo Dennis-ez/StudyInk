@@ -69,27 +69,39 @@ enum StrokeSelector {
     }
 }
 
-/// Lasso capture for transform mode: draw a loop, get its page-space polygon.
+/// Lasso capture for transform mode: draw a loop (or, in rectangular mode,
+/// drag a marquee) and get its page-space polygon.
 struct TransformLassoOverlay: View {
     @Binding var isActive: Bool
     let transform: CanvasTransform
+    /// false = freeform loop; true = drag-a-rectangle marquee.
+    var rectangular = false
     var onComplete: ([CGPoint]) -> Void
 
     @State private var points: [CGPoint] = []
+    @State private var marquee: CGRect?
 
     var body: some View {
         if isActive {
             ZStack {
                 Color.black.opacity(0.04).ignoresSafeArea()
-                Path { path in
-                    guard let first = points.first else { return }
-                    path.move(to: first)
-                    for point in points.dropFirst() { path.addLine(to: point) }
+                if rectangular {
+                    if let marquee {
+                        Path(marquee)
+                            .stroke(SemanticColor.aiCircleStroke, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, dash: [7, 5]))
+                            .background(Path(marquee).fill(SemanticColor.aiCircleStroke.opacity(0.06)))
+                    }
+                } else {
+                    Path { path in
+                        guard let first = points.first else { return }
+                        path.move(to: first)
+                        for point in points.dropFirst() { path.addLine(to: point) }
+                    }
+                    .stroke(SemanticColor.aiCircleStroke, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, dash: [7, 5]))
                 }
-                .stroke(SemanticColor.aiCircleStroke, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, dash: [7, 5]))
 
                 VStack {
-                    Text("lasso.transform.hint")
+                    Text(rectangular ? "lasso.rect.hint" : "lasso.transform.hint")
                         .font(.footnote)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
@@ -101,10 +113,32 @@ struct TransformLassoOverlay: View {
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 2)
-                    .onChanged { points.append($0.location) }
+                    .onChanged { value in
+                        if rectangular {
+                            marquee = CGRect(
+                                x: min(value.startLocation.x, value.location.x),
+                                y: min(value.startLocation.y, value.location.y),
+                                width: abs(value.location.x - value.startLocation.x),
+                                height: abs(value.location.y - value.startLocation.y)
+                            )
+                        } else {
+                            points.append(value.location)
+                        }
+                    }
                     .onEnded { _ in
-                        let polygon = points.map(transform.toPage)
+                        let polygon: [CGPoint]
+                        if let rect = marquee, rectangular {
+                            polygon = [
+                                CGPoint(x: rect.minX, y: rect.minY),
+                                CGPoint(x: rect.maxX, y: rect.minY),
+                                CGPoint(x: rect.maxX, y: rect.maxY),
+                                CGPoint(x: rect.minX, y: rect.maxY),
+                            ].map(transform.toPage)
+                        } else {
+                            polygon = points.map(transform.toPage)
+                        }
                         points = []
+                        marquee = nil
                         isActive = false
                         onComplete(polygon)
                     }
@@ -112,6 +146,7 @@ struct TransformLassoOverlay: View {
             .overlay(alignment: .topTrailing) {
                 Button {
                     points = []
+                    marquee = nil
                     isActive = false
                 } label: {
                     Image(systemName: "xmark.circle.fill")

@@ -36,8 +36,10 @@ struct FloatingToolbar: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var onInsertTextBox: () -> Void
-    /// Re-tapping the lasso tool arms select-and-rotate.
+    /// Freeform select-and-rotate (lasso strip).
     var onTransformSelection: () -> Void = {}
+    /// Rectangle-marquee select-and-rotate (lasso strip).
+    var onRectSelect: () -> Void = {}
     var extraItems: [ToolbarExtraItem] = []
 
     private var dock: ToolbarDock { ToolbarDock(rawValue: dockRaw) ?? .top }
@@ -139,6 +141,13 @@ struct FloatingToolbar: View {
                 EraserOptionsStrip(controller: controller, horizontal: dock.isHorizontal)
                     .studyGlass(cornerRadius: 18)
                     .transition(.scale(scale: 0.92, anchor: dock == .bottom ? .bottom : .top).combined(with: .opacity))
+            } else if kind == .lasso {
+                LassoOptionsStrip(horizontal: dock.isHorizontal) { rectangular in
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { showInlineOptions = false }
+                    rectangular ? onRectSelect() : onTransformSelection()
+                }
+                .studyGlass(cornerRadius: 18)
+                .transition(.scale(scale: 0.92, anchor: dock == .bottom ? .bottom : .top).combined(with: .opacity))
             }
         }
     }
@@ -229,17 +238,16 @@ struct FloatingToolbar: View {
 
     private func toolButton(_ kind: ToolKind) -> some View {
         let isActive = controller.toolState.kind == kind
-        let hasOptions = kind.isInking || kind == .eraserPixel || kind == .eraserObject
+        let hasOptions = kind != .hand
         return Button {
             if isActive {
-                // Second tap on the active tool = toggle its quick options strip.
+                // Second tap on the active tool = toggle its quick options strip
+                // (the lasso's strip offers freeform/rect select-and-rotate).
                 if hasOptions {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
                         showInlineOptions.toggle()
                         if !showInlineOptions { showToolOptions = false }
                     }
-                } else if kind == .lasso {
-                    onTransformSelection()
                 }
             } else {
                 Haptics.selection()
@@ -393,6 +401,37 @@ private struct InkOptionsStrip: View {
         .buttonStyle(.plain)
         .accessibilityLabel(Text("tool.width"))
         .accessibilityValue(Text("\(Int(width))"))
+    }
+}
+
+/// Inline lasso options: arm freeform or rectangle select-and-rotate.
+private struct LassoOptionsStrip: View {
+    var horizontal = true
+    /// Called with `true` for rectangle mode, `false` for freeform.
+    var onSelect: (Bool) -> Void
+
+    var body: some View {
+        let layout = horizontal ? AnyLayout(HStackLayout(spacing: 10)) : AnyLayout(VStackLayout(spacing: 10))
+        layout {
+            modeButton(symbol: "lasso", labelKey: "tool.lasso.freeform", rectangular: false)
+            modeButton(symbol: "rectangle.dashed", labelKey: "tool.lasso.rect", rectangular: true)
+        }
+        .padding(.horizontal, horizontal ? 12 : 6)
+        .padding(.vertical, horizontal ? 6 : 12)
+    }
+
+    private func modeButton(symbol: String, labelKey: LocalizedStringKey, rectangular: Bool) -> some View {
+        Button {
+            Haptics.selection()
+            onSelect(rectangular)
+        } label: {
+            Image(systemName: symbol)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(Color.primary)
+                .frame(width: 30, height: 30)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(labelKey))
     }
 }
 
