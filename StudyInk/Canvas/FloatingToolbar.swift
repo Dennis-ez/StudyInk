@@ -30,11 +30,23 @@ struct FloatingToolbar: View {
 
     var body: some View {
         GeometryReader { geo in
-            content
-                .offset(dragOffset)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)
-                .padding(12)
-                .animation(.spring(response: 0.3, dampingFraction: 0.8), value: dockRaw)
+            ZStack {
+                // While the options panel is open, the first tap anywhere
+                // outside it dismisses (popover behavior).
+                if showToolOptions {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { showToolOptions = false }
+                        }
+                }
+                content
+                    .offset(dragOffset)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)
+                    .padding(12)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.8), value: dockRaw)
+            }
         }
         .allowsHitTesting(true)
     }
@@ -98,16 +110,6 @@ struct FloatingToolbar: View {
                 Image(systemName: "textbox")
             }
             .accessibilityLabel(Text("tool.textbox"))
-            Button(action: controller.undo) {
-                Image(systemName: "arrow.uturn.backward")
-            }
-            .disabled(!controller.canUndo)
-            .accessibilityLabel(Text("action.undo"))
-            Button(action: controller.redo) {
-                Image(systemName: "arrow.uturn.forward")
-            }
-            .disabled(!controller.canRedo)
-            .accessibilityLabel(Text("action.redo"))
             ForEach(extraItems) { item in
                 Button(action: item.action) { Image(systemName: item.symbolName) }
                     .accessibilityLabel(Text(item.labelKey))
@@ -130,6 +132,10 @@ struct FloatingToolbar: View {
     private var grip: some View {
         Image(systemName: "line.3.horizontal")
             .foregroundStyle(.tertiary)
+            // Full button-sized hit target — the bare glyph was ~16pt and
+            // nearly impossible to grab.
+            .frame(width: 34, height: 34)
+            .contentShape(Rectangle())
             .gesture(
                 DragGesture(coordinateSpace: .global)
                     .onChanged { dragOffset = $0.translation }
@@ -164,6 +170,11 @@ struct FloatingToolbar: View {
             } else {
                 Haptics.selection()
                 controller.select(kind)
+                // Eraser/lasso have no color options — a stale open panel
+                // would show the previous pen's colors.
+                if !kind.isInking, showToolOptions {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { showToolOptions = false }
+                }
             }
         } label: {
             Image(systemName: kind.symbolName)

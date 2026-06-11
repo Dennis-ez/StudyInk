@@ -55,7 +55,11 @@ enum PageRenderer {
 
     @MainActor
     static func pdfData(for note: Note, darkMode: Bool = false) -> Data {
-        let snapshots = note.sortedPages.map(Snapshot.init)
+        let all = note.sortedPages.map(Snapshot.init)
+        // Auto-appended trailing pages (and any other untouched page) stay out
+        // of the export; an entirely empty note still exports its first page.
+        let nonEmpty = all.filter(hasContent)
+        let snapshots = nonEmpty.isEmpty ? Array(all.prefix(1)) : nonEmpty
         let renderer = UIGraphicsPDFRenderer(bounds: .zero)
         return renderer.pdfData { ctx in
             for snapshot in snapshots {
@@ -68,6 +72,18 @@ enum PageRenderer {
     @MainActor
     static func pngData(for page: Page, darkMode: Bool) -> Data? {
         image(for: page, darkMode: darkMode, scale: 2).pngData()
+    }
+
+    /// A page is worth exporting if it has ink, media, typed text, or an
+    /// imported PDF behind it.
+    static func hasContent(_ snapshot: Snapshot) -> Bool {
+        if snapshot.customTemplatePDF != nil { return true }
+        if !snapshot.mediaItems.isEmpty { return true }
+        if snapshot.textBoxes.contains(where: { !$0.text.isEmpty }) { return true }
+        if let data = snapshot.drawingData,
+           let drawing = try? PKDrawing(data: data),
+           !drawing.strokes.isEmpty { return true }
+        return false
     }
 
     /// Paper + template/PDF only — shared by full renders and the live page

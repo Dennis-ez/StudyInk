@@ -72,9 +72,11 @@ final class CanvasController: NSObject, ObservableObject {
     var onPencilHold: (() -> Void)?
     /// Tapping the trailing "add page" affordance.
     var onAddPage: (() -> Void)?
-    /// A shape is ready for node editing (just created, or tapped later):
-    /// (pageIndex, strokeIndex, shape, ink, width, displayColorHex).
+    /// A shape was just recognized and snapped clean (informational — fresh
+    /// shapes stay unselected): (pageIndex, strokeIndex, shape, ink, width, hex).
     var onShapeCreated: ((Int, Int, ShapeRecognizer.Shape, PKInk, Double, String) -> Void)?
+    /// Finger-tap on a committed shape — the only path that opens node editing.
+    var onShapeTapped: ((Int, Int, ShapeRecognizer.Shape, PKInk, Double, String) -> Void)?
     /// The engine pulls page content through these (set by the editor).
     var drawingProvider: ((Int) -> PKDrawing)?
     var snapshotProvider: ((Int) -> PageRenderer.Snapshot?)?

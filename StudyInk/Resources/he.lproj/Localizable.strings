@@ -212,3 +212,7 @@
 "ai.suggestion.explainThis" = "הסבר לי את זה";
 "ai.suggestion.nextStep" = "מה הצעד הבא?";
 "ai.suggestion.similarExample" = "הראה דוגמה דומה";
+
+"editor.more" = "עוד";
+"page.previous" = "העמוד הקודם";
+"page.next" = "העמוד הבא";
