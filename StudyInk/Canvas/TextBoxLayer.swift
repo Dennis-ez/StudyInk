@@ -26,6 +26,7 @@ struct TextBoxLayer: View {
     @Binding var boxes: [TextBoxModel]
     let transform: CanvasTransform
     @Binding var editingBoxID: UUID?
+    var snap: SnapMetrics?
     @FocusState private var focusedBox: UUID?
 
     var body: some View {
@@ -35,6 +36,7 @@ struct TextBoxLayer: View {
                     box: $box,
                     isEditing: editingBoxID == box.id,
                     transform: transform,
+                    snap: snap,
                     focusedBox: $focusedBox,
                     onBeginEdit: { editingBoxID = box.id; focusedBox = box.id },
                     onDelete: { boxes.removeAll { $0.id == box.id } }
@@ -51,6 +53,7 @@ private struct TextBoxView: View {
     @Binding var box: TextBoxModel
     let isEditing: Bool
     let transform: CanvasTransform
+    var snap: SnapMetrics?
     var focusedBox: FocusState<UUID?>.Binding
     let onBeginEdit: () -> Void
     let onDelete: () -> Void
@@ -133,8 +136,14 @@ private struct TextBoxView: View {
             .onChanged { value in
                 if dragStart == nil { dragStart = CGPoint(x: box.x, y: box.y) }
                 guard let start = dragStart else { return }
-                box.x = start.x + value.translation.width / transform.zoomScale
-                box.y = start.y + value.translation.height / transform.zoomScale
+                var x = start.x + value.translation.width / transform.zoomScale
+                var y = start.y + value.translation.height / transform.zoomScale
+                if let snap {
+                    x = snap.snappedX(x)
+                    y = snap.snappedY(y)
+                }
+                box.x = x
+                box.y = y
             }
             .onEnded { _ in dragStart = nil }
     }
@@ -144,8 +153,15 @@ private struct TextBoxView: View {
             .onChanged { value in
                 if resizeStart == nil { resizeStart = CGSize(width: box.width, height: box.height) }
                 guard let start = resizeStart else { return }
-                box.width = max(80, start.width + value.translation.width / transform.zoomScale)
-                box.height = max(40, start.height + value.translation.height / transform.zoomScale)
+                var width = max(80, start.width + value.translation.width / transform.zoomScale)
+                var height = max(40, start.height + value.translation.height / transform.zoomScale)
+                if let snap {
+                    // Magnetize trailing edges to the grid.
+                    width = max(80, snap.snappedX(box.x + width) - box.x)
+                    height = max(40, snap.snappedY(box.y + height) - box.y)
+                }
+                box.width = width
+                box.height = height
             }
             .onEnded { _ in resizeStart = nil }
     }

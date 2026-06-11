@@ -89,6 +89,7 @@ struct FloatingToolbar: View {
                 Button { showCustomize = true } label: { Label("toolbar.customize", systemImage: "slider.horizontal.3") }
                 Toggle(isOn: $controller.pencilOnly) { Label("toolbar.pencilOnly", systemImage: "applepencil") }
                 Toggle(isOn: $controller.autoShapes) { Label("tool.autoShapes", systemImage: "square.on.circle") }
+                Toggle(isOn: $controller.snapToGrid) { Label("tool.snapToGrid", systemImage: "grid") }
             } label: {
                 Image(systemName: "ellipsis.circle")
             }
