@@ -206,7 +206,11 @@ struct FloatingToolbar: View {
         .buttonStyle(ToolbarButtonStyle())
         .padding(6)
         .studyGlass(cornerRadius: 16)
-        .onGeometryChange(for: CGSize.self) { $0.size } action: { barSize = $0 }
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { size in
+            // Defer: writing state inside the layout pass trips "publishing
+            // changes from within view updates".
+            DispatchQueue.main.async { barSize = size }
+        }
         .sheet(isPresented: $showCustomize) {
             CustomizeToolbarSheet(
                 enabledToolsRaw: $enabledToolsRaw,

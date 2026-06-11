@@ -65,30 +65,35 @@ struct LibraryView: View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             sidebar
         } detail: {
-            NoteGridView(
-                section: selection,
-                searchText: searchText,
-                gridLayout: gridLayout,
-                sort: LibrarySort(rawValue: sortRaw) ?? .dateModified,
-                onNoteOpened: {
-                    // The canvas deserves the whole screen.
-                    withAnimation { columnVisibility = .detailOnly }
-                },
-                onNoteClosed: {
-                    withAnimation { columnVisibility = .all }
-                }
-            )
-            .navigationTitle(detailTitle)
-            .toolbar { detailToolbar }
-            // The toolbar's New Note goes straight into the editor.
-            .navigationDestination(isPresented: Binding(
-                get: { autoOpenNote != nil },
-                set: { if !$0 { autoOpenNote = nil } }
-            )) {
-                if let note = autoOpenNote {
-                    NoteEditorContainer(note: note)
-                        .onAppear { withAnimation { columnVisibility = .detailOnly } }
-                        .onDisappear { withAnimation { columnVisibility = .all } }
+            // Explicit stack: navigationDestination/push inside a split view's
+            // detail column needs one, or it targets a non-existent next column
+            // (console was full of "navigationDestination is misplaced").
+            NavigationStack {
+                NoteGridView(
+                    section: selection,
+                    searchText: searchText,
+                    gridLayout: gridLayout,
+                    sort: LibrarySort(rawValue: sortRaw) ?? .dateModified,
+                    onNoteOpened: {
+                        // The canvas deserves the whole screen.
+                        withAnimation { columnVisibility = .detailOnly }
+                    },
+                    onNoteClosed: {
+                        withAnimation { columnVisibility = .all }
+                    }
+                )
+                .navigationTitle(detailTitle)
+                .toolbar { detailToolbar }
+                // The toolbar's New Note goes straight into the editor.
+                .navigationDestination(isPresented: Binding(
+                    get: { autoOpenNote != nil },
+                    set: { if !$0 { autoOpenNote = nil } }
+                )) {
+                    if let note = autoOpenNote {
+                        NoteEditorContainer(note: note)
+                            .onAppear { withAnimation { columnVisibility = .detailOnly } }
+                            .onDisappear { withAnimation { columnVisibility = .all } }
+                    }
                 }
             }
         }
@@ -350,10 +355,22 @@ struct LibraryView: View {
         }
 
         Button(role: .destructive) {
-            context.delete(subject)
-            if selection == .subject(subject) { selection = .all }
+            // Deleting a folder takes its whole subtree: notes (own and
+            // nested) go to Recently Deleted; subfolders go with the parent
+            // instead of popping out as new roots (the nullify delete rule
+            // made children "replace" the deleted parent).
+            softDelete(subject)
+            if case .subject(let selected) = selection, selected.isDeleted || selected == subject {
+                selection = .all
+            }
             PersistenceController.shared.save()
         } label: { Label("action.delete", systemImage: "trash") }
+    }
+
+    private func softDelete(_ subject: Subject) {
+        for note in subject.notes ?? [] { note.deletedAt = Date() }
+        for child in subject.children ?? [] { softDelete(child) }
+        context.delete(subject)
     }
 
     @ToolbarContentBuilder

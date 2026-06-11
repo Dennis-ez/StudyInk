@@ -165,8 +165,13 @@ struct PageThumbnailView: View {
                         .scaledToFit()
                 }
             }
-            .onAppear { displayWidth = geo.size.width }
-            .onChange(of: geo.size.width) { _, width in displayWidth = width }
+            .onAppear {
+                let width = geo.size.width
+                DispatchQueue.main.async { displayWidth = width }
+            }
+            .onChange(of: geo.size.width) { _, width in
+                DispatchQueue.main.async { displayWidth = width }
+            }
         }
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.quaternary))
