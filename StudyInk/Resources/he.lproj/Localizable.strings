@@ -117,6 +117,7 @@
 "library.trashEmpty" = "אין כאן כלום";
 "library.trashEmpty.subtitle" = "מחברות שנמחקו נשמרות כאן 30 יום לפני הסרה סופית.";
 "library.toggleChildren" = "הצגה או הסתרה של נושאים מקוננים";
+"library.select" = "בחירה";
 "subjectColor.blue" = "כחול";
 "subjectColor.red" = "אדום";
 "subjectColor.green" = "ירוק";
@@ -242,6 +243,9 @@
 "quiz.missed" = "פספסתי";
 "quiz.score %lld %lld" = "ענית נכון על %1$lld מתוך %2$lld";
 "quiz.again" = "בוחן חדש";
+"ai.quick.explain" = "הסבר את העמוד";
+"ai.quick.hint" = "תן לי רמז";
+"ai.quick.summarize" = "סכם את העמוד";
 "ai.draw" = "תשובה בכתב יד";
 "ai.draw.placeholder" = "למשל: פתרו את שאלה 2";
 "ai.draw.go" = "כתיבה";

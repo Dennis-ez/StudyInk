@@ -150,7 +150,8 @@ struct LibraryView: View {
         // The sidebar is the library's spine — it can't be hidden from the
         // main screen (the editor still takes the full screen when a note opens).
         .hideSidebarToggle()
-        .navigationTitle(Text("app.name"))
+        // No app-name header — the sidebar speaks for itself.
+        .toolbarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 Menu {

@@ -117,6 +117,7 @@
 "library.trashEmpty" = "Nothing here";
 "library.trashEmpty.subtitle" = "Deleted notes stay here for 30 days before being removed.";
 "library.toggleChildren" = "Show or hide nested subjects";
+"library.select" = "Select";
 "subjectColor.blue" = "Blue";
 "subjectColor.red" = "Red";
 "subjectColor.green" = "Green";
@@ -242,6 +243,9 @@
 "quiz.missed" = "Missed it";
 "quiz.score %lld %lld" = "You got %1$lld of %2$lld";
 "quiz.again" = "New Quiz";
+"ai.quick.explain" = "Explain this page";
+"ai.quick.hint" = "Give me a hint";
+"ai.quick.summarize" = "Summarize the page";
 "ai.draw" = "Answer in Ink";
 "ai.draw.placeholder" = "e.g. Solve question 2";
 "ai.draw.go" = "Write";

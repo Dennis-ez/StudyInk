@@ -377,6 +377,26 @@ struct NoteEditorView: View {
                 }
                 .ignoresSafeArea(edges: .bottom)
             }
+
+            // Minimal ask-the-tutor input: floating glass field + quick chips,
+            // bottom-center (replaces the system alert).
+            if showAskField {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { showAskField = false }
+                    }
+                VStack {
+                    Spacer()
+                    AskTutorBar(text: $askText) {
+                        sendAsk()
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { showAskField = false }
+                    }
+                    .padding(.bottom, 28)
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
         }
         // No system navigation bar — the canvas owns the full screen; actions
         // live in the floating glass action bar (top-trailing).
@@ -521,13 +541,6 @@ struct NoteEditorView: View {
             }
             return true
         }
-        .alert(Text("ai.ask"), isPresented: $showAskField) {
-            TextField("ai.askPlaceholder", text: $askText)
-            Button("action.cancel", role: .cancel) { askText = "" }
-            Button("ai.send") { sendAsk() }
-        } message: {
-            Text("ai.askHint")
-        }
         .sheet(isPresented: circleAskBinding) {
             if let region = circleAskRegion {
                 CircleAskSheet(region: region) { question in
@@ -615,8 +628,72 @@ struct NoteEditorView: View {
         Task { await tutor.ask(question: question, anchor: anchor) }
     }
 
-    // MARK: - Toolbar
+    // MARK: - Ask bar
+}
 
+/// Minimal floating input for asking the tutor: one glass capsule with a
+/// focused text field and a send arrow, quick-question chips above it.
+private struct AskTutorBar: View {
+    @Binding var text: String
+    var onSend: () -> Void
+    @FocusState private var focused: Bool
+
+    private static let quickKeys: [LocalizedStringKey] = [
+        "ai.quick.explain", "ai.quick.hint", "ai.quick.summarize",
+    ]
+    private static let quickQuestions: [String] = [
+        String(localized: "ai.quick.explain"),
+        String(localized: "ai.quick.hint"),
+        String(localized: "ai.quick.summarize"),
+    ]
+
+    var body: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 8) {
+                ForEach(Array(Self.quickKeys.enumerated()), id: \.offset) { index, key in
+                    Button {
+                        text = Self.quickQuestions[index]
+                        onSend()
+                    } label: {
+                        Text(key)
+                            .font(.footnote)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .background(.regularMaterial, in: Capsule())
+                            .overlay(Capsule().strokeBorder(.quaternary))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            HStack(spacing: 10) {
+                Image(systemName: "sparkles")
+                    .foregroundStyle(Color.accentColor)
+                TextField("ai.askPlaceholder", text: $text, axis: .vertical)
+                    .lineLimit(1...3)
+                    .focused($focused)
+                    .onSubmit(onSend)
+                Button(action: onSend) {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(text.trimmingCharacters(in: .whitespaces).isEmpty ? Color.secondary : Color.accentColor)
+                }
+                .buttonStyle(.plain)
+                .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)
+                .accessibilityLabel(Text("ai.send"))
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 11)
+            .frame(width: 420)
+            .studyGlass(cornerRadius: 24)
+        }
+        .onAppear { focused = true }
+    }
+}
+
+// MARK: - Toolbar & content actions
+
+extension NoteEditorView {
     private var toolbarExtras: [ToolbarExtraItem] {
         [
             ToolbarExtraItem(id: "ask-ai", symbolName: "sparkles", labelKey: "ai.ask") {
@@ -726,10 +803,12 @@ struct NoteEditorView: View {
         } label: {
             Image(systemName: "mic")
                 .symbolVariant(audio.isRecording ? .fill : .none)
-                .foregroundStyle(audio.isRecording ? Color("errorRed") : Color.primary)
                 .symbolEffect(.pulse, isActive: audio.isRecording)
                 .frame(width: 34, height: 34)
         }
+        // Menus restyle their label's foreground — .tint is the channel that
+        // actually survives, so the record button reads red like one.
+        .tint(Color("errorRed"))
         .accessibilityLabel(Text(audio.isRecording ? "audio.stop" : "audio.record"))
     }
 

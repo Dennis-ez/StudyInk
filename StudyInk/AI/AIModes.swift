@@ -125,7 +125,8 @@ struct SubjectContextMenu: View {
                 Label("ai.subject.custom", systemImage: "pencil")
             }
         } label: {
-            Image(systemName: "books.vertical")
+            // Inside the overflow menu a bare icon rendered as a nameless row.
+            Label("ai.subject", systemImage: "books.vertical")
         }
         .accessibilityLabel(Text("ai.subject"))
         .alert(Text("ai.subject.custom"), isPresented: $showCustomAlert) {

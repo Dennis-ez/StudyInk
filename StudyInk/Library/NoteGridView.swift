@@ -21,6 +21,8 @@ struct NoteGridView: View {
     @State private var renamingNote: Note?
     @State private var renameText = ""
     @State private var autoOpenNote: Note?
+    @State private var selecting = false
+    @State private var selectedIDs: Set<NSManagedObjectID> = []
     @Namespace private var zoomNamespace
 
     private var inTrash: Bool { section == .deleted }
@@ -123,6 +125,75 @@ struct NoteGridView: View {
                 renamingNote = nil
             }
         }
+        .onChange(of: section) {
+            selecting = false
+            selectedIDs = []
+        }
+        .toolbar { selectionToolbar }
+    }
+
+    // MARK: - Multi-select
+
+    @ToolbarContentBuilder
+    private var selectionToolbar: some ToolbarContent {
+        ToolbarItemGroup(placement: .topBarLeading) {
+            if selecting {
+                if inTrash {
+                    Button {
+                        applyToSelection { $0.deletedAt = nil }
+                    } label: { Label("library.restore", systemImage: "arrow.uturn.backward") }
+                        .disabled(selectedIDs.isEmpty)
+                    Button(role: .destructive) {
+                        applyToSelection { context.delete($0) }
+                    } label: { Label("library.deleteForever", systemImage: "trash.slash") }
+                        .disabled(selectedIDs.isEmpty)
+                } else {
+                    Button {
+                        applyToSelection { $0.isFavorite = true }
+                    } label: { Label("library.favorite", systemImage: "star") }
+                        .disabled(selectedIDs.isEmpty)
+                    Button(role: .destructive) {
+                        applyToSelection { $0.deletedAt = Date() }
+                    } label: { Label("action.delete", systemImage: "trash") }
+                        .disabled(selectedIDs.isEmpty)
+                }
+                Button("action.cancel") {
+                    withAnimation { selecting = false; selectedIDs = [] }
+                }
+            } else if !notes.isEmpty {
+                Button("library.select") {
+                    withAnimation { selecting = true }
+                }
+            }
+        }
+    }
+
+    private func applyToSelection(_ change: (Note) -> Void) {
+        for note in notes where selectedIDs.contains(note.objectID) {
+            change(note)
+        }
+        PersistenceController.shared.save()
+        withAnimation {
+            selecting = false
+            selectedIDs = []
+        }
+    }
+
+    private func toggleSelection(_ note: Note) {
+        Haptics.selection()
+        if !selectedIDs.insert(note.objectID).inserted {
+            selectedIDs.remove(note.objectID)
+        }
+    }
+
+    @ViewBuilder
+    private func selectionBadge(_ note: Note) -> some View {
+        let isSelected = selectedIDs.contains(note.objectID)
+        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+            .font(.title3)
+            .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+            .background(Circle().fill(.background.opacity(0.85)))
+            .padding(6)
     }
 
     private var renamingBinding: Binding<Bool> {
@@ -140,72 +211,106 @@ struct NoteGridView: View {
 
     // MARK: - Cells
 
+    @ViewBuilder
     private func noteCell(_ note: Note) -> some View {
-        NavigationLink {
-            NoteEditorContainer(note: note)
-                .onAppear(perform: onNoteOpened)
-                .onDisappear(perform: onNoteClosed)
-                .noteZoomDestination(id: note.objectID, in: zoomNamespace)
-        } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                if let first = note.sortedPages.first {
-                    PageThumbnailView(page: first)
-                        .frame(height: 260)
-                        .shadow(color: .black.opacity(0.14), radius: 6, y: 3)
-                }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(verbatim: note.title ?? "")
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(1)
-                    HStack(spacing: 6) {
-                        Text(note.modifiedAt ?? .now, style: .date)
-                        Text(verbatim: "·")
-                        Text("library.pageCount \(note.sortedPages.count)")
-                    }
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 2)
+        if selecting {
+            Button {
+                toggleSelection(note)
+            } label: {
+                gridCellLabel(note)
+                    .overlay(alignment: .topTrailing) { selectionBadge(note) }
             }
-            .noteZoomSource(id: note.objectID, in: zoomNamespace)
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text(verbatim: note.title ?? ""))
+        } else {
+            NavigationLink {
+                NoteEditorContainer(note: note)
+                    .onAppear(perform: onNoteOpened)
+                    .onDisappear(perform: onNoteClosed)
+                    .noteZoomDestination(id: note.objectID, in: zoomNamespace)
+            } label: {
+                gridCellLabel(note)
+                    .noteZoomSource(id: note.objectID, in: zoomNamespace)
+            }
+            .buttonStyle(.plain)
+            .draggable((note.id ?? UUID()).uuidString)
+            .contextMenu { noteContextMenu(note) }
+            .accessibilityLabel(Text(verbatim: note.title ?? ""))
         }
-        .buttonStyle(.plain)
-        .draggable((note.id ?? UUID()).uuidString)
-        .contextMenu { noteContextMenu(note) }
-        .accessibilityLabel(Text(verbatim: note.title ?? ""))
     }
 
-    private func noteListRow(_ note: Note) -> some View {
-        NavigationLink {
-            NoteEditorContainer(note: note)
-                .onAppear(perform: onNoteOpened)
-                .onDisappear(perform: onNoteClosed)
-                .noteZoomDestination(id: note.objectID, in: zoomNamespace)
-        } label: {
-            HStack(spacing: 14) {
-                if let first = note.sortedPages.first {
-                    PageThumbnailView(page: first)
-                        .frame(width: 56, height: 74)
-                }
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(verbatim: note.title ?? "")
-                        .font(.body.weight(.medium))
-                    HStack(spacing: 8) {
-                        Text("library.created \(dateString(note.createdAt))")
-                        Text("library.modified \(dateString(note.modifiedAt))")
-                    }
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Text("library.pageCount \(note.sortedPages.count)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+    private func gridCellLabel(_ note: Note) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let first = note.sortedPages.first {
+                // Portrait, like a page — not a square box.
+                PageThumbnailView(page: first)
+                    .aspectRatio(3 / 4, contentMode: .fit)
+                    .shadow(color: .black.opacity(0.14), radius: 6, y: 3)
             }
-            .noteZoomSource(id: note.objectID, in: zoomNamespace)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: note.title ?? "")
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(note.modifiedAt ?? .now, style: .date)
+                    Text(verbatim: "·")
+                    Text("library.pageCount \(note.sortedPages.count)")
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 2)
         }
-        .draggable((note.id ?? UUID()).uuidString)
-        .contextMenu { noteContextMenu(note) }
+    }
+
+    @ViewBuilder
+    private func noteListRow(_ note: Note) -> some View {
+        if selecting {
+            Button {
+                toggleSelection(note)
+            } label: {
+                HStack(spacing: 12) {
+                    selectionBadge(note)
+                    listRowLabel(note)
+                }
+            }
+            .buttonStyle(.plain)
+        } else {
+            NavigationLink {
+                NoteEditorContainer(note: note)
+                    .onAppear(perform: onNoteOpened)
+                    .onDisappear(perform: onNoteClosed)
+                    .noteZoomDestination(id: note.objectID, in: zoomNamespace)
+            } label: {
+                listRowLabel(note)
+                    .noteZoomSource(id: note.objectID, in: zoomNamespace)
+            }
+            .draggable((note.id ?? UUID()).uuidString)
+            .contextMenu { noteContextMenu(note) }
+        }
+    }
+
+    private func listRowLabel(_ note: Note) -> some View {
+        HStack(spacing: 14) {
+            if let first = note.sortedPages.first {
+                PageThumbnailView(page: first)
+                    .frame(width: 56, height: 74)
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                Text(verbatim: note.title ?? "")
+                    .font(.body.weight(.medium))
+                HStack(spacing: 8) {
+                    Text("library.created \(dateString(note.createdAt))")
+                    Text("library.modified \(dateString(note.modifiedAt))")
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Text("library.pageCount \(note.sortedPages.count)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 
     @ViewBuilder
