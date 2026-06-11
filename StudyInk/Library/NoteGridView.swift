@@ -9,6 +9,8 @@ struct NoteGridView: View {
     let gridLayout: Bool
     let sort: LibrarySort
     var onNoteOpened: () -> Void = {}
+    /// Fired when the editor pops — the library restores its sidebar.
+    var onNoteClosed: () -> Void = {}
 
     @Environment(\.managedObjectContext) private var context
     @FetchRequest(
@@ -84,7 +86,7 @@ struct NoteGridView: View {
                 }
             } else if gridLayout {
                 ScrollView {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 20)], spacing: 24) {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 22)], spacing: 26) {
                         ForEach(notes, id: \.objectID) { note in
                             noteCell(note)
                         }
@@ -108,6 +110,7 @@ struct NoteGridView: View {
             if let note = autoOpenNote {
                 NoteEditorContainer(note: note)
                     .onAppear(perform: onNoteOpened)
+                    .onDisappear(perform: onNoteClosed)
             }
         }
         .alert(Text("library.renameNote"), isPresented: renamingBinding) {
@@ -141,12 +144,13 @@ struct NoteGridView: View {
         NavigationLink {
             NoteEditorContainer(note: note)
                 .onAppear(perform: onNoteOpened)
+                .onDisappear(perform: onNoteClosed)
                 .noteZoomDestination(id: note.objectID, in: zoomNamespace)
         } label: {
             VStack(alignment: .leading, spacing: 8) {
                 if let first = note.sortedPages.first {
                     PageThumbnailView(page: first)
-                        .frame(height: 190)
+                        .frame(height: 260)
                         .shadow(color: .black.opacity(0.14), radius: 6, y: 3)
                 }
                 VStack(alignment: .leading, spacing: 2) {
@@ -175,12 +179,13 @@ struct NoteGridView: View {
         NavigationLink {
             NoteEditorContainer(note: note)
                 .onAppear(perform: onNoteOpened)
+                .onDisappear(perform: onNoteClosed)
                 .noteZoomDestination(id: note.objectID, in: zoomNamespace)
         } label: {
             HStack(spacing: 14) {
                 if let first = note.sortedPages.first {
                     PageThumbnailView(page: first)
-                        .frame(width: 44, height: 58)
+                        .frame(width: 56, height: 74)
                 }
                 VStack(alignment: .leading, spacing: 3) {
                     Text(verbatim: note.title ?? "")

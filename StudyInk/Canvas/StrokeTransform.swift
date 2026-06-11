@@ -70,12 +70,13 @@ enum StrokeSelector {
 }
 
 /// Lasso capture for transform mode: draw a loop (or, in rectangular mode,
-/// drag a marquee) and get its page-space polygon.
+/// drag a marquee) and get its page-space polygon. The mode is switchable
+/// inline, right in the capture overlay.
 struct TransformLassoOverlay: View {
     @Binding var isActive: Bool
     let transform: CanvasTransform
     /// false = freeform loop; true = drag-a-rectangle marquee.
-    var rectangular = false
+    @State private var rectangular = false
     var onComplete: ([CGPoint]) -> Void
 
     @State private var points: [CGPoint] = []
@@ -101,12 +102,18 @@ struct TransformLassoOverlay: View {
                 }
 
                 VStack {
-                    Text(rectangular ? "lasso.rect.hint" : "lasso.transform.hint")
-                        .font(.footnote)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .background(.regularMaterial, in: Capsule())
-                        .padding(.top, 70)
+                    HStack(spacing: 10) {
+                        Text(rectangular ? "lasso.rect.hint" : "lasso.transform.hint")
+                            .font(.footnote)
+                        Divider().frame(height: 18)
+                        // Inline mode switch — no extra toolbar round-trip.
+                        modeToggle(symbol: "lasso", labelKey: "tool.lasso.freeform", isRect: false)
+                        modeToggle(symbol: "rectangle.dashed", labelKey: "tool.lasso.rect", isRect: true)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(.regularMaterial, in: Capsule())
+                    .padding(.top, 70)
                     Spacer()
                 }
             }
@@ -158,6 +165,27 @@ struct TransformLassoOverlay: View {
             }
             .transition(.opacity)
         }
+    }
+
+    private func modeToggle(symbol: String, labelKey: LocalizedStringKey, isRect: Bool) -> some View {
+        Button {
+            Haptics.selection()
+            rectangular = isRect
+            points = []
+            marquee = nil
+        } label: {
+            Image(systemName: symbol)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(rectangular == isRect ? Color.accentColor : Color.secondary)
+                .frame(width: 26, height: 26)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(rectangular == isRect ? Color.accentColor.opacity(0.16) : .clear)
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(labelKey))
+        .accessibilityAddTraits(rectangular == isRect ? .isSelected : [])
     }
 }
 
