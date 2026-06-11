@@ -308,9 +308,12 @@ struct AIBubbleView: View {
             .onChanged { value in
                 if dragStart == nil { dragStart = CGPoint(x: bubble.x, y: bubble.y) }
                 guard let start = dragStart else { return }
+                // Position maps through the *real* zoom; pageZoom is the clamped
+                // display scale. Dividing by the clamp made drags overshoot or
+                // lag whenever zoomed past the clamp range.
                 tutor.move(bubbleID: bubble.id, to: CGPoint(
-                    x: start.x + value.translation.width / pageZoom,
-                    y: start.y + value.translation.height / pageZoom
+                    x: start.x + value.translation.width / transform.zoomScale,
+                    y: start.y + value.translation.height / transform.zoomScale
                 ))
             }
             .onEnded { _ in dragStart = nil }
