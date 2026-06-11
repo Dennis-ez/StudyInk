@@ -30,6 +30,7 @@ struct LibraryView: View {
     ) private var allNotesForCounts: FetchedResults<Note>
 
     @State private var selectedSubject: Subject?
+    @State private var columnVisibility = NavigationSplitViewVisibility.all
     @State private var searchText = ""
     @AppStorage("library.layout.grid") private var gridLayout = true
     @AppStorage("library.sort") private var sortRaw = LibrarySort.dateModified.rawValue
@@ -38,14 +39,18 @@ struct LibraryView: View {
     @State private var renameText = ""
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             sidebar
         } detail: {
             NoteGridView(
                 subject: selectedSubject,
                 searchText: searchText,
                 gridLayout: gridLayout,
-                sort: LibrarySort(rawValue: sortRaw) ?? .dateModified
+                sort: LibrarySort(rawValue: sortRaw) ?? .dateModified,
+                onNoteOpened: {
+                    // The canvas deserves the whole screen.
+                    withAnimation { columnVisibility = .detailOnly }
+                }
             )
             .navigationTitle(selectedSubject?.name.map { Text(verbatim: $0) } ?? Text("library.allNotes"))
             .toolbar { detailToolbar }

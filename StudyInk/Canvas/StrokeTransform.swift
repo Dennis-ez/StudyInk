@@ -144,6 +144,9 @@ struct StrokeTransformOverlay: View {
             Color.black.opacity(0.03)
                 .ignoresSafeArea()
                 .onTapGesture(perform: onDone)
+                // Two-finger twist anywhere on screen rotates the selection —
+                // precise finger rotation, no buttons needed.
+                .simultaneousGesture(twistGesture)
 
             Image(uiImage: selection.image)
                 .resizable()

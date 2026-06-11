@@ -33,6 +33,13 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         super.init(frame: .zero)
 
         delegate = self
+        // The pencil belongs to ink (draw/lasso/erase) — never to scrolling.
+        // Without this, the scroll pan races PencilKit's gestures and lasso
+        // strokes intermittently drag the page instead of selecting.
+        panGestureRecognizer.allowedTouchTypes = [
+            NSNumber(value: UITouch.TouchType.direct.rawValue),
+            NSNumber(value: UITouch.TouchType.indirectPointer.rawValue),
+        ]
         minimumZoomScale = 0.4
         maximumZoomScale = 5
         bouncesZoom = true
@@ -136,6 +143,29 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         publishGeometry()
     }
 
+    /// The editor wires its content providers in onAppear, which can land
+    /// AFTER makeUIView built the engine — leaving pages snapshot-less (gray)
+    /// and the live canvas empty. Re-pull anything missing on each update.
+    func ensureContent() {
+        guard controller.snapshotProvider != nil else { return }
+        for (index, container) in containers.enumerated() where container.snapshot == nil {
+            container.snapshot = controller.snapshotProvider?(index)
+            container.setNeedsDisplay()
+            if index != activeIndex {
+                container.imageView.isHidden = false
+                renderImage(for: index)
+            }
+        }
+        if canvas.drawing.strokes.isEmpty,
+           let drawing = controller.drawingProvider?(activeIndex),
+           !drawing.strokes.isEmpty {
+            isProgrammaticChange = true
+            canvas.drawing = drawing
+            isProgrammaticChange = false
+            lastStrokeCount = drawing.strokes.count
+        }
+    }
+
     /// Re-render one page's cached image + template (after template/page edits).
     func refreshPage(_ index: Int) {
         guard containers.indices.contains(index) else { return }
@@ -180,7 +210,14 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         isProgrammaticChange = true
         canvas.drawing = controller.drawingProvider?(index) ?? PKDrawing()
         isProgrammaticChange = false
-        container.imageView.isHidden = true
+        // PencilKit renders the swapped-in drawing asynchronously; keep this
+        // page's cached image visible underneath for a beat so the previous
+        // page's ink never flashes here.
+        container.imageView.isHidden = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self, weak container] in
+            guard let self, let container, self.activeIndex == index else { return }
+            container.imageView.isHidden = true
+        }
         // The undo stack is per-canvas, not per-page: undoing after a page
         // switch would resurrect the previous page's ink on this one.
         canvas.undoManager?.removeAllActions()
@@ -194,8 +231,9 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         flushPendingSave()
         let oldIndex = activeIndex
         if containers.indices.contains(oldIndex) {
-            containers[oldIndex].imageView.isHidden = false
-            renderImage(for: oldIndex)
+            // Reveal the old page only once its fresh render (with the just-
+            // saved ink) is ready — never a stale cache.
+            renderImage(for: oldIndex, revealWhenReady: true)
         }
         mountCanvas(on: index)
     }
@@ -206,16 +244,19 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         controller.onDrawingChanged?(activeIndex, canvas.drawing)
     }
 
-    private func renderImage(for index: Int) {
+    private func renderImage(for index: Int, revealWhenReady: Bool = false) {
         guard containers.indices.contains(index),
               let snapshot = controller.snapshotProvider?(index) else { return }
         let dark = traitCollection.userInterfaceStyle == .dark
         let container = containers[index]
         Task.detached(priority: .utility) {
             let image = PageRenderer.render(snapshot, darkMode: dark)
-            await MainActor.run {
+            await MainActor.run { [weak self] in
                 guard container.pageIndex == index else { return }
                 container.imageView.image = image
+                if revealWhenReady, self?.activeIndex != index {
+                    container.imageView.isHidden = false
+                }
             }
         }
     }
@@ -539,6 +580,7 @@ struct NoteCanvasView: UIViewRepresentable {
             controller.isDarkMode = colorScheme == .dark
         }
         engine.apply(pageSizes: pageSizes, signature: layoutSignature)
+        engine.ensureContent()
     }
 }
 
