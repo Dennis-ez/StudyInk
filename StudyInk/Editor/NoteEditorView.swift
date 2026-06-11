@@ -181,28 +181,57 @@ struct NoteEditorView: View {
                         PageNavigatorStrip(
                             note: note,
                             currentIndex: $pageIndex,
-                            horizontal: false,
-                            onExit: { dismiss() }
+                            horizontal: false
                         )
                         .padding(.trailing, 6)
                         .transition(.move(edge: .trailing).combined(with: .opacity))
                     }
                 }
 
-                // Notes pane docks on the leading edge; the handle rides its edge.
-                HStack(spacing: 0) {
-                    if showNotesPane {
+                // Notes drawer: no handle — swipe in from the left edge like a
+                // sidebar; scrim tap or swipe-back dismisses.
+                if showNotesPane {
+                    Color.black.opacity(0.18)
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showNotesPane = false }
+                        }
+                        .transition(.opacity)
+                    HStack(spacing: 0) {
                         NotesPane(currentNote: note) { selected in
                             withAnimation { showNotesPane = false }
                             guard selected.objectID != note.objectID else { return }
                             onSwitchNote(selected)
                         }
                         .padding(.leading, 6)
-                        .padding(.vertical, 70)
+                        .padding(.vertical, 24)
                         .transition(.move(edge: .leading).combined(with: .opacity))
+                        .gesture(
+                            DragGesture(minimumDistance: 20)
+                                .onEnded { value in
+                                    if value.translation.width < -30 {
+                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showNotesPane = false }
+                                    }
+                                }
+                        )
+                        Spacer()
                     }
-                    notesPaneHandle
-                    Spacer()
+                } else {
+                    // Invisible catch strip on the left edge that arms the drawer.
+                    HStack(spacing: 0) {
+                        Color.clear
+                            .frame(width: 20)
+                            .contentShape(Rectangle())
+                            .gesture(
+                                DragGesture(minimumDistance: 15)
+                                    .onEnded { value in
+                                        if value.translation.width > 30 {
+                                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showNotesPane = true }
+                                        }
+                                    }
+                            )
+                        Spacer()
+                    }
                 }
             }
 
@@ -613,7 +642,7 @@ struct NoteEditorView: View {
                 Spacer()
 
                 // Top-right, outermost to innermost: pages strip toggle,
-                // overflow menu, recorder, redo, undo.
+                // overflow menu, AI menu, recorder, redo, undo.
                 HStack(spacing: 2) {
                     Button(action: canvasController.undo) {
                         Image(systemName: "arrow.uturn.backward")
@@ -630,6 +659,8 @@ struct NoteEditorView: View {
                     .accessibilityLabel(Text("action.redo"))
 
                     recorderMenu
+
+                    aiMenu
 
                     overflowMenu
 
@@ -687,30 +718,35 @@ struct NoteEditorView: View {
         .accessibilityLabel(Text(audio.isRecording ? "audio.stop" : "audio.record"))
     }
 
-    /// Everything else: AI, subject, insert, export, page settings.
+    /// AI tools, top-level in the action bar.
+    private var aiMenu: some View {
+        Menu {
+            Button {
+                withAnimation { askLassoActive = true }
+            } label: { Label("ai.circleAsk.title", systemImage: "lasso.badge.sparkles") }
+            Button {
+                Task { await tutor.explainCurrentPage() }
+            } label: { Label("ai.explainPage", systemImage: "doc.text.magnifyingglass") }
+            Button {
+                Task { await quiz.start(note: note, pageIndex: pageIndex, darkMode: colorScheme == .dark) }
+            } label: { Label("ai.quizMe", systemImage: "questionmark.app") }
+            Button {
+                aiDrawText = ""
+                showAIDrawPrompt = true
+            } label: { Label("ai.draw", systemImage: "pencil.and.sparkles") }
+            Toggle(isOn: $guidedMode.isEnabled) {
+                Label("ai.guidedMode", systemImage: "lightbulb")
+            }
+        } label: {
+            Image(systemName: "sparkles")
+                .frame(width: 34, height: 34)
+        }
+        .accessibilityLabel(Text("ai.menu"))
+    }
+
+    /// Everything else: insert, export, subject, page settings.
     private var overflowMenu: some View {
         Menu {
-            Menu {
-                Button {
-                    withAnimation { askLassoActive = true }
-                } label: { Label("ai.circleAsk.title", systemImage: "lasso.badge.sparkles") }
-                Button {
-                    Task { await tutor.explainCurrentPage() }
-                } label: { Label("ai.explainPage", systemImage: "doc.text.magnifyingglass") }
-                Button {
-                    Task { await quiz.start(note: note, pageIndex: pageIndex, darkMode: colorScheme == .dark) }
-                } label: { Label("ai.quizMe", systemImage: "questionmark.app") }
-                Button {
-                    aiDrawText = ""
-                    showAIDrawPrompt = true
-                } label: { Label("ai.draw", systemImage: "pencil.and.sparkles") }
-                Toggle(isOn: $guidedMode.isEnabled) {
-                    Label("ai.guidedMode", systemImage: "lightbulb")
-                }
-            } label: {
-                Label("ai.menu", systemImage: "sparkles")
-            }
-
             Menu {
                 Button { showPhotoPicker = true } label: { Label("media.photo", systemImage: "photo") }
                 Button { showCamera = true } label: { Label("media.camera", systemImage: "camera") }
@@ -757,30 +793,6 @@ struct NoteEditorView: View {
     }
 
     /// Bottom-right: current page out of total, with up/down paging.
-    /// Slim tab at the vertical center of the left edge that opens/closes the
-    /// sibling-notes drawer.
-    private var notesPaneHandle: some View {
-        VStack {
-            Spacer()
-            Button {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showNotesPane.toggle() }
-            } label: {
-                Image(systemName: showNotesPane ? "chevron.compact.left" : "chevron.compact.right")
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 22, height: 64)
-                    .background(.regularMaterial, in: UnevenRoundedRectangle(
-                        topLeadingRadius: 0, bottomLeadingRadius: 0,
-                        bottomTrailingRadius: 12, topTrailingRadius: 12
-                    ))
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(Text("editor.notesPane"))
-            Spacer()
-        }
-    }
-
     private var pageIndicator: some View {
         VStack(spacing: 0) {
             Button {
