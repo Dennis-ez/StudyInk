@@ -40,13 +40,6 @@ struct ShapeNodeOverlay: View {
                 .gesture(moveGesture)
                 .simultaneousGesture(rotateGesture)
 
-            previewPath
-                .stroke(
-                    (Color(hex: editing.colorHex) ?? .accentColor).opacity(0.9),
-                    style: StrokeStyle(lineWidth: max(editing.width * transform.zoomScale, 1.5), lineCap: .round, lineJoin: .round)
-                )
-                .allowsHitTesting(false)
-
             ForEach(Array(nodes.enumerated()), id: \.offset) { index, node in
                 Circle()
                     .fill(.white)

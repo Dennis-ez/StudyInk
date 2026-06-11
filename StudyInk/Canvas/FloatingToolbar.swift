@@ -130,7 +130,6 @@ struct FloatingToolbar: View {
     private var grip: some View {
         Image(systemName: "line.3.horizontal")
             .foregroundStyle(.tertiary)
-            .rotationEffect(dock.isHorizontal ? .zero : .degrees(90))
             .gesture(
                 DragGesture(coordinateSpace: .global)
                     .onChanged { dragOffset = $0.translation }

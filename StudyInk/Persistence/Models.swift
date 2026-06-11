@@ -58,6 +58,8 @@ final class Note: NSManagedObject {
         let first = Page(context: context)
         first.id = UUID()
         first.index = 0
+        // Honor the user's default template choice from Settings.
+        first.templateID = UserDefaults.standard.string(forKey: "settings.defaultTemplate") ?? "blank"
         first.note = n
         return n
     }

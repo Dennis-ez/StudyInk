@@ -139,6 +139,8 @@
 "settings.appearance.light" = "Light";
 "settings.appearance.dark" = "Dark";
 "settings.backup" = "Backup & Sync";
+"settings.notes" = "Notes";
+"settings.defaultTemplate" = "Default Page Template";
 "settings.autoBackup" = "Auto-Backup";
 "settings.iCloudSync" = "iCloud Sync";
 "settings.iCloudSync.footnote" = "Syncs notes across your devices with CloudKit. Takes effect after relaunching the app.";

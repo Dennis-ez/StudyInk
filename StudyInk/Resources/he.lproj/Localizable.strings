@@ -139,6 +139,8 @@
 "settings.appearance.light" = "בהיר";
 "settings.appearance.dark" = "כהה";
 "settings.backup" = "גיבוי וסנכרון";
+"settings.notes" = "מחברות";
+"settings.defaultTemplate" = "תבנית עמוד ברירת מחדל";
 "settings.autoBackup" = "גיבוי אוטומטי";
 "settings.iCloudSync" = "סנכרון iCloud";
 "settings.iCloudSync.footnote" = "מסנכרן מחברות בין המכשירים שלך באמצעות CloudKit. נכנס לתוקף לאחר הפעלה מחדש של האפליקציה.";
