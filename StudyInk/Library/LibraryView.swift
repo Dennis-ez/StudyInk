@@ -258,17 +258,12 @@ struct LibraryView: View {
         }
     }
 
-    /// Squircle gradient tile behind a white symbol — the sidebar's visual anchor.
+    /// Plain tinted glyph — sidebar rows read lighter without tile backgrounds.
     private func iconTile(systemName: String, tint: Color) -> some View {
-        RoundedRectangle(cornerRadius: 8, style: .continuous)
-            .fill(LinearGradient(colors: [tint.opacity(0.95), tint.opacity(0.65)], startPoint: .topLeading, endPoint: .bottomTrailing))
+        Image(systemName: systemName)
+            .font(.system(size: 17, weight: .semibold))
+            .foregroundStyle(tint)
             .frame(width: 30, height: 30)
-            .overlay(
-                Image(systemName: systemName)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white)
-            )
-            .shadow(color: tint.opacity(0.35), radius: 3, y: 1)
     }
 
     private func countBadge(_ count: Int) -> some View {
