@@ -41,6 +41,13 @@ enum ShapeRecognizer {
         }
         if (3...6).contains(corners.count),
            hugsPolygon(points, corners: corners, tolerance: epsilon * 1.6) {
+            // A circle RDPs into 4–6 shallow pseudo-corners that still hug
+            // their own outline, so it used to win as a polygon. When the
+            // points also fit an ellipse tightly, the ellipse is what the
+            // user meant — real rectangles/triangles fail this fit by a mile.
+            if corners.count >= 4, let ellipse = ellipseFit(points, box: box, maxError: 0.12) {
+                return ellipse
+            }
             return .polygon(snapCorners(corners))
         }
 
@@ -48,7 +55,22 @@ enum ShapeRecognizer {
     }
 
     /// Aligns recognized geometry with the page's template lines/grid.
+    /// Snapping must never collapse a small shape into (near-)invisible
+    /// geometry — degenerate results fall back to the unsnapped shape.
     static func snapped(_ shape: Shape, to metrics: SnapMetrics) -> Shape {
+        let result = snappedUnchecked(shape, to: metrics)
+        switch result {
+        case .line(let from, let to):
+            return distance(from, to) < 16 ? shape : result
+        case .polygon(let corners):
+            let box = boundingBox(corners)
+            return hypot(box.width, box.height) < 24 ? shape : result
+        case .ellipse(_, let rx, let ry):
+            return (rx < 8 || ry < 8) ? shape : result
+        }
+    }
+
+    private static func snappedUnchecked(_ shape: Shape, to metrics: SnapMetrics) -> Shape {
         switch shape {
         case .line(let from, let to):
             return .line(from: metrics.snappedPoint(from), to: metrics.snappedPoint(to))
@@ -137,7 +159,7 @@ enum ShapeRecognizer {
         return .line(from: from, to: to)
     }
 
-    private static func ellipseFit(_ points: [CGPoint], box: CGRect) -> Shape? {
+    private static func ellipseFit(_ points: [CGPoint], box: CGRect, maxError: CGFloat = 0.22) -> Shape? {
         let center = CGPoint(x: box.midX, y: box.midY)
         let rx = box.width / 2, ry = box.height / 2
         guard rx > 14, ry > 14 else { return nil }
@@ -147,7 +169,7 @@ enum ShapeRecognizer {
             let ny = (point.y - center.y) / ry
             totalError += abs(nx * nx + ny * ny - 1)
         }
-        guard totalError / CGFloat(points.count) < 0.22 else { return nil }
+        guard totalError / CGFloat(points.count) < maxError else { return nil }
         // Near-round ellipses snap to true circles.
         if abs(rx - ry) / max(rx, ry) < 0.18 {
             let r = (rx + ry) / 2

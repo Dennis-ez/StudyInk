@@ -178,7 +178,14 @@ struct LibraryView: View {
                 countBadge(count)
             }
         }
-        .listRowBackground(selection == section ? Color.accentColor.opacity(0.14) : nil)
+        .listRowBackground(selection == section ? roundedRowBackground(Color.accentColor.opacity(0.14)) : nil)
+    }
+
+    private func roundedRowBackground(_ color: Color) -> some View {
+        RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .fill(color)
+            .padding(.vertical, 2)
+            .padding(.horizontal, 6)
     }
 
     @ViewBuilder
@@ -241,8 +248,9 @@ struct LibraryView: View {
                 }
             }
             .padding(.leading, CGFloat(depth) * 16)
-            // Subject rows carry their color as a soft wash; selection darkens it.
-            .listRowBackground(tint.opacity(isSelected ? 0.26 : 0.10))
+            // Subject rows carry their color as a soft wash; selection darkens
+            // it. Rounded so the wash doesn't end in hard edges.
+            .listRowBackground(roundedRowBackground(tint.opacity(isSelected ? 0.26 : 0.10)))
             .contextMenu { subjectContextMenu(subject) }
             .dropDestination(for: String.self) { ids, _ in
                 moveNotes(ids: ids, to: subject)
@@ -281,12 +289,18 @@ struct LibraryView: View {
 
         if !subject.isDivider {
             Menu {
-                ForEach(["#0A84FF", "#FF453A", "#30D158", "#FFD60A", "#FF9F0A", "#BF5AF2", "#8E8E93"], id: \.self) { hex in
+                ForEach(Self.subjectColors, id: \.hex) { option in
                     Button {
-                        subject.colorHex = hex
+                        subject.colorHex = option.hex
                         PersistenceController.shared.save()
                     } label: {
-                        Label(hex, systemImage: subject.colorHex == hex ? "checkmark.circle.fill" : "circle.fill")
+                        Label {
+                            Text(LocalizedStringKey(option.nameKey))
+                        } icon: {
+                            // .alwaysOriginal keeps the real color inside the
+                            // menu — template rendering made every dot gray.
+                            Image(uiImage: Self.swatchImage(hex: option.hex, selected: subject.colorHex == option.hex))
+                        }
                     }
                 }
             } label: { Label("library.subjectColor", systemImage: "paintpalette") }
@@ -362,6 +376,25 @@ struct LibraryView: View {
         guard !expired.isEmpty else { return }
         expired.forEach(context.delete)
         PersistenceController.shared.save()
+    }
+
+    /// Named subject colors (the old menu showed raw hex strings, and menu
+    /// template rendering made every swatch the same gray).
+    private static let subjectColors: [(hex: String, nameKey: String)] = [
+        ("#0A84FF", "subjectColor.blue"),
+        ("#FF453A", "subjectColor.red"),
+        ("#30D158", "subjectColor.green"),
+        ("#FFD60A", "subjectColor.yellow"),
+        ("#FF9F0A", "subjectColor.orange"),
+        ("#BF5AF2", "subjectColor.purple"),
+        ("#8E8E93", "subjectColor.gray"),
+    ]
+
+    private static func swatchImage(hex: String, selected: Bool) -> UIImage {
+        let color = UIColor(hex: hex) ?? .systemBlue
+        let name = selected ? "checkmark.circle.fill" : "circle.fill"
+        return (UIImage(systemName: name) ?? UIImage())
+            .withTintColor(color, renderingMode: .alwaysOriginal)
     }
 
     private func moveNotes(ids: [String], to subject: Subject) -> Bool {

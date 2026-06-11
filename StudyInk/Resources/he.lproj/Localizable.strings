@@ -117,6 +117,13 @@
 "library.trashEmpty" = "אין כאן כלום";
 "library.trashEmpty.subtitle" = "מחברות שנמחקו נשמרות כאן 30 יום לפני הסרה סופית.";
 "library.toggleChildren" = "הצגה או הסתרה של נושאים מקוננים";
+"subjectColor.blue" = "כחול";
+"subjectColor.red" = "אדום";
+"subjectColor.green" = "ירוק";
+"subjectColor.yellow" = "צהוב";
+"subjectColor.orange" = "כתום";
+"subjectColor.purple" = "סגול";
+"subjectColor.gray" = "אפור";
 "editor.notesPane" = "מגירת מחברות";
 "library.subjects" = "מקצועות";
 "library.searchPrompt" = "חיפוש במחברות, בכתב יד, בעברית או באנגלית";

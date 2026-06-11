@@ -135,6 +135,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         // canvas's ink onto whatever page just moved into our slot (ink
         // duplication on one page, loss on the other). Page mutations commit
         // up front instead (see PageNavigatorStrip / commitPendingInk).
+        abortStrokeEditIfNeeded()
         let samePageAtActiveIndex = pageID(at: activeIndex, in: layoutSignature) == pageID(at: activeIndex, in: signature)
         if !containers.isEmpty, samePageAtActiveIndex { flushPendingSave() }
         saveWorkItem?.cancel()
@@ -264,6 +265,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
 
     private func activatePage(_ index: Int) {
         guard index != activeIndex, containers.indices.contains(index) else { return }
+        abortStrokeEditIfNeeded()
         flushPendingSave()
         let oldIndex = activeIndex
         if containers.indices.contains(oldIndex) {
@@ -666,6 +668,18 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         isProgrammaticChange = true
         canvas.drawing = lifted
         isProgrammaticChange = false
+    }
+
+    /// A shape edit lifts its stroke OUT of the ink — if the page is about to
+    /// be saved/switched/rebuilt mid-session, put the original stroke back
+    /// first or the lifted state gets persisted and the shape "disappears".
+    private func abortStrokeEditIfNeeded() {
+        guard let session = editSession else { return }
+        editSession = nil
+        isProgrammaticChange = true
+        canvas.drawing = session.originalDrawing
+        isProgrammaticChange = false
+        lastStrokeCount = canvas.drawing.strokes.count
     }
 
     /// Commits the edited shape back into the ink — one drawing write, one undo.
