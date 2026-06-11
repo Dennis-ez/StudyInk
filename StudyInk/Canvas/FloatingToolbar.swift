@@ -27,6 +27,8 @@ struct FloatingToolbar: View {
         .map(\.rawValue).joined(separator: ",")
     /// The quick strip (colors/sizes) — opened by re-tapping the active tool.
     @State private var showInlineOptions = false
+    /// Measured bar size — the dock placeholders mirror it.
+    @State private var barSize: CGSize = .zero
     @State private var showCustomize = false
     @State private var dragOffset: CGSize = .zero
     /// Global finger position while the grip is being dragged; drives the
@@ -39,6 +41,9 @@ struct FloatingToolbar: View {
     /// automatically via the editor).
     var onTransformSelection: () -> Void = {}
     var extraItems: [ToolbarExtraItem] = []
+    /// Extra trailing inset so a trailing-docked bar isn't covered by the
+    /// page-navigator strip.
+    var trailingInset: CGFloat = 0
 
     private var dock: ToolbarDock { ToolbarDock(rawValue: dockRaw) ?? .top }
     private var enabledTools: [ToolKind] {
@@ -79,30 +84,45 @@ struct FloatingToolbar: View {
                     .offset(dragOffset)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: dock.alignment)
                     .padding(12)
+                    // Step aside when the pages strip shares the trailing edge.
+                    .padding(.trailing, dock == .trailing ? trailingInset : 0)
                     .animation(.spring(response: 0.3, dampingFraction: 0.8), value: dockRaw)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.8), value: trailingInset)
             }
         }
         .allowsHitTesting(true)
     }
 
-    /// Four edge capsules shown while the grip is dragged; the dock the bar
-    /// would snap to on release lights up.
+    /// Bar-shaped placeholders at every edge while the grip is dragged — each
+    /// previews the bar's actual footprint there; the snap target lights up.
     private func dockIndicators(highlighting target: ToolbarDock) -> some View {
         ZStack {
             ForEach(ToolbarDock.allCases, id: \.self) { edge in
-                Capsule()
-                    .fill(edge == target ? Color.accentColor : Color.secondary.opacity(0.3))
-                    .frame(
-                        width: edge.isHorizontal ? 160 : 5,
-                        height: edge.isHorizontal ? 5 : 160
+                let size = placeholderSize(for: edge)
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(
+                        edge == target ? Color.accentColor : Color.secondary.opacity(0.35),
+                        style: StrokeStyle(lineWidth: 2, dash: [7, 5])
                     )
+                    .background(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(Color.accentColor.opacity(edge == target ? 0.10 : 0))
+                    )
+                    .frame(width: size.width, height: size.height)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: edge.alignment)
-                    .padding(4)
+                    .padding(12)
                     .animation(.easeOut(duration: 0.15), value: target)
             }
         }
         .allowsHitTesting(false)
         .transition(.opacity)
+    }
+
+    /// The bar's measured size, transposed for edges of the other orientation.
+    private func placeholderSize(for edge: ToolbarDock) -> CGSize {
+        let measured = barSize == .zero ? CGSize(width: 330, height: 42) : barSize
+        if edge.isHorizontal == dock.isHorizontal { return measured }
+        return CGSize(width: measured.height, height: measured.width)
     }
 
     /// The bar plus (when open) its inline options strip — no UIKit popover,
@@ -175,6 +195,7 @@ struct FloatingToolbar: View {
         .buttonStyle(ToolbarButtonStyle())
         .padding(6)
         .studyGlass(cornerRadius: 16)
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { barSize = $0 }
         .sheet(isPresented: $showCustomize) { CustomizeToolbarSheet(enabledToolsRaw: $enabledToolsRaw) }
     }
 
