@@ -34,11 +34,15 @@ enum LibrarySection: Hashable {
 /// sidebar, notes in a grid or list, full-text + handwriting-OCR search.
 struct LibraryView: View {
     @Environment(\.managedObjectContext) private var context
+    // ALL subjects, not just roots: the fetch request is what makes SwiftUI
+    // re-render — fetching only roots meant a nested folder's color change
+    // never refreshed until its parent collapsed/expanded.
     @FetchRequest(
         entity: PersistenceController.model.entitiesByName["Subject"]!,
-        sortDescriptors: [NSSortDescriptor(key: "sortIndex", ascending: true), NSSortDescriptor(key: "createdAt", ascending: true)],
-        predicate: NSPredicate(format: "parent == nil")
-    ) private var rootSubjects: FetchedResults<Subject>
+        sortDescriptors: [NSSortDescriptor(key: "sortIndex", ascending: true), NSSortDescriptor(key: "createdAt", ascending: true)]
+    ) private var allSubjects: FetchedResults<Subject>
+
+    private var rootSubjects: [Subject] { allSubjects.filter { $0.parent == nil } }
 
     @FetchRequest(
         entity: PersistenceController.model.entitiesByName["Note"]!,
@@ -213,6 +217,8 @@ struct LibraryView: View {
                 VStack { Divider() }
             }
             .padding(.leading, CGFloat(depth) * 16)
+            .contentShape(Rectangle())
+            .draggable("subject:\(subject.id?.uuidString ?? "")")
             .contextMenu { subjectContextMenu(subject) }
         } else {
             let tint = Color(hex: subject.colorHex ?? "#0A84FF") ?? .accentColor
@@ -252,11 +258,48 @@ struct LibraryView: View {
             // Subject rows carry their color as a soft wash; selection darkens
             // it. Rounded so the wash doesn't end in hard edges.
             .listRowBackground(roundedRowBackground(tint.opacity(isSelected ? 0.26 : 0.10)))
+            .draggable("subject:\(subject.id?.uuidString ?? "")")
             .contextMenu { subjectContextMenu(subject) }
+            // Accepts notes (to file them) and subjects/dividers (to nest them).
             .dropDestination(for: String.self) { ids, _ in
-                moveNotes(ids: ids, to: subject)
+                handleDrop(ids, into: subject)
             }
         }
+    }
+
+    /// Drop payloads: plain note UUIDs file notes; "subject:" prefixed UUIDs
+    /// reparent folders/dividers (cycles rejected).
+    private func handleDrop(_ items: [String], into target: Subject) -> Bool {
+        var changed = false
+        var noteIDs: [String] = []
+        for item in items {
+            if item.hasPrefix("subject:") {
+                let uuid = String(item.dropFirst("subject:".count))
+                if let dragged = allSubjects.first(where: { $0.id?.uuidString == uuid }),
+                   canNest(dragged, into: target) {
+                    withAnimation { dragged.parent = target }
+                    changed = true
+                }
+            } else {
+                noteIDs.append(item)
+            }
+        }
+        if !noteIDs.isEmpty {
+            changed = moveNotes(ids: noteIDs, to: target) || changed
+        }
+        if changed { PersistenceController.shared.save() }
+        return changed
+    }
+
+    /// A subject can't be nested into itself or any of its descendants.
+    private func canNest(_ dragged: Subject, into target: Subject) -> Bool {
+        guard !target.isDivider else { return false }
+        var node: Subject? = target
+        while let current = node {
+            if current == dragged { return false }
+            node = current.parent
+        }
+        return true
     }
 
     /// Plain tinted glyph — sidebar rows read lighter without tile backgrounds.

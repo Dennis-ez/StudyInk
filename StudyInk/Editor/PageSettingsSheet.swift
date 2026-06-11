@@ -7,6 +7,8 @@ struct PageSettingsSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var importingPDF = false
     @State private var spacingValue = 1.0
+    @State private var showSpacingPopover = false
+    @State private var savedFavorite = false
 
     private let grid = [GridItem(.adaptive(minimum: 96), spacing: 14)]
 
@@ -35,44 +37,6 @@ struct PageSettingsSheet: View {
                         }
                     }
 
-                    if page.template != .blank && page.template != .customPDF {
-                        Text("page.spacing")
-                            .font(.headline)
-                        HStack(spacing: 16) {
-                            // Live preview: the thumbnail re-renders at every step,
-                            // the real page only on commit.
-                            Canvas { ctx, size in
-                                ctx.fill(Path(roundedRect: CGRect(origin: .zero, size: size), cornerRadius: 8), with: .color(Color("canvasBackground")))
-                                page.template.draw(
-                                    in: &ctx,
-                                    rect: CGRect(origin: .zero, size: size),
-                                    scale: 0.22,
-                                    lineColor: Color("templateLine"),
-                                    accentColor: Color("accentBlue"),
-                                    spacing: spacingValue
-                                )
-                            }
-                            .frame(width: 96, height: 84)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.quaternary))
-
-                            VStack(alignment: .leading, spacing: 6) {
-                                HStack {
-                                    Slider(value: $spacingValue, in: 0.6...1.8) { editing in
-                                        // Commit on release: each change rebuilds the
-                                        // page stack, so live-commit would stutter.
-                                        // The thumbnail previews every tick instead.
-                                        if !editing { commitSpacing() }
-                                    }
-                                    Text(verbatim: String(format: "%.2f×", spacingValue))
-                                        .font(.caption.monospacedDigit())
-                                        .foregroundStyle(.secondary)
-                                        .frame(width: 48, alignment: .trailing)
-                                }
-                            }
-                        }
-                    }
-
                     Text("page.size")
                         .font(.headline)
                     Picker("page.size", selection: sizeBinding) {
@@ -94,6 +58,17 @@ struct PageSettingsSheet: View {
             }
             .navigationTitle(Text("page.settings"))
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    // Stamp this template + spacing as the default for new notes.
+                    Button {
+                        UserDefaults.standard.set(page.templateID ?? "blank", forKey: "settings.defaultTemplate")
+                        UserDefaults.standard.set(page.templateSpacing > 0 ? page.templateSpacing : 1.0, forKey: "settings.defaultTemplateSpacing")
+                        withAnimation { savedFavorite = true }
+                        Haptics.success()
+                    } label: {
+                        Label("page.saveFavorite", systemImage: savedFavorite ? "star.fill" : "star")
+                    }
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("action.done") { dismiss() }
                 }
@@ -127,7 +102,9 @@ struct PageSettingsSheet: View {
     }
 
     private func templateSwatch(_ template: PageTemplate) -> some View {
-        Button {
+        let isSelected = page.template == template
+        let hasSpacing = template != .blank && template != .customPDF
+        return Button {
             page.templateID = template.rawValue
             page.customTemplatePDF = nil
             page.note?.touch()
@@ -141,7 +118,9 @@ struct PageSettingsSheet: View {
                         rect: CGRect(origin: .zero, size: size),
                         scale: 0.22,
                         lineColor: Color("templateLine"),
-                        accentColor: Color("accentBlue")
+                        accentColor: Color("accentBlue"),
+                        // The selected swatch IS the spacing preview.
+                        spacing: isSelected ? spacingValue : 1
                     )
                 }
                 .frame(width: 96, height: 84)
@@ -150,8 +129,45 @@ struct PageSettingsSheet: View {
             }
             .frame(width: 96, height: 110)
             .overlay {
-                if page.template == template {
+                if isSelected {
                     RoundedRectangle(cornerRadius: 10).strokeBorder(Color.accentColor, lineWidth: 2)
+                }
+            }
+            .overlay(alignment: .bottomTrailing) {
+                // Spacing lives behind the swatch's own ⋯ — only on the
+                // selected template, and only when it has lines to space.
+                if isSelected && hasSpacing {
+                    Button {
+                        showSpacingPopover = true
+                    } label: {
+                        Image(systemName: "ellipsis.circle.fill")
+                            .font(.title3)
+                            .symbolRenderingMode(.palette)
+                            .foregroundStyle(.white, Color.accentColor)
+                            .background(Circle().fill(.background))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(4)
+                    .accessibilityLabel(Text("page.spacing"))
+                    .popover(isPresented: $showSpacingPopover, arrowEdge: .bottom) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("page.spacing").font(.headline)
+                                Spacer()
+                                Text(verbatim: String(format: "%.2f×", spacingValue))
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                            }
+                            Slider(value: $spacingValue, in: 0.6...1.8) { editing in
+                                // The swatch previews every tick; the real page
+                                // rebuilds only on release.
+                                if !editing { commitSpacing() }
+                            }
+                        }
+                        .padding(16)
+                        .frame(width: 280)
+                        .presentationCompactAdaptation(.popover)
+                    }
                 }
             }
         }

@@ -44,6 +44,9 @@
 "tool.autoShapes" = "Auto Shapes";
 "tool.snapToGrid" = "Snap to Lines & Grid";
 "toolbar.move" = "Move Toolbar";
+"toolbar.section.tools" = "Tools";
+"toolbar.section.accessories" = "Buttons";
+"page.saveFavorite" = "Save as Favorite";
 
 /* Text boxes */
 "textbox.accessibility" = "Text box";
