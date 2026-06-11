@@ -117,6 +117,13 @@
 "library.trashEmpty" = "Nothing here";
 "library.trashEmpty.subtitle" = "Deleted notes stay here for 30 days before being removed.";
 "library.toggleChildren" = "Show or hide nested subjects";
+"subjectColor.blue" = "Blue";
+"subjectColor.red" = "Red";
+"subjectColor.green" = "Green";
+"subjectColor.yellow" = "Yellow";
+"subjectColor.orange" = "Orange";
+"subjectColor.purple" = "Purple";
+"subjectColor.gray" = "Gray";
 "editor.notesPane" = "Notes drawer";
 "library.subjects" = "Subjects";
 "library.searchPrompt" = "Search notes, handwriting, Hebrew or English";
