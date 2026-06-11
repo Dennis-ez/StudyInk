@@ -196,21 +196,20 @@ struct NoteEditorView: View {
                     ),
                     transform: canvasController.transform(forPage: editingShape!.pageIndex),
                     snap: snapMetrics,
-                    onChange: { shape in
-                        guard let editing = editingShape else { return }
-                        let stroke = ShapeRecognizer.idealStroke(
-                            for: shape,
-                            ink: editing.ink,
-                            width: CGFloat(editing.width)
-                        )
-                        canvasController.engine?.updateEditedStroke(
-                            at: editing.strokeIndex,
-                            on: editing.pageIndex,
-                            with: stroke
-                        )
+                    onChange: { _ in
+                        // No engine write during the drag — the stroke is lifted
+                        // out of the ink and the overlay preview is the only
+                        // live copy, so there's no async PencilKit lag.
                     },
                     onDone: {
-                        canvasController.engine?.endStrokeEdit()
+                        if let editing = editingShape {
+                            let stroke = ShapeRecognizer.idealStroke(
+                                for: editing.shape,
+                                ink: editing.ink,
+                                width: CGFloat(editing.width)
+                            )
+                            canvasController.engine?.endStrokeEdit(with: stroke)
+                        }
                         editingShape = nil
                         Haptics.tap()
                     }
@@ -345,7 +344,13 @@ struct NoteEditorView: View {
                 }
             }
             canvasController.onShapeCreated = { pageIndex, strokeIndex, shape, ink, width, colorHex in
-                canvasController.engine?.beginStrokeEdit()
+                // Commit any shape already being edited before lifting the new one.
+                if let editing = editingShape {
+                    let stroke = ShapeRecognizer.idealStroke(for: editing.shape, ink: editing.ink, width: CGFloat(editing.width))
+                    canvasController.engine?.endStrokeEdit(with: stroke)
+                    editingShape = nil
+                }
+                canvasController.engine?.beginStrokeEdit(at: strokeIndex)
                 editingShape = EditingShape(
                     pageIndex: pageIndex,
                     strokeIndex: strokeIndex,

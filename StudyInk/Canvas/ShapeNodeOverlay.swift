@@ -34,6 +34,15 @@ struct ShapeNodeOverlay: View {
                 .onTapGesture(perform: onDone)
                 .simultaneousGesture(rotateGesture)
 
+            // The lifted stroke is gone from the ink while editing — this is
+            // its only visible copy, redrawn instantly with no PencilKit lag.
+            previewPath
+                .stroke(
+                    Color(hex: editing.colorHex) ?? .primary,
+                    style: StrokeStyle(lineWidth: max(editing.width * transform.zoomScale, 1.5), lineCap: .round, lineJoin: .round)
+                )
+                .allowsHitTesting(false)
+
             // Invisible fat outline along the shape: grab it to move the whole shape.
             Color.clear
                 .contentShape(previewPath.strokedPath(StrokeStyle(lineWidth: 34, lineCap: .round, lineJoin: .round)))
@@ -79,8 +88,13 @@ struct ShapeNodeOverlay: View {
         case .polygon(let corners):
             return corners
         case .ellipse(let center, let rx, let ry):
-            // center, right (radiusX), bottom (radiusY)
-            return [center, CGPoint(x: center.x + rx, y: center.y), CGPoint(x: center.x, y: center.y + ry)]
+            // center, right (radiusX), bottom (radiusY), corner (resizes all)
+            return [
+                center,
+                CGPoint(x: center.x + rx, y: center.y),
+                CGPoint(x: center.x, y: center.y + ry),
+                CGPoint(x: center.x + rx, y: center.y + ry),
+            ]
         }
     }
 
@@ -236,8 +250,18 @@ struct ShapeNodeOverlay: View {
                 return .ellipse(center: point, radiusX: rx, radiusY: ry)
             case 1:
                 return .ellipse(center: center, radiusX: max(abs(point.x - center.x), 8), radiusY: ry)
-            default:
+            case 2:
                 return .ellipse(center: center, radiusX: rx, radiusY: max(abs(point.y - center.y), 8))
+            default:
+                // Corner node: resize both radii at once (a circle stays a
+                // circle, scaling uniformly toward the larger drag axis).
+                let newRX = max(abs(point.x - center.x), 8)
+                let newRY = max(abs(point.y - center.y), 8)
+                if abs(rx - ry) < 0.5 {
+                    let r = max(newRX, newRY)
+                    return .ellipse(center: center, radiusX: r, radiusY: r)
+                }
+                return .ellipse(center: center, radiusX: newRX, radiusY: newRY)
             }
         }
     }

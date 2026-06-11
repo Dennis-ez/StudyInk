@@ -201,6 +201,10 @@ struct StrokeTransformOverlay: View {
                 Spacer()
             }
         }
+        // Handle drags resolve in this space so locations line up with the
+        // selection frame (global space is offset by the editor's chrome,
+        // which made the handles rotate around the wrong point).
+        .coordinateSpace(name: "strokeTransform")
     }
 
     @ViewBuilder
@@ -245,7 +249,7 @@ struct StrokeTransformOverlay: View {
     }
 
     private func handleGesture(center: CGPoint) -> some Gesture {
-        DragGesture(minimumDistance: 2, coordinateSpace: .global)
+        DragGesture(minimumDistance: 2, coordinateSpace: .named("strokeTransform"))
             .onChanged { value in
                 let start = atan2(value.startLocation.y - center.y, value.startLocation.x - center.x)
                 let now = atan2(value.location.y - center.y, value.location.x - center.x)

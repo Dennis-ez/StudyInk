@@ -23,6 +23,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     private var didSetInitialZoom = false
     /// Cached-render resolution multiplier, raised when zoomed in.
     private var imageRenderScale: CGFloat = 1
+    private var rasterWorkItem: DispatchWorkItem?
     private var shapeWorkItem: DispatchWorkItem?
     private var lastStrokeCount = 0
     private var lastPublishedOrigins: [CGPoint] = []
@@ -361,6 +362,12 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     func scrollViewDidZoom(_ scrollView: UIScrollView) {
         centerDocument()
         publishGeometry()
+        // Programmatic/snap zooms never call didEndZooming — debounce a raster
+        // pass after the last zoom tick so sharpness always lands.
+        rasterWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.updateRasterScale() }
+        rasterWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
     }
 
     /// Releasing a pinch near fit-width snaps the page to exactly fill the screen.
@@ -386,17 +393,22 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
             container.imageView.layer.contentsScale = raster
             container.setNeedsDisplay()
         }
-        canvas.contentScaleFactor = raster
-        canvas.layer.contentsScale = raster
-        for subview in canvas.subviews {
-            subview.contentScaleFactor = raster
-            subview.layer.contentsScale = raster
-        }
+        // PencilKit renders ink in nested internal views — the scale bump must
+        // reach the whole tree or zoomed ink stays soft.
+        applyRasterScale(raster, to: canvas)
         if abs(effectiveZoom - imageRenderScale) > 0.5 {
             imageRenderScale = effectiveZoom
             for index in containers.indices where index != activeIndex {
                 renderImage(for: index)
             }
+        }
+    }
+
+    private func applyRasterScale(_ scale: CGFloat, to view: UIView) {
+        view.contentScaleFactor = scale
+        view.layer.contentsScale = scale
+        for subview in view.subviews {
+            applyRasterScale(scale, to: subview)
         }
     }
 
@@ -582,28 +594,36 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
 
     // MARK: - Node editing of created shapes
 
-    /// Captures the pre-edit drawing once so the whole node-edit session is one undo.
-    func beginStrokeEdit() {
-        let old = canvas.drawing
-        canvas.undoManager?.registerUndo(withTarget: canvas) { target in
-            target.drawing = old
-        }
-    }
+    private var editSession: (index: Int, originalDrawing: PKDrawing)?
 
-    /// Live-updates a stroke while its shape nodes are dragged (no side effects).
-    func updateEditedStroke(at strokeIndex: Int, on pageIndex: Int, with stroke: PKStroke) {
-        guard pageIndex == activeIndex, canvas.drawing.strokes.indices.contains(strokeIndex) else { return }
+    /// Starts a shape-edit session by LIFTING the stroke out of the ink: the
+    /// overlay's instant preview is the only visible copy while dragging, so
+    /// there's no async-PencilKit lag ghosting behind the nodes.
+    func beginStrokeEdit(at index: Int) {
+        guard editSession == nil, canvas.drawing.strokes.indices.contains(index) else { return }
+        let original = canvas.drawing
+        editSession = (index, original)
+        var lifted = original
+        lifted.strokes.remove(at: index)
         isProgrammaticChange = true
-        var drawing = canvas.drawing
-        drawing.strokes[strokeIndex] = stroke
-        canvas.drawing = drawing
+        canvas.drawing = lifted
         isProgrammaticChange = false
     }
 
-    /// Commits the node-edit session: persist + refresh undo state.
-    func endStrokeEdit() {
-        lastStrokeCount = canvas.drawing.strokes.count
-        controller.onDrawingChanged?(activeIndex, canvas.drawing)
+    /// Commits the edited shape back into the ink — one drawing write, one undo.
+    func endStrokeEdit(with stroke: PKStroke) {
+        guard let session = editSession else { return }
+        editSession = nil
+        var drawing = canvas.drawing
+        drawing.strokes.insert(stroke, at: min(session.index, drawing.strokes.count))
+        canvas.undoManager?.registerUndo(withTarget: canvas) { target in
+            target.drawing = session.originalDrawing
+        }
+        isProgrammaticChange = true
+        canvas.drawing = drawing
+        isProgrammaticChange = false
+        lastStrokeCount = drawing.strokes.count
+        controller.onDrawingChanged?(activeIndex, drawing)
         DispatchQueue.main.async { [controller] in controller.refreshUndoState() }
     }
 

@@ -26,6 +26,10 @@ struct MediaLayer: View {
                 )
             }
         }
+        // Handle gestures resolve drag locations in this space so they line up
+        // with transform.toScreen coordinates (global space is offset by the
+        // editor's chrome, which broke the rotation math).
+        .coordinateSpace(name: "mediaLayer")
     }
 }
 
@@ -164,7 +168,7 @@ private struct MediaItemView: View {
 
     /// One-finger rotation by dragging the corner handle around the item's center.
     private func rotateHandleGesture(center frame: CGRect) -> some Gesture {
-        DragGesture(minimumDistance: 2, coordinateSpace: .global)
+        DragGesture(minimumDistance: 2, coordinateSpace: .named("mediaLayer"))
             .onChanged { value in
                 let center = CGPoint(x: frame.midX, y: frame.midY)
                 let start = atan2(value.startLocation.y - center.y, value.startLocation.x - center.x)
