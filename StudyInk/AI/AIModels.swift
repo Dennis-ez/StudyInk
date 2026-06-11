@@ -99,6 +99,11 @@ struct AIBubbleModel: Codable, Equatable, Identifiable {
     var isPinned = false
     var isCollapsed = false
     var createdAt = Date()
+    // Optionals so previously persisted bubbles still decode.
+    /// Lives only in the side panel — never rendered on the canvas.
+    var isPanelOnly: Bool? = nil
+    /// User-chosen thread height (vertical resize); nil = default.
+    var maxHeight: Double? = nil
 
     var anchor: CGPoint { CGPoint(x: anchorX, y: anchorY) }
     var latestAnswer: String { thread.last?.answer ?? "" }

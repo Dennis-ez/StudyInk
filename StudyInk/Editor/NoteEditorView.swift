@@ -108,7 +108,8 @@ struct NoteEditorView: View {
                     transform: canvasController.transform(forPage: bubble.pageIndex)
                 )
             }
-            ForEach(tutor.bubbles) { bubble in
+            // Panel-only conversations never float on the canvas.
+            ForEach(tutor.bubbles.filter { $0.isPanelOnly != true }) { bubble in
                 AIBubbleView(
                     bubble: bubble,
                     isLoading: tutor.loadingBubbleIDs.contains(bubble.id),
@@ -143,10 +144,24 @@ struct NoteEditorView: View {
                     extraItems: toolbarExtras
                 )
 
-                VStack(spacing: 8) {
+                // The recorder lives in the top bar; the bar only surfaces
+                // while a session is live (scrubber + tap-to-seek hint).
+                if audio.isRecording || audio.isPlaying {
+                    VStack(spacing: 8) {
+                        Spacer()
+                        AudioBar(audio: audio, note: note)
+                            .padding(.bottom, 8)
+                    }
+                }
+
+                VStack {
                     Spacer()
-                    AudioBar(audio: audio, note: note)
-                        .padding(.bottom, 8)
+                    HStack {
+                        Spacer()
+                        pageIndicator
+                            .padding(.trailing, 12)
+                            .padding(.bottom, 24)
+                    }
                 }
 
                 // Page navigator docks on the trailing edge (vertical strip).
@@ -343,7 +358,9 @@ struct NoteEditorView: View {
                     return PageRenderer.Snapshot(page: pages[index])
                 }
             }
-            canvasController.onShapeCreated = { pageIndex, strokeIndex, shape, ink, width, colorHex in
+            // Fresh shapes commit clean and stay unselected — node editing
+            // only opens when the user taps a shape with a finger.
+            canvasController.onShapeTapped = { pageIndex, strokeIndex, shape, ink, width, colorHex in
                 // Commit any shape already being edited before lifting the new one.
                 if let editing = editingShape {
                     let stroke = ShapeRecognizer.idealStroke(for: editing.shape, ink: editing.ink, width: CGFloat(editing.width))
@@ -541,33 +558,116 @@ struct NoteEditorView: View {
     /// Floating glass action bar (top-trailing) — replaces the navigation bar.
     private var actionBar: some View {
         VStack {
-            HStack(spacing: 2) {
-                Menu {
+            HStack {
+                // Back to the library, top-left.
+                Button(action: { dismiss() }) {
+                    Image(systemName: "chevron.left")
+                        .frame(width: 34, height: 34)
+                }
+                .font(.system(size: 16, weight: .medium))
+                .padding(6)
+                .studyGlass(cornerRadius: 16)
+                .accessibilityLabel(Text("action.back"))
+                .padding(.leading, 12)
+
+                Spacer()
+
+                // Top-right, outermost to innermost: pages strip toggle,
+                // overflow menu, recorder, redo, undo.
+                HStack(spacing: 2) {
+                    Button(action: canvasController.undo) {
+                        Image(systemName: "arrow.uturn.backward")
+                            .frame(width: 34, height: 34)
+                    }
+                    .disabled(!canvasController.canUndo)
+                    .accessibilityLabel(Text("action.undo"))
+
+                    Button(action: canvasController.redo) {
+                        Image(systemName: "arrow.uturn.forward")
+                            .frame(width: 34, height: 34)
+                    }
+                    .disabled(!canvasController.canRedo)
+                    .accessibilityLabel(Text("action.redo"))
+
+                    recorderMenu
+
+                    overflowMenu
+
+                    Button {
+                        withAnimation { showPageStrip.toggle() }
+                    } label: {
+                        Image(systemName: "rectangle.trailingthird.inset.filled")
+                            .frame(width: 34, height: 34)
+                    }
+                    .accessibilityLabel(Text("page.toggleStrip"))
+                }
+                .font(.system(size: 16, weight: .medium))
+                .padding(6)
+                .studyGlass(cornerRadius: 16)
+                .padding(.trailing, 12)
+            }
+            .padding(.top, 8)
+
+            Spacer()
+        }
+    }
+
+    /// Record/stop plus the note's saved recordings.
+    private var recorderMenu: some View {
+        Menu {
+            Button {
+                audio.isRecording ? audio.stopRecording() : audio.startRecording()
+            } label: {
+                Label(
+                    audio.isRecording ? "audio.stop" : "audio.record",
+                    systemImage: audio.isRecording ? "stop.circle" : "record.circle"
+                )
+            }
+            let recordings = (note.recordings ?? []).sorted { ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast) }
+            if !recordings.isEmpty {
+                Divider()
+                ForEach(recordings, id: \.objectID) { recording in
+                    Button {
+                        audio.play(recording)
+                    } label: {
+                        Label(
+                            (recording.createdAt ?? .now).formatted(date: .abbreviated, time: .shortened),
+                            systemImage: "play.circle"
+                        )
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: "mic")
+                .symbolVariant(audio.isRecording ? .fill : .none)
+                .foregroundStyle(audio.isRecording ? Color("errorRed") : Color.primary)
+                .symbolEffect(.pulse, isActive: audio.isRecording)
+                .frame(width: 34, height: 34)
+        }
+        .accessibilityLabel(Text(audio.isRecording ? "audio.stop" : "audio.record"))
+    }
+
+    /// Everything else: AI, subject, insert, export, page settings.
+    private var overflowMenu: some View {
+        Menu {
+            Menu {
                 Button {
                     withAnimation { askLassoActive = true }
                 } label: { Label("ai.circleAsk.title", systemImage: "lasso.badge.sparkles") }
-
                 Button {
                     Task { await tutor.explainCurrentPage() }
                 } label: { Label("ai.explainPage", systemImage: "doc.text.magnifyingglass") }
-
                 Button {
                     Task { await tutor.startQuiz() }
                 } label: { Label("ai.quizMe", systemImage: "questionmark.app") }
-
                 Toggle(isOn: $guidedMode.isEnabled) {
                     Label("ai.guidedMode", systemImage: "lightbulb")
                 }
-                } label: {
-                    Image(systemName: "sparkles")
-                        .frame(width: 34, height: 34)
-                }
-                .accessibilityLabel(Text("ai.menu"))
+            } label: {
+                Label("ai.menu", systemImage: "sparkles")
+            }
 
-                SubjectContextMenu(note: note)
-                    .frame(width: 34, height: 34)
-
-                Menu {
+            Menu {
                 Button { showPhotoPicker = true } label: { Label("media.photo", systemImage: "photo") }
                 Button { showCamera = true } label: { Label("media.camera", systemImage: "camera") }
                 Button { showScanner = true } label: { Label("media.scan", systemImage: "doc.viewfinder") }
@@ -575,13 +675,11 @@ struct NoteEditorView: View {
                 Button { importingPDF = true } label: { Label("media.importPDF", systemImage: "doc.badge.plus") }
                 Divider()
                 Button { pasteFromClipboard() } label: { Label("media.paste", systemImage: "doc.on.clipboard") }
-                } label: {
-                    Image(systemName: "plus")
-                        .frame(width: 34, height: 34)
-                }
-                .accessibilityLabel(Text("media.insert"))
+            } label: {
+                Label("media.insert", systemImage: "plus")
+            }
 
-                Menu {
+            Menu {
                 ShareLink(
                     item: PDFExportFile(note: note),
                     preview: SharePreview(note.title ?? "StudyInk")
@@ -596,35 +694,52 @@ struct NoteEditorView: View {
                         Label("export.png", systemImage: "photo")
                     }
                 }
-                } label: {
-                    Image(systemName: "square.and.arrow.up")
-                        .frame(width: 34, height: 34)
-                }
-                .accessibilityLabel(Text("export.share"))
-
-                Button { showPageSettings = true } label: {
-                    Image(systemName: "doc.badge.gearshape")
-                        .frame(width: 34, height: 34)
-                }
-                .accessibilityLabel(Text("page.settings"))
-
-                Button {
-                    withAnimation { showPageStrip.toggle() }
-                } label: {
-                    Image(systemName: "rectangle.trailingthird.inset.filled")
-                        .frame(width: 34, height: 34)
-                }
-                .accessibilityLabel(Text("page.toggleStrip"))
+            } label: {
+                Label("export.share", systemImage: "square.and.arrow.up")
             }
-            .font(.system(size: 16, weight: .medium))
-            .padding(6)
-            .studyGlass(cornerRadius: 16)
-            .frame(maxWidth: .infinity, alignment: .trailing)
-            .padding(.trailing, 12)
-            .padding(.top, 8)
 
-            Spacer()
+            SubjectContextMenu(note: note)
+
+            Divider()
+
+            Button { showPageSettings = true } label: {
+                Label("page.settings", systemImage: "doc.badge.gearshape")
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .frame(width: 34, height: 34)
         }
+        .accessibilityLabel(Text("editor.more"))
+    }
+
+    /// Bottom-right: current page out of total, with up/down paging.
+    private var pageIndicator: some View {
+        VStack(spacing: 0) {
+            Button {
+                withAnimation { pageIndex = max(0, pageIndex - 1) }
+            } label: {
+                Image(systemName: "chevron.up")
+                    .frame(width: 34, height: 28)
+            }
+            .disabled(pageIndex == 0)
+            .accessibilityLabel(Text("page.previous"))
+
+            Text(verbatim: "\(pageIndex + 1)/\(note.sortedPages.count)")
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.secondary)
+
+            Button {
+                withAnimation { pageIndex = min(note.sortedPages.count - 1, pageIndex + 1) }
+            } label: {
+                Image(systemName: "chevron.down")
+                    .frame(width: 34, height: 28)
+            }
+            .disabled(pageIndex >= note.sortedPages.count - 1)
+            .accessibilityLabel(Text("page.next"))
+        }
+        .font(.system(size: 14, weight: .medium))
+        .padding(4)
+        .studyGlass(cornerRadius: 14)
     }
 
     private var exitDistractionFreeButton: some View {
@@ -682,6 +797,11 @@ struct NoteEditorView: View {
             let pages = note.sortedPages
             guard pages.indices.contains(index) else { return }
             pages[index].drawing = drawing
+            // Ink on the last page grows the document — there's always a fresh
+            // page waiting below. (Empty pages stay out of the exported PDF.)
+            if index == pages.count - 1, !drawing.strokes.isEmpty {
+                _ = note.addPage()
+            }
             note.searchableText = SearchableTextBuilder.build(for: note)
             PersistenceController.shared.save()
             scheduleOCR(for: pages[index])

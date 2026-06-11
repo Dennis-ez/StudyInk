@@ -37,6 +37,7 @@ struct LibraryView: View {
     @State private var showSettings = false
     @State private var renamingSubject: Subject?
     @State private var renameText = ""
+    @State private var autoOpenNote: Note?
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -54,6 +55,16 @@ struct LibraryView: View {
             )
             .navigationTitle(selectedSubject?.name.map { Text(verbatim: $0) } ?? Text("library.allNotes"))
             .toolbar { detailToolbar }
+            // The toolbar's New Note goes straight into the editor.
+            .navigationDestination(isPresented: Binding(
+                get: { autoOpenNote != nil },
+                set: { if !$0 { autoOpenNote = nil } }
+            )) {
+                if let note = autoOpenNote {
+                    NoteEditorView(note: note)
+                        .onAppear { withAnimation { columnVisibility = .detailOnly } }
+                }
+            }
         }
         .sheet(isPresented: $showSettings) { SettingsView() }
         .alert(Text("library.renameSubject"), isPresented: renamingBinding) {
@@ -253,8 +264,8 @@ struct LibraryView: View {
 
     private func addNote() {
         let note = Note.create(in: context, title: String(localized: "library.untitledNote"), subject: selectedSubject)
-        _ = note
         PersistenceController.shared.save()
+        autoOpenNote = note
     }
 
     private func moveNotes(ids: [String], to subject: Subject) -> Bool {

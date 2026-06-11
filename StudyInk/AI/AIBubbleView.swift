@@ -13,6 +13,7 @@ struct AIBubbleView: View {
     @State private var followUpText = ""
     @State private var dragStart: CGPoint?
     @State private var resizeStartWidth: Double?
+    @State private var resizeStartHeight: Double?
     @State private var appeared = false
     @FocusState private var followUpFocused: Bool
 
@@ -95,7 +96,7 @@ struct AIBubbleView: View {
         .environment(\.layoutDirection, isRTL ? .rightToLeft : .leftToRight)
     }
 
-    /// Bottom-corner grip to resize the bubble's width.
+    /// Bottom-corner grip resizes width and thread height together.
     private var resizeHandle: some View {
         Image(systemName: "arrow.up.left.and.arrow.down.right")
             .font(.system(size: 9, weight: .bold))
@@ -105,11 +106,21 @@ struct AIBubbleView: View {
             .gesture(
                 DragGesture(minimumDistance: 2)
                     .onChanged { value in
-                        if resizeStartWidth == nil { resizeStartWidth = bubble.width }
+                        if resizeStartWidth == nil {
+                            resizeStartWidth = bubble.width
+                            resizeStartHeight = bubble.maxHeight ?? 320
+                        }
                         guard let start = resizeStartWidth else { return }
-                        tutor.resize(bubbleID: bubble.id, width: start + value.translation.width / pageZoom)
+                        tutor.resize(
+                            bubbleID: bubble.id,
+                            width: start + value.translation.width / pageZoom,
+                            maxHeight: (resizeStartHeight ?? 320) + value.translation.height / pageZoom
+                        )
                     }
-                    .onEnded { _ in resizeStartWidth = nil }
+                    .onEnded { _ in
+                        resizeStartWidth = nil
+                        resizeStartHeight = nil
+                    }
             )
             .accessibilityLabel(Text("media.resize"))
     }
@@ -177,13 +188,14 @@ struct AIBubbleView: View {
             .shadow(color: SemanticColor.accentBlue.opacity(0.4), radius: 4, y: 1)
     }
 
-    /// Natural height for short threads; scrolls once content exceeds ~320pt.
+    /// Natural height for short threads; scrolls once content exceeds the
+    /// (user-resizable) cap.
     private var thread: some View {
         ViewThatFits(in: .vertical) {
             threadContent
             ScrollView { threadContent }
         }
-        .frame(maxHeight: 320)
+        .frame(maxHeight: bubble.maxHeight ?? 320)
     }
 
     private var threadContent: some View {

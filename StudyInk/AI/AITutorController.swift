@@ -44,7 +44,8 @@ final class AITutorController: ObservableObject {
         anchor: CGPoint,
         focusRegion: CGRect? = nil,
         focusImage: UIImage? = nil,
-        systemHint: String? = nil
+        systemHint: String? = nil,
+        panelOnly: Bool = false
     ) async {
         guard let note, let page = currentPage else { return }
         let pageSize = PageSize.from(id: page.pageSizeID).size
@@ -55,6 +56,10 @@ final class AITutorController: ObservableObject {
             x: position.x, y: position.y
         )
         bubble.thread = [AIExchange(question: question, answer: "")]
+        if panelOnly {
+            bubble.isPanelOnly = true
+            panelBubbleID = bubble.id
+        }
         bubbles.append(bubble)
         loadingBubbleIDs.insert(bubble.id)
         defer { loadingBubbleIDs.remove(bubble.id) }
@@ -147,10 +152,12 @@ final class AITutorController: ObservableObject {
 
     // MARK: - Lifecycle
 
+    /// Toggles pinning. Pinned bubbles persist across sessions but keep their
+    /// current expanded/collapsed state — force-collapsing on pin felt like
+    /// the bubble vanished.
     func pin(bubbleID: UUID) {
         guard let index = bubbles.firstIndex(where: { $0.id == bubbleID }) else { return }
-        bubbles[index].isPinned = true
-        bubbles[index].isCollapsed = true
+        bubbles[index].isPinned.toggle()
         persistPinnedBubbles()
     }
 
@@ -173,20 +180,27 @@ final class AITutorController: ObservableObject {
         if bubbles[index].isPinned { persistPinnedBubbles() }
     }
 
-    /// Asking from the side panel: follow up on the selected thread when it's
-    /// still on the canvas, otherwise open a fresh bubble near the top of the page.
+    /// Asking from the side panel: follow up on the selected thread, otherwise
+    /// start a panel-only conversation — never a floating canvas bubble.
     func askFromPanel(question: String) async {
         if let id = panelBubbleID, bubbles.contains(where: { $0.id == id }) {
             await followUp(bubbleID: id, question: question)
             return
         }
         let pageSize = currentPage.map { PageSize.from(id: $0.pageSizeID).size } ?? CGSize(width: 800, height: 1100)
-        await ask(question: question, anchor: CGPoint(x: pageSize.width - 140, y: 100))
+        await ask(
+            question: question,
+            anchor: CGPoint(x: pageSize.width - 140, y: 100),
+            panelOnly: true
+        )
     }
 
-    func resize(bubbleID: UUID, width: Double) {
+    func resize(bubbleID: UUID, width: Double, maxHeight: Double? = nil) {
         guard let index = bubbles.firstIndex(where: { $0.id == bubbleID }) else { return }
         bubbles[index].width = min(max(width, 240), 540)
+        if let maxHeight {
+            bubbles[index].maxHeight = min(max(maxHeight, 160), 700)
+        }
         if bubbles[index].isPinned { persistPinnedBubbles() }
     }
 
