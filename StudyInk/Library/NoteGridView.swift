@@ -8,6 +8,7 @@ struct NoteGridView: View {
     let searchText: String
     let gridLayout: Bool
     let sort: LibrarySort
+    var onNoteOpened: () -> Void = {}
 
     @Environment(\.managedObjectContext) private var context
     @FetchRequest(
@@ -105,6 +106,7 @@ struct NoteGridView: View {
     private func noteCell(_ note: Note) -> some View {
         NavigationLink {
             NoteEditorView(note: note)
+                .onAppear(perform: onNoteOpened)
         } label: {
             VStack(alignment: .leading, spacing: 8) {
                 if let first = note.sortedPages.first {
@@ -136,6 +138,7 @@ struct NoteGridView: View {
     private func noteListRow(_ note: Note) -> some View {
         NavigationLink {
             NoteEditorView(note: note)
+                .onAppear(perform: onNoteOpened)
         } label: {
             HStack(spacing: 14) {
                 if let first = note.sortedPages.first {
