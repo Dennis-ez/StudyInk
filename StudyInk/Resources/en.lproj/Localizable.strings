@@ -235,6 +235,10 @@
 "quiz.missed" = "Missed it";
 "quiz.score %lld %lld" = "You got %1$lld of %2$lld";
 "quiz.again" = "New Quiz";
+"ai.draw" = "Draw on Canvas";
+"ai.draw.placeholder" = "What should I draw?";
+"ai.draw.go" = "Draw";
+"ai.draw.failed" = "Couldn't turn that into a sketch — try describing it differently.";
 "ai.quiz.prefix %lld" = "Question %lld:";
 "ai.guidedMode" = "Guided Mode";
 "ai.guided.suggestion" = "AI tutor suggestion";
