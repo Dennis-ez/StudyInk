@@ -161,6 +161,16 @@ struct ShapeNodeOverlay: View {
         }
     }
 
+    /// Opposite sides roughly equal-and-parallel.
+    private func isParallelogram(_ corners: [CGPoint]) -> Bool {
+        guard corners.count == 4 else { return false }
+        let side1 = CGVector(dx: corners[1].x - corners[0].x, dy: corners[1].y - corners[0].y)
+        let side3 = CGVector(dx: corners[2].x - corners[3].x, dy: corners[2].y - corners[3].y)
+        let mismatch = hypot(side1.dx - side3.dx, side1.dy - side3.dy)
+        let scale = max(hypot(side1.dx, side1.dy), 24)
+        return mismatch / scale < 0.2
+    }
+
     private func boundingBox(of shape: ShapeRecognizer.Shape) -> CGRect {
         switch shape {
         case .line(let from, let to):
@@ -198,6 +208,33 @@ struct ShapeNodeOverlay: View {
             return index == 0 ? .line(from: point, to: to) : .line(from: from, to: point)
         case .polygon(var corners):
             guard corners.indices.contains(index) else { return shape }
+            if corners.count == 4, isParallelogram(corners) {
+                // Rectangle/parallelogram resize: the opposite corner stays
+                // anchored and the two adjacent corners slide along their
+                // edges — dragging bottom-right also moves top-right's x and
+                // bottom-left's y (works for rotated rectangles too).
+                let anchor = corners[(index + 2) % 4]
+                let edge1 = corners[(index + 1) % 4]
+                let edge2 = corners[(index + 3) % 4]
+                var u1 = CGVector(dx: edge1.x - anchor.x, dy: edge1.y - anchor.y)
+                var u2 = CGVector(dx: edge2.x - anchor.x, dy: edge2.y - anchor.y)
+                let len1 = max(hypot(u1.dx, u1.dy), 0.001)
+                let len2 = max(hypot(u2.dx, u2.dy), 0.001)
+                u1 = CGVector(dx: u1.dx / len1, dy: u1.dy / len1)
+                u2 = CGVector(dx: u2.dx / len2, dy: u2.dy / len2)
+                let v = CGVector(dx: point.x - anchor.x, dy: point.y - anchor.y)
+                let a = v.dx * u1.dx + v.dy * u1.dy
+                let b = v.dx * u2.dx + v.dy * u2.dy
+                // Refuse to collapse the shape through its anchor.
+                guard abs(a) > 14, abs(b) > 14 else { return shape }
+                corners[(index + 1) % 4] = CGPoint(x: anchor.x + u1.dx * a, y: anchor.y + u1.dy * a)
+                corners[(index + 3) % 4] = CGPoint(x: anchor.x + u2.dx * b, y: anchor.y + u2.dy * b)
+                corners[index] = CGPoint(
+                    x: anchor.x + u1.dx * a + u2.dx * b,
+                    y: anchor.y + u1.dy * a + u2.dy * b
+                )
+                return .polygon(corners)
+            }
             corners[index] = point
             return .polygon(corners)
         case .ellipse(let center, let rx, let ry):

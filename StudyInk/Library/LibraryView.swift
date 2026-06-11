@@ -74,16 +74,23 @@ struct LibraryView: View {
     // MARK: - Sidebar
 
     private var sidebar: some View {
-        List(selection: $selectedSubject) {
+        // Explicit selection buttons: List(selection:) silently stopped
+        // selecting once rows became custom HStacks.
+        List {
             Section {
-                HStack(spacing: 10) {
-                    iconTile(systemName: "tray.full.fill", tint: Color("accentBlue"))
-                    Text("library.allNotes")
-                        .font(.body.weight(.medium))
-                    Spacer()
-                    countBadge(allNotesForCounts.count)
+                Button {
+                    selectedSubject = nil
+                } label: {
+                    HStack(spacing: 10) {
+                        iconTile(systemName: "tray.full.fill", tint: Color("accentBlue"))
+                        Text("library.allNotes")
+                            .font(.body.weight(.medium))
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        countBadge(allNotesForCounts.count)
+                    }
                 }
-                .tag(nil as Subject?)
+                .listRowBackground(selectedSubject == nil ? Color.accentColor.opacity(0.14) : nil)
             }
             Section(header: Text("library.subjects").font(.caption.smallCaps()).foregroundStyle(.secondary)) {
                 ForEach(rootSubjects, id: \.objectID) { subject in
@@ -133,15 +140,20 @@ struct LibraryView: View {
             .padding(.leading, CGFloat(depth) * 16)
             .contextMenu { subjectContextMenu(subject) }
         } else {
-            HStack(spacing: 10) {
-                iconTile(systemName: "folder.fill", tint: Color(hex: subject.colorHex ?? "#0A84FF") ?? .accentColor)
-                Text(verbatim: subject.name ?? "")
-                    .lineLimit(1)
-                Spacer()
-                countBadge(subject.notes?.count ?? 0)
+            Button {
+                selectedSubject = subject
+            } label: {
+                HStack(spacing: 10) {
+                    iconTile(systemName: "folder.fill", tint: Color(hex: subject.colorHex ?? "#0A84FF") ?? .accentColor)
+                    Text(verbatim: subject.name ?? "")
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Spacer()
+                    countBadge(subject.notes?.count ?? 0)
+                }
             }
             .padding(.leading, CGFloat(depth) * 16)
-            .tag(subject as Subject?)
+            .listRowBackground(selectedSubject == subject ? Color.accentColor.opacity(0.14) : nil)
             .contextMenu { subjectContextMenu(subject) }
             .dropDestination(for: String.self) { ids, _ in
                 moveNotes(ids: ids, to: subject)

@@ -53,6 +53,11 @@ final class CanvasController: NSObject, ObservableObject {
 
     /// Remembered tool for Apple Pencil double-tap eraser toggle.
     private var toolBeforeEraser: ToolKind?
+    /// The eraser variant the user last chose (object vs pixel) — double-tap
+    /// switches to THIS, not a hardcoded default.
+    private var lastEraserKind: ToolKind = ToolKind(rawValue: UserDefaults.standard.string(forKey: "tools.lastEraser") ?? "") ?? .eraserPixel
+    /// True while the eraser was engaged by Pencil double-tap (momentary mode).
+    private var eraserViaDoubleTap = false
 
     /// The live PKCanvasView (hosted on the active page by the engine).
     weak var canvasView: PKCanvasView?
@@ -97,10 +102,27 @@ final class CanvasController: NSObject, ObservableObject {
 
     /// Switch tools, restoring that tool's own remembered color/width/opacity.
     func select(_ kind: ToolKind) {
+        if kind == .eraserPixel || kind == .eraserObject {
+            lastEraserKind = kind
+            UserDefaults.standard.set(kind.rawValue, forKey: "tools.lastEraser")
+        }
+        eraserViaDoubleTap = false
         guard kind != toolState.kind else { return }
         var next = savedTools[kind.rawValue] ?? toolState
         next.kind = kind
         toolState = next
+    }
+
+    private var isEraserActive: Bool {
+        toolState.kind == .eraserPixel || toolState.kind == .eraserObject
+    }
+
+    /// Called by the engine when an erase gesture finishes: if the eraser was
+    /// engaged via double-tap, hop back to the tool that was active before.
+    func eraseGestureFinished() {
+        guard eraserViaDoubleTap, isEraserActive else { return }
+        select(toolBeforeEraser ?? .ballpoint)
+        Haptics.selection()
     }
 
     private func rememberCurrentTool() {
@@ -132,12 +154,12 @@ final class CanvasController: NSObject, ObservableObject {
     }
 
     func toggleEraser() {
-        if toolState.kind.isInking || toolState.kind == .lasso {
-            toolBeforeEraser = toolState.kind
-            select(.eraserPixel)
-        } else {
+        if isEraserActive {
             select(toolBeforeEraser ?? .ballpoint)
-            toolBeforeEraser = nil
+        } else {
+            toolBeforeEraser = toolState.kind
+            select(lastEraserKind)
+            eraserViaDoubleTap = true   // after select(), which clears it
         }
     }
 }
