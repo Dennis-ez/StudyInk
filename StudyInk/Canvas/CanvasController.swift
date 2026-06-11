@@ -19,8 +19,11 @@ final class CanvasController: NSObject, ObservableObject {
     @Published var pencilOnly = true {
         didSet {
             canvasView?.drawingPolicy = pencilOnly ? .pencilOnly : .anyInput
-            // With finger drawing on, one-finger drags must ink, not scroll.
-            engine?.panGestureRecognizer.minimumNumberOfTouches = pencilOnly ? 1 : 2
+            // With finger drawing on, one-finger drags must ink, not scroll
+            // (unless the hand tool is active — then one finger always pans).
+            if toolState.kind != .hand {
+                engine?.panGestureRecognizer.minimumNumberOfTouches = pencilOnly ? 1 : 2
+            }
         }
     }
     @Published private(set) var canUndo = false
@@ -54,8 +57,11 @@ final class CanvasController: NSObject, ObservableObject {
     /// Remembered tool for Apple Pencil double-tap eraser toggle.
     private var toolBeforeEraser: ToolKind?
     /// The eraser variant the user last chose (object vs pixel) — double-tap
-    /// switches to THIS, not a hardcoded default.
-    private var lastEraserKind: ToolKind = ToolKind(rawValue: UserDefaults.standard.string(forKey: "tools.lastEraser") ?? "") ?? .eraserPixel
+    /// switches to THIS, not a hardcoded default. Published so the toolbar's
+    /// single collapsed eraser button shows the right variant.
+    @Published private(set) var lastEraserKind: ToolKind = ToolKind(rawValue: UserDefaults.standard.string(forKey: "tools.lastEraser") ?? "") ?? .eraserPixel {
+        didSet { UserDefaults.standard.set(lastEraserKind.rawValue, forKey: "tools.lastEraser") }
+    }
     /// True while the eraser was engaged by Pencil double-tap (momentary mode).
     private var eraserViaDoubleTap = false
 
@@ -106,7 +112,6 @@ final class CanvasController: NSObject, ObservableObject {
     func select(_ kind: ToolKind) {
         if kind == .eraserPixel || kind == .eraserObject {
             lastEraserKind = kind
-            UserDefaults.standard.set(kind.rawValue, forKey: "tools.lastEraser")
         }
         eraserViaDoubleTap = false
         guard kind != toolState.kind else { return }
@@ -143,6 +148,10 @@ final class CanvasController: NSObject, ObservableObject {
 
     func applyTool() {
         canvasView?.tool = toolState.pkTool(darkMode: isDarkMode)
+        // Hand tool: nothing draws, one finger pans regardless of pencil-only.
+        let isHand = toolState.kind == .hand
+        canvasView?.drawingGestureRecognizer.isEnabled = !isHand
+        engine?.panGestureRecognizer.minimumNumberOfTouches = (isHand || pencilOnly) ? 1 : 2
     }
 
     func undo() { canvasView?.undoManager?.undo(); refreshUndoState() }

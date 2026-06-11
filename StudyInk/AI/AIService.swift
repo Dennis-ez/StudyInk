@@ -8,6 +8,8 @@ import UIKit
 /// them onto its own wire format.
 enum AIProvider: String, CaseIterable, Identifiable {
     case claude, gemini
+    /// Any OpenAI-compatible endpoint (Groq, OpenAI, Together, local servers).
+    case custom
 
     var id: String { rawValue }
 
@@ -15,6 +17,7 @@ enum AIProvider: String, CaseIterable, Identifiable {
         switch self {
         case .claude: return "Claude (Anthropic)"
         case .gemini: return "Gemini (Google)"
+        case .custom: return String(localized: "settings.ai.provider.custom")
         }
     }
 
@@ -25,6 +28,9 @@ enum AIProvider: String, CaseIterable, Identifiable {
             return ["claude-fable-5", "claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5"]
         case .gemini:
             return ["gemini-2.5-flash", "gemini-2.5-pro"]
+        case .custom:
+            // Groq is the default base URL; these exist there.
+            return ["llama-3.3-70b-versatile", "meta-llama/llama-4-scout-17b-16e-instruct"]
         }
     }
 
@@ -32,6 +38,7 @@ enum AIProvider: String, CaseIterable, Identifiable {
         switch self {
         case .claude: return "claude-fable-5"
         case .gemini: return "gemini-2.5-flash"
+        case .custom: return "llama-3.3-70b-versatile"
         }
     }
 }
@@ -66,6 +73,7 @@ enum AIServiceError: LocalizedError {
             switch provider {
             case .claude: return String(localized: "ai.error.missingKey")
             case .gemini: return String(localized: "ai.error.missingKey.gemini")
+            case .custom: return String(localized: "ai.error.missingKey.custom")
             }
         case .badResponse(let code, let body):
             return String(localized: "ai.error.api \(code)") + (body.isEmpty ? "" : " — \(body.prefix(200))")
@@ -81,6 +89,7 @@ enum AIService {
         switch AIConfig.provider {
         case .claude: return try await ClaudeService.send(system: system, messages: messages, maxTokens: maxTokens)
         case .gemini: return try await GeminiService.send(system: system, messages: messages, maxTokens: maxTokens)
+        case .custom: return try await OpenAICompatService.send(system: system, messages: messages, maxTokens: maxTokens)
         }
     }
 
@@ -90,6 +99,7 @@ enum AIService {
             switch provider {
             case .claude: return try await ClaudeService.listModels()
             case .gemini: return try await GeminiService.listModels()
+            case .custom: return try await OpenAICompatService.listModels()
             }
         } catch {
             return provider.defaultModels

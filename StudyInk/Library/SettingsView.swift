@@ -15,8 +15,17 @@ struct SettingsView: View {
     @State private var customModel = ""
     @State private var keyInput = ""
     @State private var keyConfigured = false
+    @State private var customBaseURL = AIConfig.customBaseURL
 
     private var provider: AIProvider { AIProvider(rawValue: providerRaw) ?? .claude }
+
+    private var keyHelp: LocalizedStringKey {
+        switch provider {
+        case .claude: return "settings.ai.keyHelp"
+        case .gemini: return "settings.ai.keyHelp.gemini"
+        case .custom: return "settings.ai.keyHelp.custom"
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -68,6 +77,17 @@ struct SettingsView: View {
                 }
             }
 
+            if provider == .custom {
+                // Any OpenAI-compatible server: Groq, OpenAI, Together, local.
+                TextField("settings.ai.baseURL", text: $customBaseURL, prompt: Text(verbatim: "https://api.groq.com/openai/v1"))
+                    .keyboardType(.URL)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .onChange(of: customBaseURL) { _, newValue in
+                        AIConfig.customBaseURL = newValue.trimmingCharacters(in: .whitespaces)
+                    }
+            }
+
             LabeledContent("settings.ai.status") {
                 Text(keyConfigured ? "settings.ai.configured" : "settings.ai.missingKey")
                     .foregroundStyle(keyConfigured ? .green : .orange)
@@ -96,7 +116,7 @@ struct SettingsView: View {
                 }
             }
 
-            Text(provider == .claude ? "settings.ai.keyHelp" : "settings.ai.keyHelp.gemini")
+            Text(keyHelp)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
@@ -198,7 +218,23 @@ enum AIConfig {
         switch provider {
         case .claude: return plistString("ANTHROPIC_API_KEY")
         case .gemini: return plistString("GEMINI_API_KEY")
+        case .custom: return plistString("CUSTOM_API_KEY")
         }
+    }
+
+    /// Base URL of the custom OpenAI-compatible provider (default: Groq).
+    static var customBaseURL: String {
+        get {
+            UserDefaults.standard.string(forKey: "settings.ai.customBaseURL").flatMap { $0.isEmpty ? nil : $0 }
+                ?? "https://api.groq.com/openai/v1"
+        }
+        set { UserDefaults.standard.set(newValue, forKey: "settings.ai.customBaseURL") }
+    }
+
+    /// `path` appended to the configured base URL, tolerating trailing slashes.
+    static func customEndpoint(path: String) -> URL {
+        let base = customBaseURL.hasSuffix("/") ? String(customBaseURL.dropLast()) : customBaseURL
+        return URL(string: "\(base)/\(path)") ?? URL(string: "https://api.groq.com/openai/v1/\(path)")!
     }
 
     /// nil removes the stored key (the plist fallback, if any, applies again).

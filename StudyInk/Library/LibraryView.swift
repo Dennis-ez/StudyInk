@@ -14,8 +14,24 @@ enum LibrarySort: String, CaseIterable {
     }
 }
 
-/// The home screen: subjects (folders + dividers) in the sidebar, notes in a
-/// grid or list, full-text + handwriting-OCR search across Hebrew and English.
+/// What the note grid is showing: a smart section or one subject.
+enum LibrarySection: Hashable {
+    case all, recents, favorites, deleted
+    case subject(Subject)
+
+    var titleKey: LocalizedStringKey {
+        switch self {
+        case .all: return "library.allNotes"
+        case .recents: return "library.recents"
+        case .favorites: return "library.favorites"
+        case .deleted: return "library.recentlyDeleted"
+        case .subject: return "library.allNotes" // unused — subject rows show their name
+        }
+    }
+}
+
+/// The home screen: smart sections + subjects (folders + dividers) in the
+/// sidebar, notes in a grid or list, full-text + handwriting-OCR search.
 struct LibraryView: View {
     @Environment(\.managedObjectContext) private var context
     @FetchRequest(
@@ -29,7 +45,9 @@ struct LibraryView: View {
         sortDescriptors: []
     ) private var allNotesForCounts: FetchedResults<Note>
 
-    @State private var selectedSubject: Subject?
+    @State private var selection: LibrarySection = .all
+    /// Subjects whose children are hidden in the sidebar.
+    @State private var collapsedSubjects: Set<NSManagedObjectID> = []
     @State private var columnVisibility = NavigationSplitViewVisibility.all
     @State private var searchText = ""
     @AppStorage("library.layout.grid") private var gridLayout = true
@@ -44,7 +62,7 @@ struct LibraryView: View {
             sidebar
         } detail: {
             NoteGridView(
-                subject: selectedSubject,
+                section: selection,
                 searchText: searchText,
                 gridLayout: gridLayout,
                 sort: LibrarySort(rawValue: sortRaw) ?? .dateModified,
@@ -53,7 +71,7 @@ struct LibraryView: View {
                     withAnimation { columnVisibility = .detailOnly }
                 }
             )
-            .navigationTitle(selectedSubject?.name.map { Text(verbatim: $0) } ?? Text("library.allNotes"))
+            .navigationTitle(detailTitle)
             .toolbar { detailToolbar }
             // The toolbar's New Note goes straight into the editor.
             .navigationDestination(isPresented: Binding(
@@ -76,10 +94,28 @@ struct LibraryView: View {
                 renamingSubject = nil
             }
         }
+        .onAppear(perform: purgeExpiredNotes)
+    }
+
+    private var detailTitle: Text {
+        if case .subject(let subject) = selection, let name = subject.name {
+            return Text(verbatim: name)
+        }
+        return Text(selection.titleKey)
     }
 
     private var renamingBinding: Binding<Bool> {
         Binding(get: { renamingSubject != nil }, set: { if !$0 { renamingSubject = nil } })
+    }
+
+    // MARK: - Counts
+
+    private var activeNotes: [Note] { allNotesForCounts.filter { $0.deletedAt == nil } }
+    private var deletedCount: Int { allNotesForCounts.count(where: { $0.deletedAt != nil }) }
+    private var favoritesCount: Int { activeNotes.count(where: \.isFavorite) }
+    private var recentsCount: Int {
+        let cutoff = Date().addingTimeInterval(-7 * 24 * 3600)
+        return activeNotes.count(where: { ($0.modifiedAt ?? .distantPast) > cutoff })
     }
 
     // MARK: - Sidebar
@@ -89,24 +125,17 @@ struct LibraryView: View {
         // selecting once rows became custom HStacks.
         List {
             Section {
-                Button {
-                    selectedSubject = nil
-                } label: {
-                    HStack(spacing: 10) {
-                        iconTile(systemName: "tray.full.fill", tint: Color("accentBlue"))
-                        Text("library.allNotes")
-                            .font(.body.weight(.medium))
-                            .foregroundStyle(.primary)
-                        Spacer()
-                        countBadge(allNotesForCounts.count)
-                    }
-                }
-                .listRowBackground(selectedSubject == nil ? Color.accentColor.opacity(0.14) : nil)
+                sectionRow(.all, systemName: "tray.full.fill", tint: Color("accentBlue"), count: activeNotes.count)
+                sectionRow(.recents, systemName: "clock.fill", tint: .orange, count: recentsCount)
+                sectionRow(.favorites, systemName: "star.fill", tint: .yellow, count: favoritesCount)
             }
             Section(header: Text("library.subjects").font(.caption.smallCaps()).foregroundStyle(.secondary)) {
                 ForEach(rootSubjects, id: \.objectID) { subject in
                     subjectRows(subject, depth: 0)
                 }
+            }
+            Section {
+                sectionRow(.deleted, systemName: "trash.fill", tint: .gray, count: deletedCount)
             }
         }
         .searchable(text: $searchText, placement: .sidebar, prompt: Text("library.searchPrompt"))
@@ -127,13 +156,31 @@ struct LibraryView: View {
         }
     }
 
+    private func sectionRow(_ section: LibrarySection, systemName: String, tint: Color, count: Int) -> some View {
+        Button {
+            selection = section
+        } label: {
+            HStack(spacing: 10) {
+                iconTile(systemName: systemName, tint: tint)
+                Text(section.titleKey)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(.primary)
+                Spacer()
+                countBadge(count)
+            }
+        }
+        .listRowBackground(selection == section ? Color.accentColor.opacity(0.14) : nil)
+    }
+
     @ViewBuilder
     private func subjectRows(_ subject: Subject, depth: Int) -> AnyView {
         AnyView(
             Group {
                 subjectRow(subject, depth: depth)
-                ForEach(sortedChildren(of: subject), id: \.objectID) { child in
-                    subjectRows(child, depth: depth + 1)
+                if !collapsedSubjects.contains(subject.objectID) {
+                    ForEach(sortedChildren(of: subject), id: \.objectID) { child in
+                        subjectRows(child, depth: depth + 1)
+                    }
                 }
             }
         )
@@ -151,20 +198,42 @@ struct LibraryView: View {
             .padding(.leading, CGFloat(depth) * 16)
             .contextMenu { subjectContextMenu(subject) }
         } else {
+            let tint = Color(hex: subject.colorHex ?? "#0A84FF") ?? .accentColor
+            let isSelected = selection == .subject(subject)
             Button {
-                selectedSubject = subject
+                selection = .subject(subject)
             } label: {
                 HStack(spacing: 10) {
-                    iconTile(systemName: "folder.fill", tint: Color(hex: subject.colorHex ?? "#0A84FF") ?? .accentColor)
+                    iconTile(systemName: "folder.fill", tint: tint)
                     Text(verbatim: subject.name ?? "")
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                     Spacer()
-                    countBadge(subject.notes?.count ?? 0)
+                    countBadge(activeCount(of: subject))
+                    if !(subject.children?.isEmpty ?? true) {
+                        // Collapse/expand chevron — a separate tap target from the row.
+                        Button {
+                            withAnimation(.snappy(duration: 0.2)) {
+                                if !collapsedSubjects.insert(subject.objectID).inserted {
+                                    collapsedSubjects.remove(subject.objectID)
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "chevron.down")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .rotationEffect(.degrees(collapsedSubjects.contains(subject.objectID) ? -90 : 0))
+                                .frame(width: 24, height: 24)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(Text("library.toggleChildren"))
+                    }
                 }
             }
             .padding(.leading, CGFloat(depth) * 16)
-            .listRowBackground(selectedSubject == subject ? Color.accentColor.opacity(0.14) : nil)
+            // Subject rows carry their color as a soft wash; selection darkens it.
+            .listRowBackground(tint.opacity(isSelected ? 0.26 : 0.10))
             .contextMenu { subjectContextMenu(subject) }
             .dropDestination(for: String.self) { ids, _ in
                 moveNotes(ids: ids, to: subject)
@@ -220,7 +289,7 @@ struct LibraryView: View {
 
         Button(role: .destructive) {
             context.delete(subject)
-            if selectedSubject == subject { selectedSubject = nil }
+            if selection == .subject(subject) { selection = .all }
             PersistenceController.shared.save()
         } label: { Label("action.delete", systemImage: "trash") }
     }
@@ -228,8 +297,10 @@ struct LibraryView: View {
     @ToolbarContentBuilder
     private var detailToolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
-            Button(action: addNote) { Image(systemName: "square.and.pencil") }
-                .accessibilityLabel(Text("library.newNote"))
+            if selection != .deleted {
+                Button(action: addNote) { Image(systemName: "square.and.pencil") }
+                    .accessibilityLabel(Text("library.newNote"))
+            }
             Menu {
                 Picker("library.sort", selection: $sortRaw) {
                     ForEach(LibrarySort.allCases, id: \.rawValue) { sort in
@@ -250,6 +321,10 @@ struct LibraryView: View {
 
     // MARK: - Actions
 
+    private func activeCount(of subject: Subject) -> Int {
+        (subject.notes ?? []).count(where: { $0.deletedAt == nil })
+    }
+
     private func sortedChildren(of subject: Subject) -> [Subject] {
         (subject.children ?? []).sorted {
             ($0.sortIndex, $0.createdAt ?? .distantPast) < ($1.sortIndex, $1.createdAt ?? .distantPast)
@@ -263,9 +338,21 @@ struct LibraryView: View {
     }
 
     private func addNote() {
-        let note = Note.create(in: context, title: String(localized: "library.untitledNote"), subject: selectedSubject)
+        var subject: Subject?
+        if case .subject(let s) = selection { subject = s }
+        let note = Note.create(in: context, title: String(localized: "library.untitledNote"), subject: subject)
+        if selection == .favorites { note.isFavorite = true }
         PersistenceController.shared.save()
         autoOpenNote = note
+    }
+
+    /// Recently Deleted is a 30-day grace period, not an archive.
+    private func purgeExpiredNotes() {
+        let cutoff = Date().addingTimeInterval(-30 * 24 * 3600)
+        let expired = allNotesForCounts.filter { ($0.deletedAt ?? .distantFuture) < cutoff }
+        guard !expired.isEmpty else { return }
+        expired.forEach(context.delete)
+        PersistenceController.shared.save()
     }
 
     private func moveNotes(ids: [String], to subject: Subject) -> Bool {

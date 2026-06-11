@@ -38,16 +38,37 @@ struct PageSettingsSheet: View {
                     if page.template != .blank && page.template != .customPDF {
                         Text("page.spacing")
                             .font(.headline)
-                        HStack(spacing: 12) {
-                            Slider(value: $spacingValue, in: 0.6...1.8) { editing in
-                                // Commit on release: each change rebuilds the
-                                // page stack, so live-commit would stutter.
-                                if !editing { commitSpacing() }
+                        HStack(spacing: 16) {
+                            // Live preview: the thumbnail re-renders at every step,
+                            // the real page only on commit.
+                            Canvas { ctx, size in
+                                ctx.fill(Path(roundedRect: CGRect(origin: .zero, size: size), cornerRadius: 8), with: .color(Color("canvasBackground")))
+                                page.template.draw(
+                                    in: &ctx,
+                                    rect: CGRect(origin: .zero, size: size),
+                                    scale: 0.22,
+                                    lineColor: Color("templateLine"),
+                                    accentColor: Color("accentBlue"),
+                                    spacing: spacingValue
+                                )
                             }
-                            Text(verbatim: String(format: "%.2f×", spacingValue))
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(.secondary)
-                                .frame(width: 48, alignment: .trailing)
+                            .frame(width: 96, height: 84)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.quaternary))
+
+                            VStack(alignment: .leading, spacing: 6) {
+                                Stepper(value: $spacingValue, in: 0.6...1.8, step: 0.1) {
+                                    Text(verbatim: String(format: "%.1f×", spacingValue))
+                                        .font(.body.monospacedDigit())
+                                } onEditingChanged: { editing in
+                                    // Commit on release: each change rebuilds the
+                                    // page stack, so live-commit would stutter.
+                                    if !editing { commitSpacing() }
+                                }
+                                Text("page.spacing.hint")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
 
