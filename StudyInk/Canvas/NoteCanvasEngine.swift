@@ -219,13 +219,15 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         isProgrammaticChange = true
         canvas.drawing = controller.drawingProvider?(index) ?? PKDrawing()
         isProgrammaticChange = false
-        // PencilKit renders the swapped-in drawing asynchronously; keep this
-        // page's cached image visible underneath for a beat so the previous
-        // page's ink never flashes here.
+        // PencilKit renders the swapped-in drawing asynchronously; the canvas
+        // would briefly show the PREVIOUS page's ink. Hide the live canvas and
+        // show this page's cached render until PencilKit has caught up.
         container.imageView.isHidden = false
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self, weak container] in
-            guard let self, let container, self.activeIndex == index else { return }
-            container.imageView.isHidden = true
+        canvas.alpha = 0
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) { [weak self, weak container] in
+            guard let self, self.activeIndex == index else { return }
+            self.canvas.alpha = 1
+            container?.imageView.isHidden = true
         }
         // The undo stack is per-canvas, not per-page: undoing after a page
         // switch would resurrect the previous page's ink on this one.

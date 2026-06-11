@@ -168,6 +168,10 @@ struct StrokeTransformOverlay: View {
                 .position(x: frame.midX, y: frame.midY)
                 .gesture(twistGesture)
 
+            // Rotation lollipop: a single-finger handle hanging off the
+            // selection — precise finger rotation that always works.
+            rotationLollipop(frame: frame)
+
             VStack {
                 HStack(spacing: 12) {
                     Button {
@@ -197,6 +201,38 @@ struct StrokeTransformOverlay: View {
                 Spacer()
             }
         }
+    }
+
+    @ViewBuilder
+    private func rotationLollipop(frame: CGRect) -> some View {
+        let center = CGPoint(x: frame.midX, y: frame.midY)
+        let radius = frame.height / 2 + 48
+        let angle = (rotation + 90) * .pi / 180
+        let handle = CGPoint(x: center.x + radius * CGFloat(cos(angle)), y: center.y + radius * CGFloat(sin(angle)))
+
+        Path { path in
+            let edge = CGPoint(
+                x: center.x + (frame.height / 2) * CGFloat(cos(angle)),
+                y: center.y + (frame.height / 2) * CGFloat(sin(angle))
+            )
+            path.move(to: edge)
+            path.addLine(to: handle)
+        }
+        .stroke(SemanticColor.accentBlue.opacity(0.7), style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+
+        Circle()
+            .fill(SemanticColor.accentBlue)
+            .frame(width: 30, height: 30)
+            .overlay(
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(.white)
+            )
+            .shadow(color: .black.opacity(0.3), radius: 3, y: 1)
+            .contentShape(Circle().scale(2))
+            .position(handle)
+            .gesture(handleGesture(center: center))
+            .accessibilityLabel(Text("media.rotate"))
     }
 
     private var twistGesture: some Gesture {

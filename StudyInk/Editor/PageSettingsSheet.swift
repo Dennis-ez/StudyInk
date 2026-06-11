@@ -6,6 +6,7 @@ struct PageSettingsSheet: View {
     @ObservedObject var page: Page
     @Environment(\.dismiss) private var dismiss
     @State private var importingPDF = false
+    @State private var spacingValue = 1.0
 
     private let grid = [GridItem(.adaptive(minimum: 96), spacing: 14)]
 
@@ -37,12 +38,17 @@ struct PageSettingsSheet: View {
                     if page.template != .blank && page.template != .customPDF {
                         Text("page.spacing")
                             .font(.headline)
-                        Picker("page.spacing", selection: spacingBinding) {
-                            Text("page.spacing.compact").tag(0.75)
-                            Text("page.spacing.normal").tag(1.0)
-                            Text("page.spacing.wide").tag(1.4)
+                        HStack(spacing: 12) {
+                            Slider(value: $spacingValue, in: 0.6...1.8) { editing in
+                                // Commit on release: each change rebuilds the
+                                // page stack, so live-commit would stutter.
+                                if !editing { commitSpacing() }
+                            }
+                            Text(verbatim: String(format: "%.2f×", spacingValue))
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                                .frame(width: 48, alignment: .trailing)
                         }
-                        .pickerStyle(.segmented)
                     }
 
                     Text("page.size")
@@ -70,6 +76,7 @@ struct PageSettingsSheet: View {
                     Button("action.done") { dismiss() }
                 }
             }
+            .onAppear { spacingValue = page.templateSpacing > 0 ? page.templateSpacing : 1.0 }
             .fileImporter(isPresented: $importingPDF, allowedContentTypes: [.pdf]) { result in
                 if case .success(let url) = result {
                     let access = url.startAccessingSecurityScopedResource()
@@ -84,19 +91,10 @@ struct PageSettingsSheet: View {
         .presentationDetents([.medium, .large])
     }
 
-    private var spacingBinding: Binding<Double> {
-        Binding(
-            get: {
-                // Snap stored value to the nearest preset so the picker always selects.
-                let value = page.templateSpacing > 0 ? page.templateSpacing : 1.0
-                return [0.75, 1.0, 1.4].min { abs($0 - value) < abs($1 - value) } ?? 1.0
-            },
-            set: {
-                page.templateSpacing = $0
-                page.note?.touch()
-                PersistenceController.shared.save()
-            }
-        )
+    private func commitSpacing() {
+        page.templateSpacing = spacingValue
+        page.note?.touch()
+        PersistenceController.shared.save()
     }
 
     private var sizeBinding: Binding<PageSize> {

@@ -7,6 +7,8 @@ struct PageNavigatorStrip: View {
     @ObservedObject var note: Note
     @Binding var currentIndex: Int
     var horizontal = true
+    /// Shown at the top of the vertical strip: back to the library.
+    var onExit: (() -> Void)?
 
     var body: some View {
         let layout = horizontal
@@ -15,6 +17,16 @@ struct PageNavigatorStrip: View {
 
         ScrollView(horizontal ? .horizontal : .vertical, showsIndicators: false) {
             layout {
+                if !horizontal, let onExit {
+                    Button(action: onExit) {
+                        Image(systemName: "books.vertical.fill")
+                            .font(.body)
+                            .frame(width: 54, height: 40)
+                            .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
+                    }
+                    .accessibilityLabel(Text("editor.backToLibrary"))
+                    Divider().frame(width: 40)
+                }
                 ForEach(Array(note.sortedPages.enumerated()), id: \.element.objectID) { index, page in
                     thumbnail(for: page, index: index)
                 }

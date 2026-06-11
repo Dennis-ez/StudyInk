@@ -7,6 +7,7 @@ struct SettingsView: View {
     @AppStorage("settings.autoBackup") private var autoBackup = true
     @AppStorage("settings.iCloudSync") private var iCloudSync = false
     @AppStorage("settings.ai.provider") private var providerRaw = AIProvider.claude.rawValue
+    @AppStorage("settings.defaultTemplate") private var defaultTemplate = "blank"
     @Environment(\.dismiss) private var dismiss
 
     @State private var models: [String] = []
@@ -34,6 +35,13 @@ struct SettingsView: View {
                     Text("settings.iCloudSync.footnote")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                }
+                Section(header: Label("settings.notes", systemImage: "book.closed")) {
+                    Picker("settings.defaultTemplate", selection: $defaultTemplate) {
+                        ForEach(PageTemplate.allCases.filter { $0 != .customPDF }) { template in
+                            Text(template.labelKey).tag(template.rawValue)
+                        }
+                    }
                 }
                 aiKeySection
                 aiModelSection

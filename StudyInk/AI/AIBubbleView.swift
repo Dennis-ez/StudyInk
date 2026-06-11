@@ -12,29 +12,35 @@ struct AIBubbleView: View {
 
     @State private var followUpText = ""
     @State private var dragStart: CGPoint?
+    @State private var resizeStartWidth: Double?
     @State private var appeared = false
     @FocusState private var followUpFocused: Bool
 
     private var isRTL: Bool { bubble.latestAnswer.isMostlyRTL }
 
+    /// Bubbles scale with the page (clamped for legibility) so they read as
+    /// page content, not floating chrome.
+    private var pageZoom: CGFloat {
+        min(max(transform.zoomScale, 0.6), 1.8)
+    }
+
     var body: some View {
         let screenPos = transform.toScreen(CGPoint(x: bubble.x, y: bubble.y))
-        let width = bubble.width * transform.zoomScale
+        let cardWidth = max(bubble.width, 260)
 
         Group {
             if bubble.isCollapsed {
                 collapsedChip
             } else {
-                card.frame(width: max(width, 260))
+                card.frame(width: cardWidth)
             }
         }
-        .position(x: screenPos.x + max(width, 260) / 2, y: screenPos.y + 80)
-        .scaleEffect(appeared ? 1 : 0.8)
+        .scaleEffect(pageZoom * (appeared ? 1 : 0.8), anchor: .top)
+        .position(x: screenPos.x + cardWidth * pageZoom / 2, y: screenPos.y + 90 * pageZoom)
         .opacity(appeared ? 1 : 0)
         .onAppear {
             withAnimation(.spring(response: 0.2, dampingFraction: 0.7)) { appeared = true }
         }
-        .gesture(dragGesture)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text("ai.bubble.accessibility"))
         .accessibilityValue(Text(bubble.latestAnswer))
@@ -70,16 +76,49 @@ struct AIBubbleView: View {
             askMoreField
             footer
         }
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .studyGlass(cornerRadius: 22)
-        // The response tone (explanation/encouragement/correction/error)
-        // shows as a soft colored glow around the glass.
-        .shadow(color: Color(bubble.tone.colorToken).opacity(0.32), radius: 18, y: 6)
+        // Paper styling: the bubble reads as part of the page — same paper
+        // color, template-line border, tone shown as a thin top rule.
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color("canvasBackground")))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color("templateLine"), lineWidth: 1)
+        )
+        .overlay(alignment: .top) {
+            Capsule()
+                .fill(Color(bubble.tone.colorToken))
+                .frame(height: 3)
+                .padding(.horizontal, 14)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(alignment: .bottomTrailing) { resizeHandle }
+        .shadow(color: .black.opacity(0.10), radius: 4, y: 2)
         .environment(\.layoutDirection, isRTL ? .rightToLeft : .leftToRight)
+    }
+
+    /// Bottom-corner grip to resize the bubble's width.
+    private var resizeHandle: some View {
+        Image(systemName: "arrow.up.left.and.arrow.down.right")
+            .font(.system(size: 9, weight: .bold))
+            .foregroundStyle(.tertiary)
+            .padding(6)
+            .contentShape(Rectangle().scale(2))
+            .gesture(
+                DragGesture(minimumDistance: 2)
+                    .onChanged { value in
+                        if resizeStartWidth == nil { resizeStartWidth = bubble.width }
+                        guard let start = resizeStartWidth else { return }
+                        tutor.resize(bubbleID: bubble.id, width: start + value.translation.width / pageZoom)
+                    }
+                    .onEnded { _ in resizeStartWidth = nil }
+            )
+            .accessibilityLabel(Text("media.resize"))
     }
 
     private var header: some View {
         HStack(spacing: 8) {
+            Image(systemName: "line.3.horizontal")
+                .font(.caption2)
+                .foregroundStyle(.quaternary)
             avatar
             Text("ai.tutorName")
                 .font(.caption.weight(.semibold))
@@ -114,6 +153,10 @@ struct AIBubbleView: View {
         .padding(.horizontal, 14)
         .padding(.top, 10)
         .padding(.bottom, 4)
+        .contentShape(Rectangle())
+        // The header is the drag handle — the scrollable thread below would
+        // otherwise swallow drags.
+        .highPriorityGesture(dragGesture)
     }
 
     private var avatar: some View {
@@ -266,8 +309,8 @@ struct AIBubbleView: View {
                 if dragStart == nil { dragStart = CGPoint(x: bubble.x, y: bubble.y) }
                 guard let start = dragStart else { return }
                 tutor.move(bubbleID: bubble.id, to: CGPoint(
-                    x: start.x + value.translation.width / transform.zoomScale,
-                    y: start.y + value.translation.height / transform.zoomScale
+                    x: start.x + value.translation.width / pageZoom,
+                    y: start.y + value.translation.height / pageZoom
                 ))
             }
             .onEnded { _ in dragStart = nil }
