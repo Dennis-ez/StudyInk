@@ -35,6 +35,7 @@ struct NoteEditorView: View {
     @State private var transformLassoActive = false
     @State private var strokeSelection: StrokeSelection?
     @State private var strokeRotation: Double = 0
+    @State private var editingShape: EditingShape?
     @State private var circleAskRegion: CGRect?
     @Environment(\.managedObjectContext) private var context
     @Environment(\.colorScheme) private var colorScheme
@@ -81,7 +82,7 @@ struct NoteEditorView: View {
                 layoutSignature: layoutSignature
             )
             .ignoresSafeArea(edges: .bottom)
-            .allowsHitTesting(selectedMediaID == nil && strokeSelection == nil && !transformLassoActive)
+            .allowsHitTesting(selectedMediaID == nil && strokeSelection == nil && !transformLassoActive && editingShape == nil)
 
             // Tap-anywhere catcher to drop the current media/text selection.
             if selectedMediaID != nil || editingBoxID != nil {
@@ -179,6 +180,36 @@ struct NoteEditorView: View {
             TransformLassoOverlay(isActive: $transformLassoActive, transform: transform) { polygon in
                 beginStrokeTransform(with: polygon)
             }
+            // Node editing for freshly created shapes.
+            if editingShape != nil {
+                ShapeNodeOverlay(
+                    editing: Binding(
+                        get: { editingShape! },
+                        set: { editingShape = $0 }
+                    ),
+                    transform: canvasController.transform(forPage: editingShape!.pageIndex),
+                    snap: snapMetrics,
+                    onChange: { shape in
+                        guard let editing = editingShape else { return }
+                        let stroke = ShapeRecognizer.idealStroke(
+                            for: shape,
+                            ink: currentInk(),
+                            width: CGFloat(editing.width)
+                        )
+                        canvasController.engine?.updateEditedStroke(
+                            at: editing.strokeIndex,
+                            on: editing.pageIndex,
+                            with: stroke
+                        )
+                    },
+                    onDone: {
+                        canvasController.engine?.endStrokeEdit()
+                        editingShape = nil
+                        Haptics.tap()
+                    }
+                )
+            }
+
             if let selection = strokeSelection {
                 StrokeTransformOverlay(
                     selection: selection,
@@ -306,6 +337,16 @@ struct NoteEditorView: View {
                     guard pages.indices.contains(index) else { return nil }
                     return PageRenderer.Snapshot(page: pages[index])
                 }
+            }
+            canvasController.onShapeCreated = { pageIndex, strokeIndex, shape in
+                canvasController.engine?.beginStrokeEdit()
+                editingShape = EditingShape(
+                    pageIndex: pageIndex,
+                    strokeIndex: strokeIndex,
+                    shape: shape,
+                    colorHex: canvasController.toolState.colorHex,
+                    width: canvasController.toolState.width
+                )
             }
             canvasController.onAddPage = { [weak note] in
                 guard let note else { return }
@@ -451,6 +492,14 @@ struct NoteEditorView: View {
         }
         canvas.drawing = StrokeSelector.applyRotation(strokeRotation, selection: selection, to: old)
         Haptics.success()
+    }
+
+    /// Current inking tool's PKInk (for rebuilding edited shape strokes).
+    private func currentInk() -> PKInk {
+        if let tool = canvasController.toolState.pkTool(darkMode: colorScheme == .dark) as? PKInkingTool {
+            return tool.ink
+        }
+        return PKInk(.pen, color: .label)
     }
 
     private func sendAsk() {

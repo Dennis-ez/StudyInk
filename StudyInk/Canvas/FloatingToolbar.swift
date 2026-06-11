@@ -48,8 +48,35 @@ struct FloatingToolbar: View {
         }
     }
 
+    /// The bar plus (when open) its inline options panel — no UIKit popover,
+    /// which mis-anchored inside the floating/draggable bar.
     @ViewBuilder
     private var content: some View {
+        switch dock {
+        case .top:
+            VStack(spacing: 8) { bar; optionsPanelIfNeeded }
+        case .bottom:
+            VStack(spacing: 8) { optionsPanelIfNeeded; bar }
+        case .leading:
+            HStack(alignment: .top, spacing: 8) { bar; optionsPanelIfNeeded }
+        case .trailing:
+            HStack(alignment: .top, spacing: 8) { optionsPanelIfNeeded; bar }
+        }
+    }
+
+    @ViewBuilder
+    private var optionsPanelIfNeeded: some View {
+        if showToolOptions {
+            ToolOptionsPanel(controller: controller) {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { showToolOptions = false }
+            }
+            .studyGlass(cornerRadius: 18)
+            .transition(.scale(scale: 0.92, anchor: dock == .bottom ? .bottom : .top).combined(with: .opacity))
+        }
+    }
+
+    @ViewBuilder
+    private var bar: some View {
         let layout = dock.isHorizontal
             ? AnyLayout(HStackLayout(spacing: 6))
             : AnyLayout(VStackLayout(spacing: 6))
@@ -97,10 +124,6 @@ struct FloatingToolbar: View {
         .buttonStyle(ToolbarButtonStyle())
         .padding(8)
         .studyGlass(cornerRadius: 18)
-        // One deterministic options surface for every tool, anchored to the bar.
-        .popover(isPresented: $showToolOptions, arrowEdge: dock == .top ? .top : .bottom) {
-            ToolOptionsPanel(controller: controller)
-        }
         .sheet(isPresented: $showCustomize) { CustomizeToolbarSheet(enabledToolsRaw: $enabledToolsRaw) }
     }
 
@@ -133,9 +156,9 @@ struct FloatingToolbar: View {
     private func toolButton(_ kind: ToolKind) -> some View {
         Button {
             if controller.toolState.kind == kind {
-                // Second tap on the active tool = open its options.
+                // Second tap on the active tool = toggle its options.
                 if kind.isInking {
-                    showToolOptions = true
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { showToolOptions.toggle() }
                 } else if kind == .lasso {
                     onTransformSelection()
                 }
@@ -162,7 +185,7 @@ struct FloatingToolbar: View {
             if !controller.toolState.kind.isInking {
                 controller.select(.ballpoint)
             }
-            showToolOptions = true
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { showToolOptions.toggle() }
         } label: {
             Circle()
                 .fill(Color(hex: controller.toolState.colorHex) ?? .black)
@@ -194,6 +217,7 @@ private struct ToolbarButtonStyle: ButtonStyle {
 /// writing straight through the controller so changes always reach the canvas.
 struct ToolOptionsPanel: View {
     @ObservedObject var controller: CanvasController
+    var onClose: () -> Void = {}
     @State private var customColor: Color = .black
 
     private static let presets = [
@@ -208,6 +232,12 @@ struct ToolOptionsPanel: View {
                     .foregroundStyle(Color.accentColor)
                 Text(controller.toolState.kind.labelKey)
                     .font(.headline)
+                Spacer()
+                Button(action: onClose) {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityLabel(Text("action.close"))
             }
 
             LazyVGrid(columns: Array(repeating: GridItem(.fixed(34)), count: 5), spacing: 10) {
@@ -255,9 +285,8 @@ struct ToolOptionsPanel: View {
             }
         }
         .padding(16)
-        .frame(width: 250)
+        .frame(width: 260)
         .onAppear { customColor = Color(hex: controller.toolState.colorHex) ?? .black }
-        .presentationCompactAdaptation(.popover)
     }
 }
 

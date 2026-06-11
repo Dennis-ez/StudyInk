@@ -29,6 +29,7 @@
 "tool.width" = "Stroke Width";
 "tool.optionsHint" = "Tap again for color and width options";
 "lasso.transform.hint" = "Circle the strokes you want to rotate";
+"shape.node" = "Shape node";
 
 /* Toolbar */
 "toolbar.customize" = "Customize Toolbar";
