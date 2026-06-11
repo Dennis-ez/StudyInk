@@ -147,7 +147,9 @@ struct NoteEditorView: View {
                     onTransformSelection: {
                         withAnimation { transformLassoActive = true }
                     },
-                    extraItems: toolbarExtras
+                    extraItems: toolbarExtras,
+                    // Pages strip occupies the trailing edge — slide aside.
+                    trailingInset: showPageStrip ? 96 : 0
                 )
 
                 // The recorder lives in the top bar; the bar only surfaces
