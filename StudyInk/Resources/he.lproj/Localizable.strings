@@ -44,6 +44,9 @@
 "tool.autoShapes" = "צורות אוטומטיות";
 "tool.snapToGrid" = "הצמדה לשורות ולרשת";
 "toolbar.move" = "הזזת סרגל הכלים";
+"toolbar.section.tools" = "כלים";
+"toolbar.section.accessories" = "כפתורים";
+"page.saveFavorite" = "שמירה כמועדף";
 
 /* תיבות טקסט */
 "textbox.accessibility" = "תיבת טקסט";

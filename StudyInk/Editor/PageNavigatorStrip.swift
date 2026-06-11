@@ -38,6 +38,9 @@ struct PageNavigatorStrip: View {
                 .accessibilityLabel(Text("page.add"))
             }
             .padding(10)
+            // Thumbnails slide into place on reorder/insert/delete instead of
+            // teleporting (keyed on the page order).
+            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: note.sortedPages.map(\.objectID))
         }
         .studyGlass(cornerRadius: 16)
         .frame(maxWidth: horizontal ? 460 : 84, maxHeight: horizontal ? 100 : 480)
@@ -113,8 +116,10 @@ struct PageNavigatorStrip: View {
         guard pages.indices.contains(from), pages.indices.contains(to) else { return }
         let moved = pages.remove(at: from)
         pages.insert(moved, at: to)
-        for (index, page) in pages.enumerated() { page.index = Int32(index) }
-        note.touch()
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+            for (index, page) in pages.enumerated() { page.index = Int32(index) }
+            note.touch()
+        }
         PersistenceController.shared.save()
         Haptics.success()
         currentIndex = to

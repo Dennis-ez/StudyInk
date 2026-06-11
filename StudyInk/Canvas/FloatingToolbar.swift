@@ -25,6 +25,8 @@ struct FloatingToolbar: View {
     @AppStorage("toolbar.tools.v2") private var enabledToolsRaw = ToolKind.allCases
         .filter { $0 != .eraserObject }
         .map(\.rawValue).joined(separator: ",")
+    /// Removable non-tool buttons: ruler, text box, and the editor's extras.
+    @AppStorage("toolbar.accessories") private var enabledAccessoriesRaw = "ruler,textbox,ask-ai,ai-history"
     /// The quick strip (colors/sizes) — opened by re-tapping the active tool.
     @State private var showInlineOptions = false
     /// Measured bar size — the dock placeholders mirror it.
@@ -48,6 +50,9 @@ struct FloatingToolbar: View {
     private var dock: ToolbarDock { ToolbarDock(rawValue: dockRaw) ?? .top }
     private var enabledTools: [ToolKind] {
         enabledToolsRaw.split(separator: ",").compactMap { ToolKind(rawValue: String($0)) }
+    }
+    private var enabledAccessories: Set<String> {
+        Set(enabledAccessoriesRaw.split(separator: ",").map(String.init))
     }
     /// Bar slots: both eraser variants collapse into one button that shows the
     /// variant currently in use (inline strip switches between them).
@@ -169,17 +174,23 @@ struct FloatingToolbar: View {
         layout {
             grip
             toolsSection
-            Divider().frame(maxHeight: 22).frame(maxWidth: 22)
-            Button(action: { controller.isRulerActive.toggle() }) {
-                Image(systemName: "ruler")
-                    .symbolVariant(controller.isRulerActive ? .fill : .none)
+            if !enabledAccessories.isEmpty {
+                Divider().frame(maxHeight: 22).frame(maxWidth: 22)
             }
-            .accessibilityLabel(Text("tool.ruler"))
-            Button(action: onInsertTextBox) {
-                Image(systemName: "textbox")
+            if enabledAccessories.contains("ruler") {
+                Button(action: { controller.isRulerActive.toggle() }) {
+                    Image(systemName: "ruler")
+                        .symbolVariant(controller.isRulerActive ? .fill : .none)
+                }
+                .accessibilityLabel(Text("tool.ruler"))
             }
-            .accessibilityLabel(Text("tool.textbox"))
-            ForEach(extraItems) { item in
+            if enabledAccessories.contains("textbox") {
+                Button(action: onInsertTextBox) {
+                    Image(systemName: "textbox")
+                }
+                .accessibilityLabel(Text("tool.textbox"))
+            }
+            ForEach(extraItems.filter { enabledAccessories.contains($0.id) }) { item in
                 Button(action: item.action) { Image(systemName: item.symbolName) }
                     .accessibilityLabel(Text(item.labelKey))
             }
@@ -196,7 +207,21 @@ struct FloatingToolbar: View {
         .padding(6)
         .studyGlass(cornerRadius: 16)
         .onGeometryChange(for: CGSize.self) { $0.size } action: { barSize = $0 }
-        .sheet(isPresented: $showCustomize) { CustomizeToolbarSheet(enabledToolsRaw: $enabledToolsRaw) }
+        .sheet(isPresented: $showCustomize) {
+            CustomizeToolbarSheet(
+                enabledToolsRaw: $enabledToolsRaw,
+                accessories: accessoryDefs,
+                enabledAccessoriesRaw: $enabledAccessoriesRaw
+            )
+        }
+    }
+
+    /// Non-tool bar buttons (ruler, text box, AI shortcuts) — all removable.
+    private var accessoryDefs: [ToolbarAccessory] {
+        [
+            ToolbarAccessory(id: "ruler", symbolName: "ruler", labelKey: "tool.ruler"),
+            ToolbarAccessory(id: "textbox", symbolName: "textbox", labelKey: "tool.textbox"),
+        ] + extraItems.map { ToolbarAccessory(id: $0.id, symbolName: $0.symbolName, labelKey: $0.labelKey) }
     }
 
     /// At most five tool slots are visible; more tools scroll in page-sized
@@ -508,17 +533,36 @@ private struct ToolbarButtonStyle: ButtonStyle {
     }
 }
 
-/// Lets the user choose which tools appear on the toolbar.
+struct ToolbarAccessory: Identifiable {
+    let id: String
+    let symbolName: String
+    let labelKey: LocalizedStringKey
+}
+
+/// Lets the user choose which tools AND accessory buttons appear on the bar.
 struct CustomizeToolbarSheet: View {
     @Binding var enabledToolsRaw: String
+    var accessories: [ToolbarAccessory] = []
+    @Binding var enabledAccessoriesRaw: String
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
-            // One eraser slot — pixel/object is an inline toggle, not two buttons.
-            List(ToolKind.allCases.filter { $0 != .eraserObject }) { kind in
-                Toggle(isOn: binding(for: kind)) {
-                    Label { Text(kind.labelKey) } icon: { Image(systemName: kind.symbolName) }
+            List {
+                Section(header: Text("toolbar.section.tools")) {
+                    // One eraser slot — pixel/object is an inline toggle, not two buttons.
+                    ForEach(ToolKind.allCases.filter { $0 != .eraserObject }) { kind in
+                        Toggle(isOn: binding(for: kind)) {
+                            Label { Text(kind.labelKey) } icon: { Image(systemName: kind.symbolName) }
+                        }
+                    }
+                }
+                Section(header: Text("toolbar.section.accessories")) {
+                    ForEach(accessories) { accessory in
+                        Toggle(isOn: accessoryBinding(for: accessory.id)) {
+                            Label { Text(accessory.labelKey) } icon: { Image(systemName: accessory.symbolName) }
+                        }
+                    }
                 }
             }
             .navigationTitle(Text("toolbar.customize"))
@@ -528,7 +572,7 @@ struct CustomizeToolbarSheet: View {
                 }
             }
         }
-        .presentationDetents([.medium])
+        .presentationDetents([.medium, .large])
     }
 
     private func binding(for kind: ToolKind) -> Binding<Bool> {
@@ -543,6 +587,22 @@ struct CustomizeToolbarSheet: View {
                 }
                 // Keep canonical tool order regardless of toggle order.
                 enabledToolsRaw = ToolKind.allCases.map(\.rawValue).filter(set.contains).joined(separator: ",")
+            }
+        )
+    }
+
+    private func accessoryBinding(for id: String) -> Binding<Bool> {
+        Binding(
+            get: { enabledAccessoriesRaw.split(separator: ",").contains(Substring(id)) },
+            set: { include in
+                var set = enabledAccessoriesRaw.split(separator: ",").map(String.init)
+                if include, !set.contains(id) {
+                    set.append(id)
+                } else if !include {
+                    set.removeAll { $0 == id }
+                }
+                // Canonical order = the order the bar renders them in.
+                enabledAccessoriesRaw = accessories.map(\.id).filter(set.contains).joined(separator: ",")
             }
         )
     }
