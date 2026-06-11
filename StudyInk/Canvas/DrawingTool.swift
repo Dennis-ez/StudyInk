@@ -5,7 +5,7 @@ import SwiftUI
 /// from the rendered color so dark mode can remap ink (see InkColorAdapter, phase 4).
 enum ToolKind: String, CaseIterable, Codable, Identifiable {
     case ballpoint, fountain, monoline, highlighter, pencil
-    case eraserPixel, eraserObject, lasso
+    case eraserPixel, eraserObject, lasso, hand
 
     var id: String { rawValue }
 
@@ -19,6 +19,7 @@ enum ToolKind: String, CaseIterable, Codable, Identifiable {
         case .eraserPixel: return "eraser"
         case .eraserObject: return "eraser.line.dashed"
         case .lasso: return "lasso"
+        case .hand: return "hand.draw"
         }
     }
 
@@ -32,6 +33,7 @@ enum ToolKind: String, CaseIterable, Codable, Identifiable {
         case .eraserPixel: return "tool.eraser.pixel"
         case .eraserObject: return "tool.eraser.object"
         case .lasso: return "tool.lasso"
+        case .hand: return "tool.hand"
         }
     }
 
@@ -49,14 +51,18 @@ struct ToolState: Codable, Equatable {
     var colorHex: String = "#000000"
     var width: Double = 4
     var opacity: Double = 1.0
+    /// Pressure-sensitive ink (pen/fountain respond to Pencil force); off = constant width.
+    var pressureSensitive: Bool = true
 
     /// Builds the PencilKit tool. `darkMode` drives ink remapping: pure black ink
     /// renders near-white on a dark canvas while the stored logical color is unchanged.
     func pkTool(darkMode: Bool) -> PKTool {
         switch kind {
-        case .eraserPixel: return PKEraserTool(.bitmap)
+        case .eraserPixel: return PKEraserTool(.bitmap, width: width)
         case .eraserObject: return PKEraserTool(.vector)
         case .lasso: return PKLassoTool()
+        // Drawing is disabled while the hand tool is active; the tool itself is inert.
+        case .hand: return PKLassoTool()
         case .ballpoint, .fountain, .monoline, .highlighter, .pencil:
             // What the user sees while drawing should be exactly this color:
             var base = InkColorAdapter.rendered(from: UIColor(hex: colorHex) ?? .black, darkMode: darkMode)
@@ -75,13 +81,30 @@ struct ToolState: Codable, Equatable {
 
     private var inkType: PKInkingTool.InkType {
         switch kind {
-        case .ballpoint: return .pen
-        case .fountain: return .fountainPen
+        // With pressure off, force-responsive inks fall back to constant-width monoline.
+        case .ballpoint: return pressureSensitive ? .pen : .monoline
+        case .fountain: return pressureSensitive ? .fountainPen : .monoline
         case .monoline: return .monoline
         case .highlighter: return .marker
         case .pencil: return .pencil
         default: return .pen
         }
+    }
+}
+
+extension ToolState {
+    private enum CodingKeys: String, CodingKey {
+        case kind, colorHex, width, opacity, pressureSensitive
+    }
+
+    // Hand-rolled so tool states persisted before `pressureSensitive` existed still decode.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try c.decode(ToolKind.self, forKey: .kind)
+        colorHex = try c.decode(String.self, forKey: .colorHex)
+        width = try c.decode(Double.self, forKey: .width)
+        opacity = try c.decode(Double.self, forKey: .opacity)
+        pressureSensitive = try c.decodeIfPresent(Bool.self, forKey: .pressureSensitive) ?? true
     }
 }
 
