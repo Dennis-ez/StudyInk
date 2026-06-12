@@ -23,6 +23,22 @@ struct NoteGridView: View {
     @State private var autoOpenNote: Note?
     @State private var selecting = false
     @State private var selectedIDs: Set<NSManagedObjectID> = []
+    /// Pending delete awaiting the user's confirmation.
+    @State private var deleteRequest: DeleteRequest?
+
+    private enum DeleteRequest {
+        case note(Note)         // → Recently Deleted
+        case noteForever(Note)
+        case bulk               // selection → Recently Deleted
+        case bulkForever
+
+        var isPermanent: Bool {
+            switch self {
+            case .noteForever, .bulkForever: return true
+            case .note, .bulk: return false
+            }
+        }
+    }
     @Namespace private var zoomNamespace
 
     private var inTrash: Bool { section == .deleted }
@@ -104,8 +120,7 @@ struct NoteGridView: View {
                                 // overriding the destructive role's background.
                                 if inTrash {
                                     Button(role: .destructive) {
-                                        context.delete(note)
-                                        PersistenceController.shared.save()
+                                        deleteRequest = .noteForever(note)
                                     } label: { Label("library.deleteForever", systemImage: "trash.slash") }
                                         .tint(Color("errorRed"))
                                     Button {
@@ -114,8 +129,7 @@ struct NoteGridView: View {
                                     } label: { Label("library.restore", systemImage: "arrow.uturn.backward") }
                                 } else {
                                     Button(role: .destructive) {
-                                        note.deletedAt = Date()
-                                        PersistenceController.shared.save()
+                                        deleteRequest = .note(note)
                                     } label: { Label("action.delete", systemImage: "trash") }
                                         .tint(Color("errorRed"))
                                 }
@@ -154,6 +168,38 @@ struct NoteGridView: View {
             selectedIDs = []
         }
         .toolbar { selectionToolbar }
+        .alert(
+            deleteRequest?.isPermanent == true ? Text("library.deleteForever.confirm") : Text("library.deleteNote.confirm"),
+            isPresented: Binding(
+                get: { deleteRequest != nil },
+                set: { if !$0 { deleteRequest = nil } }
+            )
+        ) {
+            Button("action.cancel", role: .cancel) { deleteRequest = nil }
+            Button("action.delete", role: .destructive) {
+                performPendingDelete()
+            }
+        } message: {
+            deleteRequest?.isPermanent == true ? Text("library.deleteForever.message") : Text("library.deleteNote.message")
+        }
+    }
+
+    private func performPendingDelete() {
+        switch deleteRequest {
+        case .note(let note):
+            note.deletedAt = Date()
+            PersistenceController.shared.save()
+        case .noteForever(let note):
+            context.delete(note)
+            PersistenceController.shared.save()
+        case .bulk:
+            applyToSelection { $0.deletedAt = Date() }
+        case .bulkForever:
+            applyToSelection { context.delete($0) }
+        case nil:
+            break
+        }
+        deleteRequest = nil
     }
 
     // MARK: - Multi-select
@@ -168,7 +214,7 @@ struct NoteGridView: View {
                     } label: { Label("library.restore", systemImage: "arrow.uturn.backward") }
                         .disabled(selectedIDs.isEmpty)
                     Button(role: .destructive) {
-                        applyToSelection { context.delete($0) }
+                        deleteRequest = .bulkForever
                     } label: { Label("library.deleteForever", systemImage: "trash.slash") }
                         .disabled(selectedIDs.isEmpty)
                         // Toolbar buttons ignore the destructive role's color.
@@ -179,7 +225,7 @@ struct NoteGridView: View {
                     } label: { Label("library.favorite", systemImage: "star") }
                         .disabled(selectedIDs.isEmpty)
                     Button(role: .destructive) {
-                        applyToSelection { $0.deletedAt = Date() }
+                        deleteRequest = .bulk
                     } label: { Label("action.delete", systemImage: "trash") }
                         .disabled(selectedIDs.isEmpty)
                         .tint(Color("errorRed"))
@@ -351,8 +397,7 @@ struct NoteGridView: View {
             } label: { Label("library.restore", systemImage: "arrow.uturn.backward") }
 
             Button(role: .destructive) {
-                context.delete(note)
-                PersistenceController.shared.save()
+                deleteRequest = .noteForever(note)
             } label: { Label("library.deleteForever", systemImage: "trash.slash") }
         } else {
             Button {
@@ -377,8 +422,7 @@ struct NoteGridView: View {
 
             // Soft delete: the note sits in Recently Deleted for 30 days.
             Button(role: .destructive) {
-                note.deletedAt = Date()
-                PersistenceController.shared.save()
+                deleteRequest = .note(note)
             } label: { Label("action.delete", systemImage: "trash") }
         }
     }

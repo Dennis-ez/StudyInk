@@ -121,6 +121,15 @@
 "library.trashEmpty.subtitle" = "Deleted notes stay here for 30 days before being removed.";
 "library.toggleChildren" = "Show or hide nested subjects";
 "library.select" = "Select";
+"library.deleteSubject.confirm" = "Delete this subject?";
+"library.deleteSubject.message" = "Its notes move to Recently Deleted. Nested subjects are deleted with it.";
+"library.deleteNote.confirm" = "Delete?";
+"library.deleteNote.message" = "Moves to Recently Deleted, where it stays for 30 days.";
+"library.deleteForever.confirm" = "Delete permanently?";
+"library.deleteForever.message" = "This can't be undone.";
+"audio.deleteRecording.confirm" = "Delete this recording?";
+"page.delete.confirm" = "Delete this page?";
+"delete.permanent.message" = "This can't be undone.";
 "subjectColor.blue" = "Blue";
 "subjectColor.red" = "Red";
 "subjectColor.green" = "Green";
