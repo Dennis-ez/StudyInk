@@ -177,10 +177,13 @@ struct PageSettingsSheet: View {
     private func applyToAllPages() {
         guard let note = page.note else { return }
         for other in note.sortedPages where other != page {
+            // Imported-PDF pages keep their own background — stamping the
+            // current page's (usually nil) customTemplatePDF over every page
+            // is what erased imported PDFs on "apply to all".
+            if other.customTemplatePDF != nil { continue }
             other.templateID = page.templateID
             other.templateSpacing = page.templateSpacing
             other.pageSizeID = page.pageSizeID
-            other.customTemplatePDF = page.customTemplatePDF
         }
         note.touch()
         PersistenceController.shared.save()

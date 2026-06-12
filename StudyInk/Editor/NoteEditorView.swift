@@ -151,6 +151,31 @@ struct NoteEditorView: View {
                     }
             }
 
+            // Note title + creation date, anchored ABOVE the first page (in
+            // the desk gap, riding along with scroll/zoom) — never over ink.
+            if !distractionFree, let pageOrigin = canvasController.pageScreenOrigins.first {
+                Button {
+                    renameText = note.title ?? ""
+                    showRenameAlert = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(verbatim: note.title ?? "")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                        Text(note.createdAt ?? .now, format: .dateTime.day().month().year().hour().minute())
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: 320, alignment: .leading)
+                    .fixedSize(horizontal: true, vertical: false)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text("library.renameNote"))
+                .offset(x: pageOrigin.x + 2, y: pageOrigin.y - 26)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
+
             if !distractionFree {
                 actionBar
 
@@ -929,41 +954,14 @@ extension NoteEditorView {
     private var actionBar: some View {
         VStack {
             HStack(alignment: .top) {
-                // Back button, with the note's identity floating just below —
-                // over the top-left of the page, not crowding the button.
-                VStack(alignment: .leading, spacing: 6) {
-                    Button(action: { dismiss() }) {
-                        Image(systemName: "chevron.left")
-                            .frame(width: 34, height: 34)
-                    }
-                    .font(.system(size: 16, weight: .medium))
-                    .padding(6)
-                    .studyGlass(cornerRadius: 16)
-                    .accessibilityLabel(Text("action.back"))
-
-                    // Tap the title to rename the note.
-                    Button {
-                        renameText = note.title ?? ""
-                        showRenameAlert = true
-                    } label: {
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(verbatim: note.title ?? "")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.primary)
-                                .lineLimit(1)
-                            Text(note.createdAt ?? .now, format: .dateTime.day().month().year().hour().minute())
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                        .frame(maxWidth: 260, alignment: .leading)
-                        .fixedSize(horizontal: true, vertical: false)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .studyGlass(cornerRadius: 12)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(Text("library.renameNote"))
+                Button(action: { dismiss() }) {
+                    Image(systemName: "chevron.left")
+                        .frame(width: 34, height: 34)
                 }
+                .font(.system(size: 16, weight: .medium))
+                .padding(6)
+                .studyGlass(cornerRadius: 16)
+                .accessibilityLabel(Text("action.back"))
                 .padding(.leading, 12)
 
                 Spacer()
