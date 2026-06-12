@@ -436,25 +436,18 @@ struct NoteGridView: View {
     }
 }
 
-/// Zoom transition between a library cell and the editor (iOS 18+); silently
-/// a no-op on iOS 17 so the deployment target stays put.
+/// Both no-ops. The iOS 18 zoom transition (.navigationTransition(.zoom))
+/// these used to apply brings its own interactive dismissal — drag DOWN or
+/// drag RIGHT pops the editor, with no API to disable just the gesture. That
+/// was the "drag takes me back to the main screen" the user kept hitting
+/// after every edge-pan recognizer was already disabled. Plain push wins.
 extension View {
-    @ViewBuilder
     func noteZoomSource(id: some Hashable, in namespace: Namespace.ID) -> some View {
-        if #available(iOS 18.0, *) {
-            matchedTransitionSource(id: id, in: namespace)
-        } else {
-            self
-        }
+        self
     }
 
-    @ViewBuilder
     func noteZoomDestination(id: some Hashable, in namespace: Namespace.ID) -> some View {
-        if #available(iOS 18.0, *) {
-            navigationTransition(.zoom(sourceID: id, in: namespace))
-        } else {
-            self
-        }
+        self
     }
 }
 
