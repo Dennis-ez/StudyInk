@@ -139,7 +139,7 @@
 "subjectColor.gray" = "Gray";
 "editor.notesPane" = "Notes drawer";
 "library.subjects" = "Subjects";
-"library.searchPrompt" = "Search notes, handwriting, Hebrew or English";
+"library.searchPrompt" = "Search";
 "library.sort" = "Sort";
 "library.sort.date" = "Date Modified";
 "library.sort.name" = "Name";
