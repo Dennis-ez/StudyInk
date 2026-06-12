@@ -76,6 +76,14 @@ final class CanvasController: NSObject, ObservableObject {
     var onStroke: ((Int, PKStroke) -> Void)?
     /// Fired when the Apple Pencil is held still on the canvas for ~1s (ask gesture).
     var onPencilHold: (() -> Void)?
+    /// Fired by the engine's dismiss-tap intercept (see setTapIntercept) —
+    /// the editor uses it to close the notes drawer on any page tap.
+    var onInterceptedTap: (() -> Void)?
+
+    /// Arm/disarm the engine's first-tap intercept (drawer-dismiss).
+    func setTapIntercept(enabled: Bool) {
+        engine?.setTapIntercept(enabled: enabled)
+    }
     /// Tapping the trailing "add page" affordance.
     var onAddPage: (() -> Void)?
     /// A shape was just recognized and snapped clean (informational — fresh

@@ -454,6 +454,9 @@ struct NoteEditorView: View {
                 audio.logStroke(at: center, pageIndex: index)
                 guidedMode.strokeOccurred()
             }
+            canvasController.onInterceptedTap = {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showNotesPane = false }
+            }
             canvasController.onPencilHold = {
                 withAnimation { askLassoActive = true }
             }
@@ -517,6 +520,12 @@ struct NoteEditorView: View {
         }
         .onChange(of: canvasController.currentPageIndex) { _, engineIndex in
             if pageIndex != engineIndex { pageIndex = engineIndex }
+        }
+        // Drawer dismissal happens at the UIKit level: SwiftUI tap catchers
+        // lose to the canvas's hit-testing, so the engine intercepts the
+        // first tap while the drawer is open.
+        .onChange(of: showNotesPane) { _, open in
+            canvasController.setTapIntercept(enabled: open)
         }
         // Rotation should feel like part of the lasso, not a second mode:
         // picking the lasso arms select-and-rotate right away.
@@ -667,19 +676,41 @@ struct NoteEditorView: View {
 
 /// Disables the interactive pop swipe and the split view's sidebar-reveal pan
 /// while the editor is on screen; restores both on the way out.
+/// Enforced continuously — SwiftUI re-enables both recognizers on its own
+/// updates, so a one-shot disable in viewDidAppear quietly wore off.
 private struct NavigationGestureDisabler: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> Disabler { Disabler() }
-    func updateUIViewController(_ controller: Disabler, context: Context) {}
+    func updateUIViewController(_ controller: Disabler, context: Context) {
+        controller.applyIfVisible()
+    }
 
     final class Disabler: UIViewController {
+        private var enforcer: Timer?
+
         override func viewDidAppear(_ animated: Bool) {
             super.viewDidAppear(animated)
             apply(enabled: false)
+            enforcer?.invalidate()
+            enforcer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+                self?.apply(enabled: false)
+            }
+        }
+
+        override func viewDidLayoutSubviews() {
+            super.viewDidLayoutSubviews()
+            applyIfVisible()
         }
 
         override func viewWillDisappear(_ animated: Bool) {
             super.viewWillDisappear(animated)
+            enforcer?.invalidate()
+            enforcer = nil
             apply(enabled: true)
+        }
+
+        func applyIfVisible() {
+            guard viewIfLoaded?.window != nil else { return }
+            apply(enabled: false)
         }
 
         private func apply(enabled: Bool) {

@@ -114,6 +114,16 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         addGestureRecognizer(hold)
         holdRecognizer = hold
 
+        // UIKit-level dismiss tap: while a SwiftUI drawer/panel is open, the
+        // editor arms this to catch the first tap anywhere on the canvas area
+        // (SwiftUI tap catchers lose to the canvas's UIKit hit-testing).
+        let intercept = UITapGestureRecognizer(target: self, action: #selector(interceptTapFired(_:)))
+        intercept.cancelsTouchesInView = true
+        intercept.delegate = self
+        intercept.isEnabled = false
+        addGestureRecognizer(intercept)
+        interceptTap = intercept
+
         var addConfig = UIButton.Configuration.gray()
         addConfig.image = UIImage(systemName: "plus")
         addConfig.title = NSLocalizedString("page.add", comment: "")
@@ -756,6 +766,21 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     @objc private func pencilHeld(_ recognizer: UILongPressGestureRecognizer) {
         guard recognizer.state == .began else { return }
         controller.onPencilHold?()
+    }
+
+    // MARK: - Dismiss-tap intercept
+
+    private weak var interceptTap: UITapGestureRecognizer?
+
+    /// While enabled, the first tap (finger or pencil) anywhere on the canvas
+    /// area fires `controller.onInterceptedTap` and swallows the touch.
+    func setTapIntercept(enabled: Bool) {
+        interceptTap?.isEnabled = enabled
+    }
+
+    @objc private func interceptTapFired(_ recognizer: UITapGestureRecognizer) {
+        guard recognizer.state == .ended else { return }
+        controller.onInterceptedTap?()
     }
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
