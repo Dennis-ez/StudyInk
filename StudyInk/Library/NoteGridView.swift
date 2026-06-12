@@ -99,9 +99,29 @@ struct NoteGridView: View {
                 List {
                     ForEach(notes, id: \.objectID) { note in
                         noteListRow(note)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                if inTrash {
+                                    Button(role: .destructive) {
+                                        context.delete(note)
+                                        PersistenceController.shared.save()
+                                    } label: { Label("library.deleteForever", systemImage: "trash.slash") }
+                                    Button {
+                                        note.deletedAt = nil
+                                        PersistenceController.shared.save()
+                                    } label: { Label("library.restore", systemImage: "arrow.uturn.backward") }
+                                } else {
+                                    Button(role: .destructive) {
+                                        note.deletedAt = Date()
+                                        PersistenceController.shared.save()
+                                    } label: { Label("action.delete", systemImage: "trash") }
+                                }
+                            }
                     }
                 }
-                .listStyle(.plain)
+                // Inset rows: .plain stretched rows edge-to-edge under the
+                // sidebar, which looked broken on interaction.
+                .listStyle(.insetGrouped)
+                .scrollContentBackground(.hidden)
             }
         }
         // Freshly created notes open straight into the editor.
