@@ -137,8 +137,8 @@ struct NotesPane: View {
 }
 
 /// Second drawer stage: the subjects sidebar that slides in to the LEFT of the
-/// notes pane on a second edge swipe. Picking a subject hands it back and the
-/// pane slides away.
+/// notes pane on a second edge swipe. Styled like the main screen's sidebar —
+/// color-dot rows, count badges, soft color washes, tree indentation.
 struct SubjectsPane: View {
     /// nil = All Notes.
     var onSelect: (Subject?) -> Void
@@ -148,31 +148,51 @@ struct SubjectsPane: View {
         sortDescriptors: [NSSortDescriptor(key: "sortIndex", ascending: true), NSSortDescriptor(key: "createdAt", ascending: true)]
     ) private var allSubjects: FetchedResults<Subject>
 
+    @FetchRequest(
+        entity: PersistenceController.model.entitiesByName["Note"]!,
+        sortDescriptors: [NSSortDescriptor(key: "modifiedAt", ascending: false)]
+    ) private var allNotes: FetchedResults<Note>
+
     private var rootSubjects: [Subject] {
         allSubjects.filter { $0.parent == nil && !$0.isDivider }
     }
 
+    private var activeNotesCount: Int {
+        allNotes.count(where: { $0.deletedAt == nil })
+    }
+
+    private func count(of subject: Subject) -> Int {
+        allNotes.count(where: { $0.deletedAt == nil && $0.subject == subject })
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("library.subjects")
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 14)
-                .padding(.top, 12)
-                .padding(.bottom, 8)
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
-                    row(name: String(localized: "library.allNotes"), color: nil) { onSelect(nil) }
+                    row(
+                        name: String(localized: "library.allNotes"),
+                        color: nil,
+                        count: activeNotesCount,
+                        depth: 0
+                    ) { onSelect(nil) }
+
+                    Text("library.subjects")
+                        .font(.caption.smallCaps())
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 14)
+                        .padding(.top, 14)
+                        .padding(.bottom, 4)
+
                     ForEach(rootSubjects, id: \.objectID) { subject in
                         subjectRows(subject, depth: 0)
                     }
                 }
-                .padding(.horizontal, 8)
+                .padding(.horizontal, 10)
+                .padding(.top, 12)
                 .padding(.bottom, 12)
             }
         }
-        // Glassless for the same reason as NotesPane — one shared container.
-        .frame(width: 168)
+        .frame(width: 200)
         .frame(maxHeight: .infinity)
     }
 
@@ -182,9 +202,10 @@ struct SubjectsPane: View {
             Group {
                 row(
                     name: subject.name ?? "",
-                    color: Color(hex: subject.colorHex ?? "#0A84FF") ?? .accentColor
+                    color: Color(hex: subject.colorHex ?? "#0A84FF") ?? .accentColor,
+                    count: count(of: subject),
+                    depth: depth
                 ) { onSelect(subject) }
-                    .padding(.leading, CGFloat(depth) * 12)
                 ForEach((subject.children ?? []).filter { !$0.isDivider }.sorted {
                     ($0.sortIndex, $0.createdAt ?? .distantPast) < ($1.sortIndex, $1.createdAt ?? .distantPast)
                 }, id: \.objectID) { child in
@@ -194,25 +215,39 @@ struct SubjectsPane: View {
         )
     }
 
-    private func row(name: String, color: Color?, action: @escaping () -> Void) -> some View {
+    private func row(name: String, color: Color?, count: Int, depth: Int, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack(spacing: 8) {
+            HStack(spacing: 10) {
                 if let color {
-                    Circle().fill(color).frame(width: 11, height: 11)
+                    Circle()
+                        .fill(color)
+                        .frame(width: 13, height: 13)
+                        .frame(width: 24, height: 24)
                 } else {
-                    Image(systemName: "tray.full")
-                        .font(.caption)
+                    Image(systemName: "tray.full.fill")
+                        .font(.subheadline)
                         .foregroundStyle(Color.accentColor)
-                        .frame(width: 11)
+                        .frame(width: 24, height: 24)
                 }
                 Text(verbatim: name)
-                    .font(.subheadline)
+                    .font(.subheadline.weight(.medium))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                 Spacer(minLength: 0)
+                Text(verbatim: "\(count)")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(.quaternary.opacity(0.5), in: Capsule())
             }
             .padding(.horizontal, 8)
-            .padding(.vertical, 7)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill((color ?? .clear).opacity(color == nil ? 0 : 0.10))
+            )
+            .padding(.leading, CGFloat(depth) * 16)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
