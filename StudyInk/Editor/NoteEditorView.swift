@@ -231,8 +231,9 @@ struct NoteEditorView: View {
                 // Picking a subject slides it back out with the new filter.
                 if drawerStage > 0 {
                     HStack(spacing: 0) {
-                        // One glass container for both stages — the subjects
-                        // pane and notes pane read as a single sidebar.
+                        // Styled like the main screen's sidebar: a full-height,
+                        // edge-pinned opaque panel (not a floating card), with
+                        // the subjects column joining it on the second stage.
                         HStack(spacing: 0) {
                             if drawerStage >= 2 {
                                 SubjectsPane { subject in
@@ -250,8 +251,9 @@ struct NoteEditorView: View {
                                 onSwitchNote(selected)
                             }
                         }
-                        .studyGlass(cornerRadius: 18)
-                        .padding(.vertical, 24)
+                        .background(SemanticColor.sidebarBackground)
+                        .overlay(alignment: .trailing) { Divider().ignoresSafeArea() }
+                        .ignoresSafeArea(edges: .vertical)
                         .transition(.move(edge: .leading))
                         .gesture(
                             DragGesture(minimumDistance: 20)
@@ -265,7 +267,6 @@ struct NoteEditorView: View {
                         )
                         Spacer()
                     }
-                    .padding(.leading, 6)
                 }
                 // Edge catch strip: opens the drawer, then promotes it to the
                 // subjects stage on the next swipe.
