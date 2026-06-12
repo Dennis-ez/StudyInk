@@ -116,58 +116,57 @@ struct PageSettingsSheet: View {
                     template.draw(
                         in: &ctx,
                         rect: CGRect(origin: .zero, size: size),
-                        scale: 0.22,
+                        scale: 0.28,
                         lineColor: Color("templateLine"),
                         accentColor: Color("accentBlue"),
                         // The selected swatch IS the spacing preview.
                         spacing: isSelected ? spacingValue : 1
                     )
                 }
-                .frame(width: 96, height: 84)
+                .frame(width: 120, height: 104)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
+                // ⋯ pinned to the THUMBNAIL's corner, clear of the label.
+                .overlay(alignment: .bottomTrailing) {
+                    if isSelected && hasSpacing {
+                        Button {
+                            showSpacingPopover = true
+                        } label: {
+                            Image(systemName: "ellipsis.circle.fill")
+                                .font(.title3)
+                                .symbolRenderingMode(.palette)
+                                .foregroundStyle(.white, Color.accentColor)
+                                .background(Circle().fill(.background))
+                        }
+                        .buttonStyle(.plain)
+                        .padding(5)
+                        .accessibilityLabel(Text("page.spacing"))
+                        .popover(isPresented: $showSpacingPopover, arrowEdge: .bottom) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Text("page.spacing").font(.headline)
+                                    Spacer()
+                                    Text(verbatim: String(format: "%.2f×", spacingValue))
+                                        .font(.caption.monospacedDigit())
+                                        .foregroundStyle(.secondary)
+                                }
+                                Slider(value: $spacingValue, in: 0.6...1.8) { editing in
+                                    // The swatch previews every tick; the real page
+                                    // rebuilds only on release.
+                                    if !editing { commitSpacing() }
+                                }
+                            }
+                            .padding(16)
+                            .frame(width: 280)
+                            .presentationCompactAdaptation(.popover)
+                        }
+                    }
+                }
                 Text(template.labelKey).font(.caption2)
             }
-            .frame(width: 96, height: 110)
+            .frame(width: 120, height: 134)
             .overlay {
                 if isSelected {
                     RoundedRectangle(cornerRadius: 10).strokeBorder(Color.accentColor, lineWidth: 2)
-                }
-            }
-            .overlay(alignment: .bottomTrailing) {
-                // Spacing lives behind the swatch's own ⋯ — only on the
-                // selected template, and only when it has lines to space.
-                if isSelected && hasSpacing {
-                    Button {
-                        showSpacingPopover = true
-                    } label: {
-                        Image(systemName: "ellipsis.circle.fill")
-                            .font(.title3)
-                            .symbolRenderingMode(.palette)
-                            .foregroundStyle(.white, Color.accentColor)
-                            .background(Circle().fill(.background))
-                    }
-                    .buttonStyle(.plain)
-                    .padding(4)
-                    .accessibilityLabel(Text("page.spacing"))
-                    .popover(isPresented: $showSpacingPopover, arrowEdge: .bottom) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Text("page.spacing").font(.headline)
-                                Spacer()
-                                Text(verbatim: String(format: "%.2f×", spacingValue))
-                                    .font(.caption.monospacedDigit())
-                                    .foregroundStyle(.secondary)
-                            }
-                            Slider(value: $spacingValue, in: 0.6...1.8) { editing in
-                                // The swatch previews every tick; the real page
-                                // rebuilds only on release.
-                                if !editing { commitSpacing() }
-                            }
-                        }
-                        .padding(16)
-                        .frame(width: 280)
-                        .presentationCompactAdaptation(.popover)
-                    }
                 }
             }
         }

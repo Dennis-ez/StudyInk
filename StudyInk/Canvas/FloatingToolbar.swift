@@ -269,9 +269,13 @@ struct FloatingToolbar: View {
                         withAnimation(.easeOut(duration: 0.15)) { gripDragLocation = value.location }
                     }
                     .onEnded { value in
-                        dragOffset = .zero
                         withAnimation(.easeOut(duration: 0.15)) { gripDragLocation = nil }
-                        dockRaw = nearestDock(for: value.location).rawValue
+                        // One animated transaction: the bar glides from its
+                        // dragged position into the new dock.
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            dragOffset = .zero
+                            dockRaw = nearestDock(for: value.location).rawValue
+                        }
                     }
             )
             .accessibilityLabel(Text("toolbar.move"))

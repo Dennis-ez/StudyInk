@@ -436,13 +436,12 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     /// blur. After a pinch settles, re-rasterize templates, cached renders,
     /// and the live canvas layer tree at the effective zoom (capped at 3x).
     private func updateRasterScale() {
-        // Sharpen as far as Metal allows: a layer's backing store must stay
-        // under the ~8192px texture limit or it silently renders NOTHING
-        // (which presented as "no ink at all"). Cap the raster zoom so
-        // pageMaxDimension × zoom × screenScale stays inside the limit.
-        let maxPageDimension = pageSizes.map { max($0.width, $0.height) }.max() ?? 800
-        let textureCap = 8192 / (maxPageDimension * UIScreen.main.scale)
-        let effectiveZoom = min(max(zoomScale, 1), min(maximumZoomScale, textureCap))
+        // HARD CAP 3: raising this beyond 3 (attempted twice for sharper deep
+        // zoom) makes PencilKit's layer tree allocate enormous backing stores
+        // and it silently stops rendering ink entirely. 3 is the proven-safe
+        // ceiling for transform-zoom rendering; truly sharp 5x zoom needs the
+        // canvas's native zoom instead (bigger restructure).
+        let effectiveZoom = min(max(zoomScale, 1), 3)
         let raster = effectiveZoom * UIScreen.main.scale
         for container in containers {
             container.contentScaleFactor = raster

@@ -44,9 +44,12 @@ struct LibraryView: View {
 
     private var rootSubjects: [Subject] { allSubjects.filter { $0.parent == nil } }
 
+    // NSFetchedResultsController needs at least one sort descriptor to track
+    // changes — with [] the badge counts (Recently Deleted especially) went
+    // stale until the section was re-entered.
     @FetchRequest(
         entity: PersistenceController.model.entitiesByName["Note"]!,
-        sortDescriptors: []
+        sortDescriptors: [NSSortDescriptor(key: "modifiedAt", ascending: false)]
     ) private var allNotesForCounts: FetchedResults<Note>
 
     @State private var selection: LibrarySection = .all
@@ -265,6 +268,11 @@ struct LibraryView: View {
             .listRowBackground(roundedRowBackground(tint.opacity(isSelected ? 0.26 : 0.10)))
             .draggable("subject:\(subject.id?.uuidString ?? "")")
             .contextMenu { subjectContextMenu(subject) }
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                Button(role: .destructive) {
+                    deleteSubject(subject)
+                } label: { Label("action.delete", systemImage: "trash") }
+            }
             // Accepts notes (to file them) and subjects/dividers (to nest them).
             .dropDestination(for: String.self) { ids, _ in
                 handleDrop(ids, into: subject)
@@ -355,16 +363,20 @@ struct LibraryView: View {
         }
 
         Button(role: .destructive) {
-            // Deleting a folder takes its whole subtree: notes (own and
-            // nested) go to Recently Deleted; subfolders go with the parent
-            // instead of popping out as new roots (the nullify delete rule
-            // made children "replace" the deleted parent).
-            softDelete(subject)
-            if case .subject(let selected) = selection, selected.isDeleted || selected == subject {
-                selection = .all
-            }
-            PersistenceController.shared.save()
+            deleteSubject(subject)
         } label: { Label("action.delete", systemImage: "trash") }
+    }
+
+    /// Deleting a folder takes its whole subtree: notes (own and nested) go
+    /// to Recently Deleted; subfolders go with the parent instead of popping
+    /// out as new roots (the nullify delete rule made children "replace" the
+    /// deleted parent).
+    private func deleteSubject(_ subject: Subject) {
+        softDelete(subject)
+        if case .subject(let selected) = selection, selected.isDeleted || selected == subject {
+            selection = .all
+        }
+        PersistenceController.shared.save()
     }
 
     private func softDelete(_ subject: Subject) {
