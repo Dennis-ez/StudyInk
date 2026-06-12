@@ -8,6 +8,8 @@ struct NoteGridView: View {
     let searchText: String
     let gridLayout: Bool
     let sort: LibrarySort
+    /// Multi-select mode — owned by the library (entered via its ⋯ menu).
+    @Binding var selecting: Bool
     var onNoteOpened: () -> Void = {}
     /// Fired when the editor pops — the library restores its sidebar.
     var onNoteClosed: () -> Void = {}
@@ -21,7 +23,6 @@ struct NoteGridView: View {
     @State private var renamingNote: Note?
     @State private var renameText = ""
     @State private var autoOpenNote: Note?
-    @State private var selecting = false
     @State private var selectedIDs: Set<NSManagedObjectID> = []
     /// Pending delete awaiting the user's confirmation.
     @State private var deleteRequest: DeleteRequest?
@@ -43,11 +44,38 @@ struct NoteGridView: View {
 
     private var inTrash: Bool { section == .deleted }
 
+    /// Sub-filter tabs shown only in All Notes.
+    enum AllTab: String, CaseIterable {
+        case all, recents, favorites, unfiled
+
+        var labelKey: LocalizedStringKey {
+            switch self {
+            case .all: return "library.allNotes"
+            case .recents: return "library.recents"
+            case .favorites: return "library.favorites"
+            case .unfiled: return "library.unfiled"
+            }
+        }
+    }
+
+    @State private var allTab: AllTab = .all
+
     private var notes: [Note] {
         var result: [Note]
         switch section {
         case .all:
             result = allNotes.filter { $0.deletedAt == nil }
+            switch allTab {
+            case .all:
+                break
+            case .recents:
+                let cutoff = Date().addingTimeInterval(-7 * 24 * 3600)
+                result = result.filter { ($0.modifiedAt ?? .distantPast) > cutoff }
+            case .favorites:
+                result = result.filter(\.isFavorite)
+            case .unfiled:
+                result = result.filter { $0.subject == nil }
+            }
         case .recents:
             let cutoff = Date().addingTimeInterval(-7 * 24 * 3600)
             result = allNotes.filter { $0.deletedAt == nil && ($0.modifiedAt ?? .distantPast) > cutoff }
@@ -71,13 +99,33 @@ struct NoteGridView: View {
             result.sort { ($0.modifiedAt ?? .distantPast) > ($1.modifiedAt ?? .distantPast) }
         case .name:
             result.sort { ($0.title ?? "").localizedStandardCompare($1.title ?? "") == .orderedAscending }
-        case .size:
-            result.sort { approximateSize($0) > approximateSize($1) }
+        case .createdDate:
+            result.sort { ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast) }
         }
         return result
     }
 
     var body: some View {
+        VStack(spacing: 0) {
+            // Sub-filters live under the All Notes title — only there.
+            if section == .all {
+                Picker("library.allNotes", selection: $allTab) {
+                    ForEach(AllTab.allCases, id: \.self) { tab in
+                        Text(tab.labelKey).tag(tab)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .padding(.horizontal, 20)
+                .padding(.top, 6)
+                .padding(.bottom, 2)
+            }
+            content
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
         Group {
             if notes.isEmpty {
                 if !searchText.isEmpty {
@@ -232,10 +280,6 @@ struct NoteGridView: View {
                 }
                 Button("action.cancel") {
                     withAnimation { selecting = false; selectedIDs = [] }
-                }
-            } else if !notes.isEmpty {
-                Button("library.select") {
-                    withAnimation { selecting = true }
                 }
             }
         }
