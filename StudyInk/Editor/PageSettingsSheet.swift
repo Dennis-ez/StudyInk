@@ -10,7 +10,8 @@ struct PageSettingsSheet: View {
     @State private var showSpacingPopover = false
     @State private var savedFavorite = false
 
-    private let grid = [GridItem(.adaptive(minimum: 96), spacing: 14)]
+    // Must track the swatch width (120) — smaller columns overlap the cells.
+    private let grid = [GridItem(.adaptive(minimum: 120), spacing: 16)]
 
     var body: some View {
         NavigationStack {
