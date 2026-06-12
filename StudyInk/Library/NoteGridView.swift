@@ -100,11 +100,14 @@ struct NoteGridView: View {
                     ForEach(notes, id: \.objectID) { note in
                         noteListRow(note)
                             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                // Explicit red: the app-wide accent tint was
+                                // overriding the destructive role's background.
                                 if inTrash {
                                     Button(role: .destructive) {
                                         context.delete(note)
                                         PersistenceController.shared.save()
                                     } label: { Label("library.deleteForever", systemImage: "trash.slash") }
+                                        .tint(Color("errorRed"))
                                     Button {
                                         note.deletedAt = nil
                                         PersistenceController.shared.save()
@@ -114,6 +117,7 @@ struct NoteGridView: View {
                                         note.deletedAt = Date()
                                         PersistenceController.shared.save()
                                     } label: { Label("action.delete", systemImage: "trash") }
+                                        .tint(Color("errorRed"))
                                 }
                             }
                     }
@@ -308,7 +312,9 @@ struct NoteGridView: View {
                 listRowLabel(note)
                     .noteZoomSource(id: note.objectID, in: zoomNamespace)
             }
-            .draggable((note.id ?? UUID()).uuidString)
+            // No .draggable here: its horizontal drag swallowed the swipe
+            // gesture, so swipe-to-delete never triggered in list mode.
+            // (Drag-to-file-into-a-subject still works from the grid.)
             .contextMenu { noteContextMenu(note) }
         }
     }
