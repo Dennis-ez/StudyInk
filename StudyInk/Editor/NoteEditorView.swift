@@ -726,6 +726,7 @@ private struct RecorderPopover: View {
     @ObservedObject var audio: AudioSyncController
     @ObservedObject var note: Note
     @Environment(\.managedObjectContext) private var context
+    @State private var recordingPendingDelete: Recording?
 
     private var recordings: [Recording] {
         (note.recordings ?? []).sorted { ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast) }
@@ -766,7 +767,7 @@ private struct RecorderPopover: View {
                         }
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) {
-                                delete(recording)
+                                recordingPendingDelete = recording
                             } label: { Label("action.delete", systemImage: "trash") }
                                 .tint(Color("errorRed"))
                         }
@@ -777,6 +778,18 @@ private struct RecorderPopover: View {
             }
         }
         .frame(width: 280)
+        .alert(Text("audio.deleteRecording.confirm"), isPresented: Binding(
+            get: { recordingPendingDelete != nil },
+            set: { if !$0 { recordingPendingDelete = nil } }
+        )) {
+            Button("action.cancel", role: .cancel) { recordingPendingDelete = nil }
+            Button("action.delete", role: .destructive) {
+                if let recording = recordingPendingDelete { delete(recording) }
+                recordingPendingDelete = nil
+            }
+        } message: {
+            Text("delete.permanent.message")
+        }
     }
 
     private func delete(_ recording: Recording) {

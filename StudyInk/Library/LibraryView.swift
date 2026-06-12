@@ -63,6 +63,8 @@ struct LibraryView: View {
     @State private var renamingSubject: Subject?
     @State private var renameText = ""
     @State private var autoOpenNote: Note?
+    /// Set by delete actions; the confirmation alert commits or clears it.
+    @State private var subjectPendingDelete: Subject?
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -111,6 +113,18 @@ struct LibraryView: View {
             }
         }
         .onAppear(perform: purgeExpiredNotes)
+        .alert(Text("library.deleteSubject.confirm"), isPresented: Binding(
+            get: { subjectPendingDelete != nil },
+            set: { if !$0 { subjectPendingDelete = nil } }
+        )) {
+            Button("action.cancel", role: .cancel) { subjectPendingDelete = nil }
+            Button("action.delete", role: .destructive) {
+                if let subject = subjectPendingDelete { deleteSubject(subject) }
+                subjectPendingDelete = nil
+            }
+        } message: {
+            Text("library.deleteSubject.message")
+        }
     }
 
     private var detailTitle: Text {
@@ -270,7 +284,7 @@ struct LibraryView: View {
             .contextMenu { subjectContextMenu(subject) }
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                 Button(role: .destructive) {
-                    deleteSubject(subject)
+                    subjectPendingDelete = subject
                 } label: { Label("action.delete", systemImage: "trash") }
                     // Explicit red — the app-wide accent tint overrides the
                     // destructive role's background.
@@ -366,7 +380,7 @@ struct LibraryView: View {
         }
 
         Button(role: .destructive) {
-            deleteSubject(subject)
+            subjectPendingDelete = subject
         } label: { Label("action.delete", systemImage: "trash") }
     }
 

@@ -121,6 +121,15 @@
 "library.trashEmpty.subtitle" = "מחברות שנמחקו נשמרות כאן 30 יום לפני הסרה סופית.";
 "library.toggleChildren" = "הצגה או הסתרה של נושאים מקוננים";
 "library.select" = "בחירה";
+"library.deleteSubject.confirm" = "למחוק את הנושא?";
+"library.deleteSubject.message" = "המחברות שלו עוברות לנמחקו לאחרונה. נושאים מקוננים יימחקו איתו.";
+"library.deleteNote.confirm" = "למחוק?";
+"library.deleteNote.message" = "עובר לנמחקו לאחרונה ונשאר שם 30 יום.";
+"library.deleteForever.confirm" = "למחוק לצמיתות?";
+"library.deleteForever.message" = "אי אפשר לבטל את הפעולה.";
+"audio.deleteRecording.confirm" = "למחוק את ההקלטה?";
+"page.delete.confirm" = "למחוק את העמוד?";
+"delete.permanent.message" = "אי אפשר לבטל את הפעולה.";
 "subjectColor.blue" = "כחול";
 "subjectColor.red" = "אדום";
 "subjectColor.green" = "ירוק";
