@@ -93,9 +93,12 @@ struct NoteEditorView: View {
                 layoutSignature: layoutSignature
             )
             .ignoresSafeArea(edges: .bottom)
-            // While the notes drawer is open, the first tap belongs to the
-            // dismiss catcher — the canvas must not swallow it.
-            .allowsHitTesting(selectedMediaID == nil && strokeSelection == nil && !transformLassoActive && editingShape == nil && !showNotesPane)
+            // NOTE: the canvas stays hit-testable while the notes drawer is
+            // open — the engine's tap intercept (armed via setTapIntercept)
+            // is what closes the drawer, and it lives INSIDE the canvas's
+            // UIKit hierarchy. Disabling hit-testing here starved it and made
+            // the drawer unclosable.
+            .allowsHitTesting(selectedMediaID == nil && strokeSelection == nil && !transformLassoActive && editingShape == nil)
 
             // Tap-anywhere catcher to drop the current media/text selection.
             if selectedMediaID != nil || editingBoxID != nil {
