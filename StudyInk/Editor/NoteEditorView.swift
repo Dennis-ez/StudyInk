@@ -408,11 +408,13 @@ struct NoteEditorView: View {
             }
         }
         // No system navigation bar — the canvas owns the full screen; actions
-        // live in the floating glass action bar (top-trailing). Hiding the back
-        // button also kills the edge-swipe interactive pop, which fought the
-        // notes drawer's left-edge gesture and yanked users back to the library.
+        // live in the floating glass action bar (top-trailing).
         .toolbar(.hidden, for: .navigationBar)
         .navigationBarBackButtonHidden(true)
+        // Kill BOTH system "drag back to the library" gestures at the UIKit
+        // level: the navigation pop swipe and the split view's sidebar-reveal
+        // pan (hiding the back button alone didn't stop them).
+        .background(NavigationGestureDisabler())
         .sheet(isPresented: $quiz.isPresented) { QuizView(quiz: quiz) }
         .alert(Text("ai.draw"), isPresented: $showAIDrawPrompt) {
             TextField("ai.draw.placeholder", text: $aiDrawText)
@@ -661,6 +663,30 @@ struct NoteEditorView: View {
     }
 
     // MARK: - Ask bar
+}
+
+/// Disables the interactive pop swipe and the split view's sidebar-reveal pan
+/// while the editor is on screen; restores both on the way out.
+private struct NavigationGestureDisabler: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> Disabler { Disabler() }
+    func updateUIViewController(_ controller: Disabler, context: Context) {}
+
+    final class Disabler: UIViewController {
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            apply(enabled: false)
+        }
+
+        override func viewWillDisappear(_ animated: Bool) {
+            super.viewWillDisappear(animated)
+            apply(enabled: true)
+        }
+
+        private func apply(enabled: Bool) {
+            navigationController?.interactivePopGestureRecognizer?.isEnabled = enabled
+            splitViewController?.presentsWithGesture = enabled
+        }
+    }
 }
 
 /// Record/stop + the note's recordings; swipe a recording to delete it
