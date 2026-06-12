@@ -167,6 +167,8 @@ struct NoteGridView: View {
                         applyToSelection { context.delete($0) }
                     } label: { Label("library.deleteForever", systemImage: "trash.slash") }
                         .disabled(selectedIDs.isEmpty)
+                        // Toolbar buttons ignore the destructive role's color.
+                        .tint(Color("errorRed"))
                 } else {
                     Button {
                         applyToSelection { $0.isFavorite = true }
@@ -176,6 +178,7 @@ struct NoteGridView: View {
                         applyToSelection { $0.deletedAt = Date() }
                     } label: { Label("action.delete", systemImage: "trash") }
                         .disabled(selectedIDs.isEmpty)
+                        .tint(Color("errorRed"))
                 }
                 Button("action.cancel") {
                     withAnimation { selecting = false; selectedIDs = [] }
