@@ -719,6 +719,22 @@ private struct NavigationGestureDisabler: UIViewControllerRepresentable {
         private func apply(enabled: Bool) {
             navigationController?.interactivePopGestureRecognizer?.isEnabled = enabled
             splitViewController?.presentsWithGesture = enabled
+            // SwiftUI's NavigationStack installs its own screen-edge pan for
+            // the pop — it is NOT the interactivePopGestureRecognizer, which
+            // is why the swipe survived the two lines above. Sweep the window
+            // and switch off every edge-pan recognizer while we're on screen.
+            if let window = viewIfLoaded?.window {
+                setEdgePans(enabled: enabled, in: window)
+            }
+        }
+
+        private func setEdgePans(enabled: Bool, in view: UIView) {
+            for recognizer in view.gestureRecognizers ?? [] where recognizer is UIScreenEdgePanGestureRecognizer {
+                recognizer.isEnabled = enabled
+            }
+            for subview in view.subviews {
+                setEdgePans(enabled: enabled, in: subview)
+            }
         }
     }
 }
