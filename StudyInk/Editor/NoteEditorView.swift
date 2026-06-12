@@ -205,22 +205,27 @@ struct NoteEditorView: View {
                 // sidebar in on the left, pushing the notes pane right.
                 // Picking a subject slides it back out with the new filter.
                 if drawerStage > 0 {
-                    HStack(spacing: 6) {
-                        if drawerStage >= 2 {
-                            SubjectsPane { subject in
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                    drawerSubject = .some(subject)
-                                    drawerStage = 1
+                    HStack(spacing: 0) {
+                        // One glass container for both stages — the subjects
+                        // pane and notes pane read as a single sidebar.
+                        HStack(spacing: 0) {
+                            if drawerStage >= 2 {
+                                SubjectsPane { subject in
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                        drawerSubject = .some(subject)
+                                        drawerStage = 1
+                                    }
                                 }
+                                .transition(.move(edge: .leading))
+                                Divider()
                             }
-                            .padding(.vertical, 24)
-                            .transition(.move(edge: .leading))
+                            NotesPane(currentNote: note, subjectOverride: drawerSubject) { selected in
+                                withAnimation { closeDrawer() }
+                                guard selected.objectID != note.objectID else { return }
+                                onSwitchNote(selected)
+                            }
                         }
-                        NotesPane(currentNote: note, subjectOverride: drawerSubject) { selected in
-                            withAnimation { closeDrawer() }
-                            guard selected.objectID != note.objectID else { return }
-                            onSwitchNote(selected)
-                        }
+                        .studyGlass(cornerRadius: 18)
                         .padding(.vertical, 24)
                         .transition(.move(edge: .leading))
                         .gesture(
