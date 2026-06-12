@@ -92,9 +92,10 @@ struct NotesPane: View {
                 .padding(.bottom, 12)
             }
         }
+        // No glass of its own — the editor wraps notes + subjects panes in
+        // ONE container so the drawer reads as a single sidebar.
         .frame(width: 196)
         .frame(maxHeight: .infinity)
-        .studyGlass(cornerRadius: 18)
     }
 
     private var headerTitle: Text {
@@ -170,9 +171,9 @@ struct SubjectsPane: View {
                 .padding(.bottom, 12)
             }
         }
+        // Glassless for the same reason as NotesPane — one shared container.
         .frame(width: 168)
         .frame(maxHeight: .infinity)
-        .studyGlass(cornerRadius: 18)
     }
 
     @ViewBuilder

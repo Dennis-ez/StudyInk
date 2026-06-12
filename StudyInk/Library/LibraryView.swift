@@ -62,6 +62,7 @@ struct LibraryView: View {
     @State private var showSettings = false
     @State private var renamingSubject: Subject?
     @State private var renameText = ""
+    @FocusState private var renameFieldFocused: Bool
     @State private var autoOpenNote: Note?
     /// Set by delete actions; the confirmation alert commits or clears it.
     @State private var subjectPendingDelete: Subject?
@@ -105,15 +106,6 @@ struct LibraryView: View {
             }
         }
         .sheet(isPresented: $showSettings) { SettingsView() }
-        .alert(Text("library.renameSubject"), isPresented: renamingBinding) {
-            TextField("library.subjectName", text: $renameText)
-            Button("action.cancel", role: .cancel) { renamingSubject = nil }
-            Button("action.done") {
-                renamingSubject?.name = renameText
-                PersistenceController.shared.save()
-                renamingSubject = nil
-            }
-        }
         .onAppear(perform: purgeExpiredNotes)
         .alert(Text("library.deleteSubject.confirm"), isPresented: Binding(
             get: { subjectPendingDelete != nil },
@@ -136,8 +128,14 @@ struct LibraryView: View {
         return Text(selection.titleKey)
     }
 
-    private var renamingBinding: Binding<Bool> {
-        Binding(get: { renamingSubject != nil }, set: { if !$0 { renamingSubject = nil } })
+    private func commitInlineRename() {
+        guard let subject = renamingSubject else { return }
+        let trimmed = renameText.trimmingCharacters(in: .whitespaces)
+        if !trimmed.isEmpty {
+            subject.name = trimmed
+            PersistenceController.shared.save()
+        }
+        renamingSubject = nil
     }
 
     // MARK: - Counts
@@ -242,7 +240,28 @@ struct LibraryView: View {
 
     @ViewBuilder
     private func subjectRow(_ subject: Subject, depth: Int) -> some View {
-        if subject.isDivider {
+        if renamingSubject == subject {
+            // Inline rename, right in the row — no popup. Focus lands
+            // immediately so the keyboard comes up with it.
+            HStack(spacing: 10) {
+                if !subject.isDivider {
+                    Circle()
+                        .fill(Color(hex: subject.colorHex ?? "#0A84FF") ?? .accentColor)
+                        .frame(width: 13, height: 13)
+                        .frame(width: 30, height: 30)
+                }
+                TextField("library.subjectName", text: $renameText)
+                    .focused($renameFieldFocused)
+                    .submitLabel(.done)
+                    .onSubmit(commitInlineRename)
+            }
+            .padding(.leading, CGFloat(depth) * 16)
+            .onAppear { renameFieldFocused = true }
+            .onChange(of: renameFieldFocused) { _, focused in
+                // Tapping away commits too — never strand an unnamed folder.
+                if !focused { commitInlineRename() }
+            }
+        } else if subject.isDivider {
             HStack {
                 Text(verbatim: subject.name ?? "")
                     .font(.caption.smallCaps())
