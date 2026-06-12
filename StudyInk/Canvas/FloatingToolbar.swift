@@ -96,6 +96,12 @@ struct FloatingToolbar: View {
             }
         }
         .allowsHitTesting(true)
+        // Writing on the page closes the color/options strip.
+        .onChange(of: controller.drawingGestureBeganToken) { _, _ in
+            if showInlineOptions {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { showInlineOptions = false }
+            }
+        }
     }
 
     /// Bar-shaped placeholders at every edge while the grip is dragged — each

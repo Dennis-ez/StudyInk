@@ -79,6 +79,13 @@ final class CanvasController: NSObject, ObservableObject {
     /// Fired by the engine's dismiss-tap intercept (see setTapIntercept) —
     /// the editor uses it to close the notes drawer on any page tap.
     var onInterceptedTap: (() -> Void)?
+    /// Bumped when a drawing gesture begins; observers (the toolbar's color
+    /// strip) use it to dismiss themselves the moment writing starts.
+    @Published private(set) var drawingGestureBeganToken = 0
+
+    func noteDrawingGestureBegan() {
+        drawingGestureBeganToken &+= 1
+    }
 
     /// Arm/disarm the engine's first-tap intercept (drawer-dismiss).
     func setTapIntercept(enabled: Bool) {
