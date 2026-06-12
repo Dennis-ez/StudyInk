@@ -17,7 +17,10 @@ struct NoteEditorView: View {
     @State private var selectedMediaID: UUID?
     @State private var distractionFree = false
     @State private var showPageStrip = true
-    @State private var showNotesPane = false
+    /// 0 = closed, 1 = notes pane, 2 = notes pane + subjects sidebar.
+    @State private var drawerStage = 0
+    /// Subject chosen in the drawer's subjects pane (.some(nil) = All Notes).
+    @State private var drawerSubject: Subject?? = nil
     @State private var showRenameAlert = false
     @State private var renameText = ""
     @State private var showRecorderPopover = false
@@ -197,37 +200,46 @@ struct NoteEditorView: View {
                     }
                 }
 
-                // Notes drawer: no handle — swipe in from the left edge like a
-                // sidebar. A tap anywhere on the page (no dimming) or a swipe
-                // back closes it; it slides exactly like the page strip.
-                if showNotesPane {
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .ignoresSafeArea()
-                        .onTapGesture {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showNotesPane = false }
+                // Two-stage drawer: first edge swipe shows the notes of the
+                // current subject; a second edge swipe slides the subjects
+                // sidebar in on the left, pushing the notes pane right.
+                // Picking a subject slides it back out with the new filter.
+                if drawerStage > 0 {
+                    HStack(spacing: 6) {
+                        if drawerStage >= 2 {
+                            SubjectsPane { subject in
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    drawerSubject = .some(subject)
+                                    drawerStage = 1
+                                }
+                            }
+                            .padding(.vertical, 24)
+                            .transition(.move(edge: .leading))
                         }
-                    HStack(spacing: 0) {
-                        NotesPane(currentNote: note) { selected in
-                            withAnimation { showNotesPane = false }
+                        NotesPane(currentNote: note, subjectOverride: drawerSubject) { selected in
+                            withAnimation { closeDrawer() }
                             guard selected.objectID != note.objectID else { return }
                             onSwitchNote(selected)
                         }
-                        .padding(.leading, 6)
                         .padding(.vertical, 24)
                         .transition(.move(edge: .leading))
                         .gesture(
                             DragGesture(minimumDistance: 20)
                                 .onEnded { value in
                                     if value.translation.width < -30 {
-                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showNotesPane = false }
+                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                            if drawerStage >= 2 { drawerStage = 1 } else { closeDrawer() }
+                                        }
                                     }
                                 }
                         )
                         Spacer()
                     }
-                } else {
-                    // Invisible catch strip on the left edge that arms the drawer.
+                    .padding(.leading, 6)
+                }
+                // Edge catch strip: opens the drawer, then promotes it to the
+                // subjects stage on the next swipe.
+                if drawerStage < 2 {
                     HStack(spacing: 0) {
                         Color.clear
                             .frame(width: 20)
@@ -236,7 +248,9 @@ struct NoteEditorView: View {
                                 DragGesture(minimumDistance: 15)
                                     .onEnded { value in
                                         if value.translation.width > 30 {
-                                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showNotesPane = true }
+                                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                                drawerStage += 1
+                                            }
                                         }
                                     }
                             )
@@ -458,7 +472,7 @@ struct NoteEditorView: View {
                 guidedMode.strokeOccurred()
             }
             canvasController.onInterceptedTap = {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showNotesPane = false }
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { closeDrawer() }
             }
             canvasController.onPencilHold = {
                 withAnimation { askLassoActive = true }
@@ -527,8 +541,8 @@ struct NoteEditorView: View {
         // Drawer dismissal happens at the UIKit level: SwiftUI tap catchers
         // lose to the canvas's hit-testing, so the engine intercepts the
         // first tap while the drawer is open.
-        .onChange(of: showNotesPane) { _, open in
-            canvasController.setTapIntercept(enabled: open)
+        .onChange(of: drawerStage) { _, stage in
+            canvasController.setTapIntercept(enabled: stage > 0)
         }
         // Rotation should feel like part of the lasso, not a second mode:
         // picking the lasso arms select-and-rotate right away.
@@ -909,14 +923,17 @@ extension NoteEditorView {
     /// Floating glass action bar (top-trailing) — replaces the navigation bar.
     private var actionBar: some View {
         VStack {
-            HStack {
-                // Back to the library + the note's identity, top-left.
-                HStack(spacing: 4) {
+            HStack(alignment: .top) {
+                // Back button, with the note's identity floating just below —
+                // over the top-left of the page, not crowding the button.
+                VStack(alignment: .leading, spacing: 6) {
                     Button(action: { dismiss() }) {
                         Image(systemName: "chevron.left")
                             .frame(width: 34, height: 34)
                     }
                     .font(.system(size: 16, weight: .medium))
+                    .padding(6)
+                    .studyGlass(cornerRadius: 16)
                     .accessibilityLabel(Text("action.back"))
 
                     // Tap the title to rename the note.
@@ -933,15 +950,15 @@ extension NoteEditorView {
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
-                        .frame(maxWidth: 240, alignment: .leading)
+                        .frame(maxWidth: 260, alignment: .leading)
                         .fixedSize(horizontal: true, vertical: false)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .studyGlass(cornerRadius: 12)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(Text("library.renameNote"))
-                    .padding(.trailing, 6)
                 }
-                .padding(6)
-                .studyGlass(cornerRadius: 16)
                 .padding(.leading, 12)
 
                 Spacer()
@@ -1162,6 +1179,11 @@ extension NoteEditorView {
         if page.mediaItems != mediaItems { page.mediaItems = mediaItems }
         note.searchableText = SearchableTextBuilder.build(for: note)
         PersistenceController.shared.save()
+    }
+
+    private func closeDrawer() {
+        drawerStage = 0
+        drawerSubject = nil
     }
 
     /// Commits an in-progress shape edit (its stroke is lifted out of the ink

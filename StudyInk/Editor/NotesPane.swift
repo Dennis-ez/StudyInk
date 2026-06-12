@@ -6,6 +6,9 @@ import CoreData
 /// and favorites; tap a note to switch without going back to the library.
 struct NotesPane: View {
     @ObservedObject var currentNote: Note
+    /// When set by the subjects pane, the subject tab shows THIS subject
+    /// (`.some(nil)` = unfiled/all) instead of the open note's own subject.
+    var subjectOverride: Subject?? = nil
     var onSelect: (Note) -> Void
 
     enum Tab: String, CaseIterable {
@@ -37,11 +40,16 @@ struct NotesPane: View {
         sortDescriptors: [NSSortDescriptor(key: "modifiedAt", ascending: false)]
     ) private var allNotes: FetchedResults<Note>
 
+    private var shownSubject: Subject? {
+        if let override = subjectOverride { return override }
+        return currentNote.subject
+    }
+
     private var visibleNotes: [Note] {
         let active = allNotes.filter { $0.deletedAt == nil }
         switch tab {
         case .subject:
-            return active.filter { $0.subject == currentNote.subject }
+            return active.filter { $0.subject == shownSubject }
         case .all:
             return active
         case .recents:
@@ -90,7 +98,7 @@ struct NotesPane: View {
     }
 
     private var headerTitle: Text {
-        if tab == .subject, let name = currentNote.subject?.name {
+        if tab == .subject, let name = shownSubject?.name {
             return Text(verbatim: name)
         }
         return Text(tab.labelKey)
@@ -124,6 +132,89 @@ struct NotesPane: View {
         .buttonStyle(.plain)
         .accessibilityLabel(Text(verbatim: note.title ?? ""))
         .accessibilityAddTraits(isCurrent ? .isSelected : [])
+    }
+}
+
+/// Second drawer stage: the subjects sidebar that slides in to the LEFT of the
+/// notes pane on a second edge swipe. Picking a subject hands it back and the
+/// pane slides away.
+struct SubjectsPane: View {
+    /// nil = All Notes.
+    var onSelect: (Subject?) -> Void
+
+    @FetchRequest(
+        entity: PersistenceController.model.entitiesByName["Subject"]!,
+        sortDescriptors: [NSSortDescriptor(key: "sortIndex", ascending: true), NSSortDescriptor(key: "createdAt", ascending: true)]
+    ) private var allSubjects: FetchedResults<Subject>
+
+    private var rootSubjects: [Subject] {
+        allSubjects.filter { $0.parent == nil && !$0.isDivider }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("library.subjects")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 14)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 2) {
+                    row(name: String(localized: "library.allNotes"), color: nil) { onSelect(nil) }
+                    ForEach(rootSubjects, id: \.objectID) { subject in
+                        subjectRows(subject, depth: 0)
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.bottom, 12)
+            }
+        }
+        .frame(width: 168)
+        .frame(maxHeight: .infinity)
+        .studyGlass(cornerRadius: 18)
+    }
+
+    @ViewBuilder
+    private func subjectRows(_ subject: Subject, depth: Int) -> AnyView {
+        AnyView(
+            Group {
+                row(
+                    name: subject.name ?? "",
+                    color: Color(hex: subject.colorHex ?? "#0A84FF") ?? .accentColor
+                ) { onSelect(subject) }
+                    .padding(.leading, CGFloat(depth) * 12)
+                ForEach((subject.children ?? []).filter { !$0.isDivider }.sorted {
+                    ($0.sortIndex, $0.createdAt ?? .distantPast) < ($1.sortIndex, $1.createdAt ?? .distantPast)
+                }, id: \.objectID) { child in
+                    subjectRows(child, depth: depth + 1)
+                }
+            }
+        )
+    }
+
+    private func row(name: String, color: Color?, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                if let color {
+                    Circle().fill(color).frame(width: 11, height: 11)
+                } else {
+                    Image(systemName: "tray.full")
+                        .font(.caption)
+                        .foregroundStyle(Color.accentColor)
+                        .frame(width: 11)
+                }
+                Text(verbatim: name)
+                    .font(.subheadline)
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 7)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 

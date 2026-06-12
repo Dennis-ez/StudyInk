@@ -619,6 +619,12 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     private let eraserCursor = UIView()
 
     @objc private func drawingGestureMoved(_ recognizer: UIGestureRecognizer) {
+        if recognizer.state == .began {
+            // Starting to write dismisses transient chrome: the notes drawer
+            // (when the intercept is armed) and the toolbar's color strip.
+            if interceptTap?.isEnabled == true { controller.onInterceptedTap?() }
+            controller.noteDrawingGestureBegan()
+        }
         guard controller.toolState.kind == .eraserPixel || controller.toolState.kind == .eraserObject else {
             eraserCursor.isHidden = true
             return

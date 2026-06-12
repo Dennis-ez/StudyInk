@@ -84,7 +84,9 @@ struct LibraryView: View {
                         withAnimation { columnVisibility = .detailOnly }
                     },
                     onNoteClosed: {
-                        withAnimation { columnVisibility = .all }
+                        // Instant — animating left the sidebar missing for a
+                        // beat after returning from the editor.
+                        columnVisibility = .all
                     }
                 )
                 .navigationTitle(detailTitle)
@@ -97,7 +99,7 @@ struct LibraryView: View {
                     if let note = autoOpenNote {
                         NoteEditorContainer(note: note)
                             .onAppear { withAnimation { columnVisibility = .detailOnly } }
-                            .onDisappear { withAnimation { columnVisibility = .all } }
+                            .onDisappear { columnVisibility = .all }
                     }
                 }
             }
@@ -161,7 +163,21 @@ struct LibraryView: View {
                 sectionRow(.recents, systemName: "clock.fill", count: recentsCount)
                 sectionRow(.favorites, systemName: "star.fill", count: favoritesCount)
             }
-            Section(header: Text("library.subjects").font(.caption.smallCaps()).foregroundStyle(.secondary)) {
+            Section(header:
+                HStack {
+                    Text("library.subjects").font(.caption.smallCaps()).foregroundStyle(.secondary)
+                    Spacer()
+                    // New folder/divider lives next to its section title.
+                    Menu {
+                        Button { addSubject(kind: "folder") } label: { Label("library.newSubject", systemImage: "folder.badge.plus") }
+                        Button { addSubject(kind: "divider") } label: { Label("library.newDivider", systemImage: "minus") }
+                    } label: {
+                        Image(systemName: "plus.circle")
+                            .font(.subheadline)
+                    }
+                    .accessibilityLabel(Text("library.newSubject"))
+                }
+            ) {
                 ForEach(rootSubjects, id: \.objectID) { subject in
                     subjectRows(subject, depth: 0)
                 }
@@ -179,13 +195,8 @@ struct LibraryView: View {
         // No app-name header — the sidebar speaks for itself.
         .toolbarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                Menu {
-                    Button { addSubject(kind: "folder") } label: { Label("library.newSubject", systemImage: "folder.badge.plus") }
-                    Button { addSubject(kind: "divider") } label: { Label("library.newDivider", systemImage: "minus") }
-                } label: {
-                    Image(systemName: "folder.badge.plus")
-                }
+            // Settings lives top-LEFT of the sidebar.
+            ToolbarItem(placement: .topBarLeading) {
                 Button { showSettings = true } label: { Image(systemName: "gearshape") }
                     .accessibilityLabel(Text("settings.title"))
             }
@@ -249,7 +260,11 @@ struct LibraryView: View {
                 selection = .subject(subject)
             } label: {
                 HStack(spacing: 10) {
-                    iconTile(systemName: "folder.fill", tint: tint)
+                    // The subject IS its color — a plain dot, not a folder glyph.
+                    Circle()
+                        .fill(tint)
+                        .frame(width: 13, height: 13)
+                        .frame(width: 30, height: 30)
                     Text(verbatim: subject.name ?? "")
                         .foregroundStyle(.primary)
                         .lineLimit(1)
@@ -441,8 +456,17 @@ struct LibraryView: View {
 
     private func addSubject(kind: String, parent: Subject? = nil) {
         let baseName = kind == "divider" ? String(localized: "library.newDividerName") : String(localized: "library.newSubjectName")
-        Subject.create(in: context, name: baseName, kind: kind, parent: parent)
+        // Pick a color no existing subject uses yet; once the palette is
+        // exhausted, any of it at random.
+        let used = Set(allSubjects.compactMap(\.colorHex))
+        let palette = Self.subjectColors.map(\.hex)
+        let color = palette.filter { !used.contains($0) }.randomElement()
+            ?? palette.randomElement() ?? "#0A84FF"
+        let subject = Subject.create(in: context, name: baseName, colorHex: color, kind: kind, parent: parent)
         PersistenceController.shared.save()
+        // Straight into naming — nobody wants a folder called "New Subject".
+        renameText = baseName
+        renamingSubject = subject
     }
 
     private func addNote() {

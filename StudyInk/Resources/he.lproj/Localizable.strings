@@ -139,7 +139,7 @@
 "subjectColor.gray" = "אפור";
 "editor.notesPane" = "מגירת מחברות";
 "library.subjects" = "מקצועות";
-"library.searchPrompt" = "חיפוש במחברות, בכתב יד, בעברית או באנגלית";
+"library.searchPrompt" = "חיפוש";
 "library.sort" = "מיון";
 "library.sort.date" = "תאריך עדכון";
 "library.sort.name" = "שם";
