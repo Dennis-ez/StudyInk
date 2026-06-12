@@ -121,6 +121,12 @@
 "library.trashEmpty.subtitle" = "Deleted notes stay here for 30 days before being removed.";
 "library.toggleChildren" = "Show or hide nested subjects";
 "library.select" = "Select";
+"library.selectNotes" = "Select Notes";
+"library.sort.created" = "Created Date";
+"library.unfiled" = "Unfiled";
+"library.moveUp" = "Move Up";
+"library.moveDown" = "Move Down";
+"library.moveOut" = "Move Out of Folder";
 "library.deleteSubject.confirm" = "Delete this subject?";
 "library.deleteSubject.message" = "Its notes move to Recently Deleted. Nested subjects are deleted with it.";
 "library.deleteNote.confirm" = "Delete?";

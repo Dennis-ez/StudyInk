@@ -70,18 +70,10 @@ struct FloatingToolbar: View {
     var body: some View {
         GeometryReader { geo in
             ZStack {
-                // While options are open, the first tap anywhere outside
-                // dismisses (popover behavior).
-                if showInlineOptions {
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .ignoresSafeArea()
-                        .onTapGesture {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                                showInlineOptions = false
-                            }
-                        }
-                }
+                // NOTE: no full-screen tap catcher here — it blocked the
+                // first pen stroke while the strip was open. The strip closes
+                // via re-tap, tool switch, or the drawing-gesture token below
+                // (start writing → strip closes AND the stroke lands).
                 if let location = gripDragLocation {
                     dockIndicators(highlighting: nearestDock(for: location))
                 }

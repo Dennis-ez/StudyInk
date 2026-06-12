@@ -3,13 +3,13 @@ import CoreData
 import UniformTypeIdentifiers
 
 enum LibrarySort: String, CaseIterable {
-    case dateModified, name, size
+    case dateModified, name, createdDate
 
     var labelKey: LocalizedStringKey {
         switch self {
         case .dateModified: return "library.sort.date"
         case .name: return "library.sort.name"
-        case .size: return "library.sort.size"
+        case .createdDate: return "library.sort.created"
         }
     }
 }
@@ -66,6 +66,8 @@ struct LibraryView: View {
     @State private var autoOpenNote: Note?
     /// Set by delete actions; the confirmation alert commits or clears it.
     @State private var subjectPendingDelete: Subject?
+    /// Multi-select mode, entered from the ⋯ menu.
+    @State private var selectingNotes = false
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -80,6 +82,7 @@ struct LibraryView: View {
                     searchText: searchText,
                     gridLayout: gridLayout,
                     sort: LibrarySort(rawValue: sortRaw) ?? .dateModified,
+                    selecting: $selectingNotes,
                     onNoteOpened: {
                         // The canvas deserves the whole screen.
                         withAnimation { columnVisibility = .detailOnly }
@@ -175,6 +178,21 @@ struct LibraryView: View {
                     }
                     .accessibilityLabel(Text("library.newSubject"))
                 }
+                // Dropping a nested folder/divider on the header pulls it out
+                // to the top level.
+                .contentShape(Rectangle())
+                .dropDestination(for: String.self) { ids, _ in
+                    var changed = false
+                    for item in ids where item.hasPrefix("subject:") {
+                        let uuid = String(item.dropFirst("subject:".count))
+                        if let dragged = allSubjects.first(where: { $0.id?.uuidString == uuid }), dragged.parent != nil {
+                            withAnimation { dragged.parent = nil }
+                            changed = true
+                        }
+                    }
+                    if changed { PersistenceController.shared.save() }
+                    return changed
+                }
             ) {
                 ForEach(rootSubjects, id: \.objectID) { subject in
                     subjectRows(subject, depth: 0)
@@ -190,6 +208,8 @@ struct LibraryView: View {
         // The sidebar is the library's spine — it can't be hidden from the
         // main screen (the editor still takes the full screen when a note opens).
         .hideSidebarToggle()
+        // Single fixed width = the user can't drag-resize the sidebar.
+        .navigationSplitViewColumnWidth(280)
         // No app-name header — the sidebar speaks for itself.
         .toolbarTitleDisplayMode(.inline)
         .toolbar {
@@ -255,7 +275,7 @@ struct LibraryView: View {
                     .submitLabel(.done)
                     .onSubmit(commitInlineRename)
             }
-            .padding(.leading, CGFloat(depth) * 16)
+            .padding(.leading, CGFloat(depth) * 20)
             .onAppear { renameFieldFocused = true }
             .onChange(of: renameFieldFocused) { _, focused in
                 // Tapping away commits too — never strand an unnamed folder.
@@ -268,7 +288,7 @@ struct LibraryView: View {
                     .foregroundStyle(.secondary)
                 VStack { Divider() }
             }
-            .padding(.leading, CGFloat(depth) * 16)
+            .padding(.leading, CGFloat(depth) * 20)
             .contentShape(Rectangle())
             .draggable("subject:\(subject.id?.uuidString ?? "")")
             .contextMenu { subjectContextMenu(subject) }
@@ -310,10 +330,13 @@ struct LibraryView: View {
                     }
                 }
             }
-            .padding(.leading, CGFloat(depth) * 16)
+            .padding(.leading, CGFloat(depth) * 20)
             // Subject rows carry their color as a soft wash; selection darkens
-            // it. Rounded so the wash doesn't end in hard edges.
-            .listRowBackground(roundedRowBackground(tint.opacity(isSelected ? 0.26 : 0.10)))
+            // it. Rounded, and indented WITH the row so nesting reads as a tree.
+            .listRowBackground(
+                roundedRowBackground(tint.opacity(isSelected ? 0.26 : 0.10))
+                    .padding(.leading, CGFloat(depth) * 20)
+            )
             .draggable("subject:\(subject.id?.uuidString ?? "")")
             .contextMenu { subjectContextMenu(subject) }
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -328,6 +351,30 @@ struct LibraryView: View {
             .dropDestination(for: String.self) { ids, _ in
                 handleDrop(ids, into: subject)
             }
+        }
+    }
+
+    private func siblings(of subject: Subject) -> [Subject]? {
+        let pool = subject.parent.map { sortedChildren(of: $0) } ?? rootSubjects
+        return pool.isEmpty ? nil : pool
+    }
+
+    private func siblingIndex(of subject: Subject) -> Int {
+        siblings(of: subject)?.firstIndex(of: subject) ?? 0
+    }
+
+    /// Swap sort positions with the neighbor `offset` away (±1), normalizing
+    /// sortIndex across the sibling group so future moves stay stable.
+    private func moveAmongSiblings(_ subject: Subject, by offset: Int) {
+        guard var pool = siblings(of: subject),
+              let index = pool.firstIndex(of: subject),
+              pool.indices.contains(index + offset) else { return }
+        pool.swapAt(index, index + offset)
+        withAnimation {
+            for (position, sibling) in pool.enumerated() {
+                sibling.sortIndex = Int32(position)
+            }
+            PersistenceController.shared.save()
         }
     }
 
@@ -390,6 +437,26 @@ struct LibraryView: View {
             renamingSubject = subject
         } label: { Label("action.rename", systemImage: "pencil") }
 
+        // Reorder among siblings (sortIndex swap, animated).
+        if siblingIndex(of: subject) > 0 {
+            Button {
+                moveAmongSiblings(subject, by: -1)
+            } label: { Label("library.moveUp", systemImage: "arrow.up") }
+        }
+        if let siblings = siblings(of: subject), siblingIndex(of: subject) < siblings.count - 1 {
+            Button {
+                moveAmongSiblings(subject, by: 1)
+            } label: { Label("library.moveDown", systemImage: "arrow.down") }
+        }
+        if subject.parent != nil {
+            Button {
+                withAnimation {
+                    subject.parent = subject.parent?.parent
+                    PersistenceController.shared.save()
+                }
+            } label: { Label("library.moveOut", systemImage: "arrow.up.left") }
+        }
+
         if !subject.isDivider {
             Menu {
                 ForEach(Self.subjectColors, id: \.hex) { option in
@@ -438,26 +505,40 @@ struct LibraryView: View {
 
     @ToolbarContentBuilder
     private var detailToolbar: some ToolbarContent {
+        // Rightmost: New Note. To its left: the ⋯ menu with view toggle,
+        // Select Notes, and a Sort By submenu showing the current choice.
         ToolbarItemGroup(placement: .primaryAction) {
+            Menu {
+                Button {
+                    gridLayout.toggle()
+                } label: {
+                    Label(
+                        gridLayout ? "library.layout.list" : "library.layout.grid",
+                        systemImage: gridLayout ? "list.bullet" : "square.grid.2x2"
+                    )
+                }
+                Button {
+                    selectingNotes = true
+                } label: { Label("library.selectNotes", systemImage: "checkmark.circle") }
+                Menu {
+                    Picker("library.sort", selection: $sortRaw) {
+                        ForEach(LibrarySort.allCases, id: \.rawValue) { sort in
+                            Text(sort.labelKey).tag(sort.rawValue)
+                        }
+                    }
+                } label: {
+                    Label("library.sort", systemImage: "arrow.up.arrow.down")
+                    Text((LibrarySort(rawValue: sortRaw) ?? .dateModified).labelKey)
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+            }
+            .accessibilityLabel(Text("library.sort"))
+
             if selection != .deleted {
                 Button(action: addNote) { Image(systemName: "square.and.pencil") }
                     .accessibilityLabel(Text("library.newNote"))
             }
-            Menu {
-                Picker("library.sort", selection: $sortRaw) {
-                    ForEach(LibrarySort.allCases, id: \.rawValue) { sort in
-                        Text(sort.labelKey).tag(sort.rawValue)
-                    }
-                }
-                Divider()
-                Picker("library.layout", selection: $gridLayout) {
-                    Label("library.layout.grid", systemImage: "square.grid.2x2").tag(true)
-                    Label("library.layout.list", systemImage: "list.bullet").tag(false)
-                }
-            } label: {
-                Image(systemName: "arrow.up.arrow.down")
-            }
-            .accessibilityLabel(Text("library.sort"))
         }
     }
 
