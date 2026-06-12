@@ -12,6 +12,8 @@ struct PageNavigatorStrip: View {
     var onWillMutatePages: () -> Void = {}
     /// Index currently lifted by a drag (dimmed in place while hovering).
     @State private var draggingIndex: Int?
+    /// Page delete awaiting confirmation.
+    @State private var pendingDeleteIndex: Int?
 
     var body: some View {
         let layout = horizontal
@@ -53,6 +55,18 @@ struct PageNavigatorStrip: View {
         }
         .studyGlass(cornerRadius: 16)
         .frame(maxWidth: horizontal ? 460 : 84, maxHeight: horizontal ? 100 : 480)
+        .alert(Text("page.delete.confirm"), isPresented: Binding(
+            get: { pendingDeleteIndex != nil },
+            set: { if !$0 { pendingDeleteIndex = nil } }
+        )) {
+            Button("action.cancel", role: .cancel) { pendingDeleteIndex = nil }
+            Button("action.delete", role: .destructive) {
+                if let index = pendingDeleteIndex { delete(index: index) }
+                pendingDeleteIndex = nil
+            }
+        } message: {
+            Text("delete.permanent.message")
+        }
     }
 
     private func thumbnail(for page: Page, index: Int) -> some View {
@@ -83,7 +97,7 @@ struct PageNavigatorStrip: View {
                     Button { move(from: index, to: index + 1) } label: { Label("page.moveForward", systemImage: "arrow.forward") }
                 }
                 if note.sortedPages.count > 1 {
-                    Button(role: .destructive) { delete(index: index) } label: { Label("page.delete", systemImage: "trash") }
+                    Button(role: .destructive) { pendingDeleteIndex = index } label: { Label("page.delete", systemImage: "trash") }
                 }
             }
             .accessibilityLabel(Text("page.thumbnail \(index + 1)"))
