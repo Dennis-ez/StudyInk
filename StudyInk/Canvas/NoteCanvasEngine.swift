@@ -247,7 +247,6 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
 
     private func mountCanvas(on index: Int) {
         guard containers.indices.contains(index) else { return }
-        clearSharpZoomOverlay()
         activeIndex = index
         let container = containers[index]
         canvas.frame = CGRect(origin: .zero, size: pageSizes[index])
@@ -409,16 +408,11 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
         publishGeometry()
         updateCurrentIndex()
-        // The sharp slice only covers the old viewport — drop it and re-render
-        // once the scroll settles.
-        clearSharpZoomOverlay()
-        scheduleSharpZoomOverlay()
     }
 
     func scrollViewDidZoom(_ scrollView: UIScrollView) {
         centerDocument()
         publishGeometry()
-        clearSharpZoomOverlay()
         // Programmatic/snap zooms never call didEndZooming — debounce a raster
         // pass after the last zoom tick so sharpness always lands.
         rasterWorkItem?.cancel()
@@ -468,67 +462,11 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
                 renderImage(for: index)
             }
         }
-        scheduleSharpZoomOverlay()
     }
-
-    // MARK: - Sharp deep-zoom overlay
-
-    /// Beyond the 3x raster cap the live layer tree can't get any sharper, so
-    /// once the gesture settles we render JUST THE VISIBLE SLICE of the active
-    /// page's ink at full zoom resolution and float it over the canvas. The
-    /// image is bounded by the screen's pixel count regardless of zoom, so
-    /// memory stays flat. Any touch/scroll/zoom drops the overlay back to the
-    /// live canvas.
-    private let sharpZoomOverlay = UIImageView()
-    private var sharpOverlayGeneration = 0
-    private var sharpOverlayWorkItem: DispatchWorkItem?
-
-    func clearSharpZoomOverlay() {
-        sharpOverlayGeneration &+= 1
-        sharpOverlayWorkItem?.cancel()
-        if sharpZoomOverlay.superview != nil {
-            sharpZoomOverlay.removeFromSuperview()
-            sharpZoomOverlay.image = nil
-        }
-    }
-
-    private func scheduleSharpZoomOverlay() {
-        sharpOverlayWorkItem?.cancel()
-        guard zoomScale > 3.01 else { return }
-        let work = DispatchWorkItem { [weak self] in self?.renderSharpZoomOverlay() }
-        sharpOverlayWorkItem = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
-    }
-
-    private func renderSharpZoomOverlay() {
-        guard zoomScale > 3.01, containers.indices.contains(activeIndex), editSession == nil else { return }
-        let container = containers[activeIndex]
-        let visible = convert(bounds, to: container).intersection(container.bounds)
-        guard !visible.isEmpty else { return }
-        let drawing = canvas.drawing
-        guard !drawing.strokes.isEmpty else { return }
-        // Pixels per page point on screen right now — screen-res output.
-        let pixelsPerPoint = zoomScale * UIScreen.main.scale
-        let dark = traitCollection.userInterfaceStyle == .dark
-        sharpOverlayGeneration &+= 1
-        let generation = sharpOverlayGeneration
-
-        Task.detached(priority: .userInitiated) {
-            let traits = UITraitCollection(userInterfaceStyle: dark ? .dark : .light)
-            var image: UIImage?
-            traits.performAsCurrent {
-                image = drawing.image(from: visible, scale: pixelsPerPoint)
-            }
-            await MainActor.run { [weak self] in
-                guard let self, self.sharpOverlayGeneration == generation,
-                      self.zoomScale > 3.01, container.superview != nil else { return }
-                self.sharpZoomOverlay.image = image
-                self.sharpZoomOverlay.frame = visible
-                self.sharpZoomOverlay.isUserInteractionEnabled = false
-                container.addSubview(self.sharpZoomOverlay)
-            }
-        }
-    }
+    // NOTE: a "sharp deep-zoom overlay" (rendering the visible ink slice at
+    // full zoom resolution over the canvas) was tried here and correlated
+    // with ink not rendering at all — removed. Past 3x zoom stays soft until
+    // the engine moves to PencilKit-native zooming.
 
     private func applyRasterScale(_ scale: CGFloat, to view: UIView) {
         view.contentScaleFactor = scale
@@ -541,7 +479,6 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     // MARK: - PKCanvasViewDelegate
 
     func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
-        clearSharpZoomOverlay()
         guard !isProgrammaticChange else { return }
         let drawing = canvasView.drawing
         let index = activeIndex
@@ -672,9 +609,6 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     private let eraserCursor = UIView()
 
     @objc private func drawingGestureMoved(_ recognizer: UIGestureRecognizer) {
-        // Wet strokes render on the live canvas — they'd be invisible under
-        // the sharp slice, so it yields the moment a touch lands.
-        if recognizer.state == .began { clearSharpZoomOverlay() }
         guard controller.toolState.kind == .eraserPixel || controller.toolState.kind == .eraserObject else {
             eraserCursor.isHidden = true
             return
