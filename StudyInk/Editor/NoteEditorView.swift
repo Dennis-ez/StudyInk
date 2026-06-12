@@ -737,6 +737,7 @@ private struct RecorderPopover: View {
                             Button(role: .destructive) {
                                 delete(recording)
                             } label: { Label("action.delete", systemImage: "trash") }
+                                .tint(Color("errorRed"))
                         }
                     }
                 }

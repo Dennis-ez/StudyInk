@@ -272,6 +272,9 @@ struct LibraryView: View {
                 Button(role: .destructive) {
                     deleteSubject(subject)
                 } label: { Label("action.delete", systemImage: "trash") }
+                    // Explicit red — the app-wide accent tint overrides the
+                    // destructive role's background.
+                    .tint(Color("errorRed"))
             }
             // Accepts notes (to file them) and subjects/dividers (to nest them).
             .dropDestination(for: String.self) { ids, _ in
