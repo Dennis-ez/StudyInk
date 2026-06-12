@@ -10,6 +10,8 @@ struct PageNavigatorStrip: View {
     /// Runs before any page-list mutation so the editor can flush the live
     /// canvas's debounced ink save while indices still mean the same pages.
     var onWillMutatePages: () -> Void = {}
+    /// Index currently lifted by a drag (dimmed in place while hovering).
+    @State private var draggingIndex: Int?
 
     var body: some View {
         let layout = horizontal
@@ -20,14 +22,21 @@ struct PageNavigatorStrip: View {
             layout {
                 ForEach(Array(note.sortedPages.enumerated()), id: \.element.objectID) { index, page in
                     thumbnail(for: page, index: index)
-                        // Drag a thumbnail onto another to reorder pages.
-                        .draggable("studyink.page:\(index)")
-                        .dropDestination(for: String.self) { items, _ in
-                            guard let item = items.first, item.hasPrefix("studyink.page:"),
-                                  let from = Int(item.dropFirst("studyink.page:".count)) else { return false }
-                            reorder(from: from, to: index)
-                            return true
+                        .opacity(draggingIndex == index ? 0.4 : 1)
+                        // Live reorder: pages shift out of the way while the
+                        // dragged thumbnail hovers, and the .move proposal
+                        // keeps the green "+" copy badge off the preview.
+                        .onDrag {
+                            onWillMutatePages()
+                            draggingIndex = index
+                            return NSItemProvider(object: "studyink.page" as NSString)
                         }
+                        .onDrop(of: [.text], delegate: PageReorderDropDelegate(
+                            index: index,
+                            draggingIndex: $draggingIndex,
+                            move: liveMove,
+                            end: commitReorder
+                        ))
                 }
                 Button(action: { addPage() }) {
                     Image(systemName: "plus")
@@ -108,21 +117,24 @@ struct PageNavigatorStrip: View {
         currentIndex = to
     }
 
-    /// Drag-and-drop reorder: remove at `from`, insert at `to`, reindex all.
-    private func reorder(from: Int, to: Int) {
+    /// Hover-time reorder: reindexes in memory (animated) — no save until the
+    /// drop commits, so the strip can shuffle freely under the drag.
+    private func liveMove(from: Int, to: Int) {
         guard from != to else { return }
-        onWillMutatePages()
         var pages = note.sortedPages
         guard pages.indices.contains(from), pages.indices.contains(to) else { return }
         let moved = pages.remove(at: from)
         pages.insert(moved, at: to)
         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
             for (index, page) in pages.enumerated() { page.index = Int32(index) }
-            note.touch()
         }
+        currentIndex = to
+    }
+
+    private func commitReorder() {
+        note.touch()
         PersistenceController.shared.save()
         Haptics.success()
-        currentIndex = to
     }
 
     private func delete(index: Int) {
@@ -133,12 +145,38 @@ struct PageNavigatorStrip: View {
     }
 }
 
-/// Cheap page preview: template pattern + drawing image, dark-mode correct.
+/// Reorders pages live as the drag hovers over each slot; `.move` keeps the
+/// system's green "+" copy badge off the drag preview.
+private struct PageReorderDropDelegate: DropDelegate {
+    let index: Int
+    @Binding var draggingIndex: Int?
+    let move: (Int, Int) -> Void
+    let end: () -> Void
+
+    func dropEntered(info: DropInfo) {
+        guard let from = draggingIndex, from != index else { return }
+        move(from, index)
+        draggingIndex = index
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        draggingIndex = nil
+        end()
+        return true
+    }
+}
+
+/// Page preview: instant template placeholder, then the FULL page render —
+/// ink, stickers/media, and typed text — at the displayed size.
 struct PageThumbnailView: View {
     @ObservedObject var page: Page
     @Environment(\.colorScheme) private var colorScheme
-    @State private var drawingImage: UIImage?
-    /// Measured display width — the ink renders at this size (× screen scale),
+    @State private var thumbnail: UIImage?
+    /// Measured display width — the page renders at this size (× screen scale),
     /// not a fixed tiny raster that upscales into blur.
     @State private var displayWidth: CGFloat = 0
 
@@ -159,8 +197,8 @@ struct PageThumbnailView: View {
                         spacing: page.effectiveTemplateSpacing
                     )
                 }
-                if let drawingImage {
-                    Image(uiImage: drawingImage)
+                if let thumbnail {
+                    Image(uiImage: thumbnail)
                         .resizable()
                         .scaledToFit()
                 }
@@ -175,37 +213,30 @@ struct PageThumbnailView: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.quaternary))
-        .task(id: page.drawingData) { renderDrawing() }
-        .onChange(of: colorScheme) { renderDrawing() }
+        .task(id: page.drawingData) { renderThumbnail() }
+        .onChange(of: page.mediaItemsData) { renderThumbnail() }
+        .onChange(of: page.textBoxesData) { renderThumbnail() }
+        .onChange(of: colorScheme) { renderThumbnail() }
         .onChange(of: displayWidth) { oldWidth, newWidth in
-            // Re-render when the cell grows enough to expose the old raster.
-            if newWidth > oldWidth * 1.3 { renderDrawing() }
+            // (Re-)render once the real cell size is known, or when the cell
+            // grows enough to expose the old raster.
+            if newWidth > oldWidth * 1.3 { renderThumbnail() }
         }
     }
 
-    private func renderDrawing() {
-        let drawing = page.drawing
-        guard !drawing.strokes.isEmpty else {
-            drawingImage = nil
+    private func renderThumbnail() {
+        // Full-page snapshot: template/PDF + media + ink + text, like export.
+        let snapshot = PageRenderer.Snapshot(page: page)
+        guard snapshot.drawingData != nil || !snapshot.mediaItems.isEmpty || !snapshot.textBoxes.isEmpty else {
+            thumbnail = nil
             return
         }
-        let pageRect = CGRect(origin: .zero, size: PageSize.from(id: page.pageSizeID).size)
         // Pixels-per-page-point that fills the actual cell on this screen.
-        let renderScale = min(2, max(0.2, displayWidth * UIScreen.main.scale / max(pageRect.width, 1)))
+        let renderScale = min(2, max(0.2, displayWidth * UIScreen.main.scale / max(snapshot.pageSize.width, 1)))
         let dark = colorScheme == .dark
         Task.detached(priority: .utility) {
-            // PKDrawing.image is appearance-sensitive via the trait collection.
-            let traits = UITraitCollection(userInterfaceStyle: dark ? .dark : .light)
-            let image = render(in: traits)
-            await MainActor.run { drawingImage = image }
-        }
-
-        @Sendable func render(in traits: UITraitCollection) -> UIImage? {
-            var image: UIImage?
-            traits.performAsCurrent {
-                image = drawing.image(from: pageRect, scale: renderScale)
-            }
-            return image
+            let image = PageRenderer.render(snapshot, darkMode: dark, scale: renderScale)
+            await MainActor.run { thumbnail = image }
         }
     }
 }

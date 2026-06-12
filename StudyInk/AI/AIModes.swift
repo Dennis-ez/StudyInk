@@ -22,6 +22,77 @@ extension AITutorController {
     // Quiz Me grew out of the bubble system into its own card flow — see
     // QuizController / QuizView.
 
+    /// Asks the model for a simple polyline sketch and inks it onto the live
+    /// canvas as real strokes (erasable, lassoable, undoable like handwriting).
+    func drawSketch(request: String, on canvas: PKCanvasView?) async {
+        guard let page = currentPage, let canvas else { return }
+        let pageSize = PageSize.from(id: page.pageSizeID).size
+
+        do {
+            let prompt = """
+            SKETCH MODE: Draw "\(request)" as a simple, clean line drawing — like a quick whiteboard sketch.
+            Respond with ONLY a JSON object:
+            {"strokes": [{"points": [[x, y], [x, y], ...]}, ...]}
+            Coordinates live in a 100×100 box, origin top-left. Use 3-25 strokes with 2-60 points each.
+            Connect points smoothly; prefer fewer, longer strokes over many tiny ones.
+            """
+            let raw = try await AIService.send(
+                system: SystemPrompt.tutor(subjectContext: note?.subjectContext ?? "calculus1"),
+                messages: [.user(text: prompt)],
+                maxTokens: 3000
+            )
+            guard let start = raw.firstIndex(of: "{"), let end = raw.lastIndex(of: "}"),
+                  let data = String(raw[start...end]).data(using: .utf8),
+                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let items = object["strokes"] as? [[String: Any]], !items.isEmpty else {
+                errorMessage = String(localized: "ai.sketch.failed")
+                return
+            }
+
+            // Land the sketch in a box at the center of the current page.
+            let side = min(pageSize.width, pageSize.height) * 0.45
+            let box = CGRect(
+                x: (pageSize.width - side) / 2,
+                y: (pageSize.height - side) / 2,
+                width: side, height: side
+            )
+            // Accent blue reads on both light and dark canvases, and marks the
+            // ink as the tutor's rather than the student's.
+            let ink = PKInk(.pen, color: UIColor(hex: "#0A84FF") ?? .systemBlue)
+
+            var strokes: [PKStroke] = []
+            for item in items.prefix(25) {
+                guard let pairs = item["points"] as? [[Any]] else { continue }
+                let controlPoints = pairs.prefix(60).enumerated().compactMap { index, pair -> PKStrokePoint? in
+                    guard pair.count >= 2,
+                          let x = (pair[0] as? NSNumber)?.doubleValue,
+                          let y = (pair[1] as? NSNumber)?.doubleValue else { return nil }
+                    let location = CGPoint(
+                        x: box.minX + min(max(x, 0), 100) / 100 * box.width,
+                        y: box.minY + min(max(y, 0), 100) / 100 * box.height
+                    )
+                    return PKStrokePoint(
+                        location: location,
+                        timeOffset: Double(index) * 0.02,
+                        size: CGSize(width: 3.5, height: 3.5),
+                        opacity: 1, force: 1,
+                        azimuth: 0, altitude: .pi / 2
+                    )
+                }
+                guard controlPoints.count >= 2 else { continue }
+                strokes.append(PKStroke(ink: ink, path: PKStrokePath(controlPoints: controlPoints, creationDate: Date())))
+            }
+            guard !strokes.isEmpty else {
+                errorMessage = String(localized: "ai.sketch.failed")
+                return
+            }
+            canvas.drawing = canvas.drawing.appending(PKDrawing(strokes: strokes))
+            Haptics.tap()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     /// Apple-Notes-Math style "Answer in Ink": works out the answer to a
     /// question in the note and writes it next to that question as handwritten
     /// strokes (hand-style font → real PencilKit ink via InkWriter).

@@ -250,6 +250,10 @@
 "ai.quick.hint" = "תן לי רמז";
 "ai.quick.summarize" = "סכם את העמוד";
 "ai.draw" = "תשובה בכתב יד";
+"ai.sketch" = "ציור על הקנבס";
+"ai.sketch.placeholder" = "מה לצייר?";
+"ai.sketch.go" = "ציור";
+"ai.sketch.failed" = "לא הצלחתי להפוך את זה לסקיצה — נסו לתאר אחרת.";
 "ai.draw.placeholder" = "למשל: פתרו את שאלה 2";
 "ai.draw.go" = "כתיבה";
 "ai.draw.failed" = "לא הצלחתי לחשב תשובה לכתוב — נסו להצביע על שאלה מסוימת.";

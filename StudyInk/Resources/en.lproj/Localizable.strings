@@ -250,6 +250,10 @@
 "ai.quick.hint" = "Give me a hint";
 "ai.quick.summarize" = "Summarize the page";
 "ai.draw" = "Answer in Ink";
+"ai.sketch" = "Draw on Canvas";
+"ai.sketch.placeholder" = "What should I draw?";
+"ai.sketch.go" = "Draw";
+"ai.sketch.failed" = "Couldn't turn that into a sketch — try describing it differently.";
 "ai.draw.placeholder" = "e.g. Solve question 2";
 "ai.draw.go" = "Write";
 "ai.draw.failed" = "Couldn't work out an answer to write — try pointing at a specific question.";

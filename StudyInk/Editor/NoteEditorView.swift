@@ -18,6 +18,11 @@ struct NoteEditorView: View {
     @State private var distractionFree = false
     @State private var showPageStrip = true
     @State private var showNotesPane = false
+    @State private var showRenameAlert = false
+    @State private var renameText = ""
+    @State private var showRecorderPopover = false
+    @State private var showAISketchPrompt = false
+    @State private var aiSketchText = ""
     @State private var showPageSettings = false
     @State private var showStickers = false
     @State private var showCamera = false
@@ -88,7 +93,9 @@ struct NoteEditorView: View {
                 layoutSignature: layoutSignature
             )
             .ignoresSafeArea(edges: .bottom)
-            .allowsHitTesting(selectedMediaID == nil && strokeSelection == nil && !transformLassoActive && editingShape == nil)
+            // While the notes drawer is open, the first tap belongs to the
+            // dismiss catcher — the canvas must not swallow it.
+            .allowsHitTesting(selectedMediaID == nil && strokeSelection == nil && !transformLassoActive && editingShape == nil && !showNotesPane)
 
             // Tap-anywhere catcher to drop the current media/text selection.
             if selectedMediaID != nil || editingBoxID != nil {
@@ -401,8 +408,11 @@ struct NoteEditorView: View {
             }
         }
         // No system navigation bar — the canvas owns the full screen; actions
-        // live in the floating glass action bar (top-trailing).
+        // live in the floating glass action bar (top-trailing). Hiding the back
+        // button also kills the edge-swipe interactive pop, which fought the
+        // notes drawer's left-edge gesture and yanked users back to the library.
         .toolbar(.hidden, for: .navigationBar)
+        .navigationBarBackButtonHidden(true)
         .sheet(isPresented: $quiz.isPresented) { QuizView(quiz: quiz) }
         .alert(Text("ai.draw"), isPresented: $showAIDrawPrompt) {
             TextField("ai.draw.placeholder", text: $aiDrawText)
@@ -418,6 +428,15 @@ struct NoteEditorView: View {
                         penWidth: canvasController.toolState.width
                     )
                 }
+            }
+        }
+        .alert(Text("ai.sketch"), isPresented: $showAISketchPrompt) {
+            TextField("ai.sketch.placeholder", text: $aiSketchText)
+            Button("action.cancel", role: .cancel) {}
+            Button("ai.sketch.go") {
+                let request = aiSketchText.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !request.isEmpty else { return }
+                Task { await tutor.drawSketch(request: request, on: canvasController.canvasView) }
             }
         }
         .statusBarHidden(distractionFree)
@@ -543,6 +562,17 @@ struct NoteEditorView: View {
             }
             return true
         }
+        .alert(Text("library.renameNote"), isPresented: $showRenameAlert) {
+            TextField("library.noteTitle", text: $renameText)
+            Button("action.cancel", role: .cancel) {}
+            Button("action.done") {
+                let trimmed = renameText.trimmingCharacters(in: .whitespaces)
+                guard !trimmed.isEmpty else { return }
+                note.title = trimmed
+                note.touch()
+                PersistenceController.shared.save()
+            }
+        }
         .sheet(isPresented: circleAskBinding) {
             if let region = circleAskRegion {
                 CircleAskSheet(region: region) { question in
@@ -631,6 +661,74 @@ struct NoteEditorView: View {
     }
 
     // MARK: - Ask bar
+}
+
+/// Record/stop + the note's recordings; swipe a recording to delete it
+/// (file and Core Data row both).
+private struct RecorderPopover: View {
+    @ObservedObject var audio: AudioSyncController
+    @ObservedObject var note: Note
+    @Environment(\.managedObjectContext) private var context
+
+    private var recordings: [Recording] {
+        (note.recordings ?? []).sorted { ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast) }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Button {
+                audio.isRecording ? audio.stopRecording() : audio.startRecording()
+            } label: {
+                Label(
+                    audio.isRecording ? "audio.stop" : "audio.record",
+                    systemImage: audio.isRecording ? "stop.circle.fill" : "record.circle"
+                )
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(audio.isRecording ? Color("errorRed") : Color.accentColor)
+            .padding(12)
+
+            if !recordings.isEmpty {
+                Divider()
+                List {
+                    ForEach(recordings, id: \.objectID) { recording in
+                        Button {
+                            audio.play(recording)
+                        } label: {
+                            HStack {
+                                Image(systemName: "play.circle")
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text((recording.createdAt ?? .now).formatted(date: .abbreviated, time: .shortened))
+                                        .font(.subheadline)
+                                    Text(Duration.seconds(recording.duration).formatted(.time(pattern: .minuteSecond)))
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                delete(recording)
+                            } label: { Label("action.delete", systemImage: "trash") }
+                        }
+                    }
+                }
+                .listStyle(.plain)
+                .frame(height: min(CGFloat(recordings.count) * 52 + 16, 260))
+            }
+        }
+        .frame(width: 280)
+    }
+
+    private func delete(_ recording: Recording) {
+        audio.stopPlayback()
+        if let fileName = recording.fileName {
+            try? FileManager.default.removeItem(at: AudioSyncController.directory.appendingPathComponent(fileName))
+        }
+        context.delete(recording)
+        PersistenceController.shared.save()
+    }
 }
 
 /// Minimal floating input for asking the tutor: one glass capsule with a
@@ -722,15 +820,38 @@ extension NoteEditorView {
     private var actionBar: some View {
         VStack {
             HStack {
-                // Back to the library, top-left.
-                Button(action: { dismiss() }) {
-                    Image(systemName: "chevron.left")
-                        .frame(width: 34, height: 34)
+                // Back to the library + the note's identity, top-left.
+                HStack(spacing: 4) {
+                    Button(action: { dismiss() }) {
+                        Image(systemName: "chevron.left")
+                            .frame(width: 34, height: 34)
+                    }
+                    .font(.system(size: 16, weight: .medium))
+                    .accessibilityLabel(Text("action.back"))
+
+                    // Tap the title to rename the note.
+                    Button {
+                        renameText = note.title ?? ""
+                        showRenameAlert = true
+                    } label: {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(verbatim: note.title ?? "")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                            Text(note.createdAt ?? .now, format: .dateTime.day().month().year().hour().minute())
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: 240, alignment: .leading)
+                        .fixedSize(horizontal: true, vertical: false)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Text("library.renameNote"))
+                    .padding(.trailing, 6)
                 }
-                .font(.system(size: 16, weight: .medium))
                 .padding(6)
                 .studyGlass(cornerRadius: 16)
-                .accessibilityLabel(Text("action.back"))
                 .padding(.leading, 12)
 
                 Spacer()
@@ -777,42 +898,23 @@ extension NoteEditorView {
         }
     }
 
-    /// Record/stop plus the note's saved recordings.
+    /// Record/stop plus the note's saved recordings — a popover list so
+    /// recordings can be swiped away (menus can't swipe).
     private var recorderMenu: some View {
-        Menu {
-            Button {
-                audio.isRecording ? audio.stopRecording() : audio.startRecording()
-            } label: {
-                Label(
-                    audio.isRecording ? "audio.stop" : "audio.record",
-                    systemImage: audio.isRecording ? "stop.circle" : "record.circle"
-                )
-            }
-            let recordings = (note.recordings ?? []).sorted { ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast) }
-            if !recordings.isEmpty {
-                Divider()
-                ForEach(recordings, id: \.objectID) { recording in
-                    Button {
-                        audio.play(recording)
-                    } label: {
-                        Label(
-                            (recording.createdAt ?? .now).formatted(date: .abbreviated, time: .shortened),
-                            systemImage: "play.circle"
-                        )
-                    }
-                }
-            }
+        Button {
+            showRecorderPopover = true
         } label: {
             Image(systemName: "mic")
                 .symbolVariant(audio.isRecording ? .fill : .none)
                 .symbolEffect(.pulse, isActive: audio.isRecording)
                 .frame(width: 34, height: 34)
         }
-        // Menus restyle their label's foreground — .tint is the channel that
-        // actually survives. Accent like the rest of the chrome; the pulse
-        // (and the audio bar) signal a live recording.
         .tint(Color.accentColor)
         .accessibilityLabel(Text(audio.isRecording ? "audio.stop" : "audio.record"))
+        .popover(isPresented: $showRecorderPopover) {
+            RecorderPopover(audio: audio, note: note)
+                .presentationCompactAdaptation(.popover)
+        }
     }
 
     /// AI tools, top-level in the action bar.
@@ -831,6 +933,10 @@ extension NoteEditorView {
                 aiDrawText = ""
                 showAIDrawPrompt = true
             } label: { Label("ai.draw", systemImage: "pencil.and.outline") }
+            Button {
+                aiSketchText = ""
+                showAISketchPrompt = true
+            } label: { Label("ai.sketch", systemImage: "scribble") }
             Toggle(isOn: $guidedMode.isEnabled) {
                 Label("ai.guidedMode", systemImage: "lightbulb")
             }
