@@ -861,21 +861,15 @@ struct NoteCanvasView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> DocumentScrollView {
         let engine = DocumentScrollView(controller: controller)
-        // The paper is ALWAYS light (white), like Notability/GoodNotes. The
-        // iOS 26 SDK renders PencilKit stroke colors literally, so a dark
-        // canvas drew canonical-black ink invisibly — and a dark page blended
-        // into the dark desk so the page looked absent. Pinning the canvas
-        // subtree to light keeps paper white and ink black-on-white, visible
-        // on every SDK.
-        engine.overrideUserInterfaceStyle = .light
-        controller.isDarkMode = false
+        controller.isDarkMode = colorScheme == .dark
         engine.apply(pageSizes: pageSizes, signature: layoutSignature)
         return engine
     }
 
     func updateUIView(_ engine: DocumentScrollView, context: Context) {
-        engine.overrideUserInterfaceStyle = .light
-        controller.isDarkMode = false
+        if controller.isDarkMode != (colorScheme == .dark) {
+            controller.isDarkMode = colorScheme == .dark
+        }
         engine.apply(pageSizes: pageSizes, signature: layoutSignature)
         engine.ensureContent()
     }
