@@ -127,14 +127,12 @@ enum PageRenderer {
             MediaStore.image(named: item.fileName)?.draw(in: item.frame)
         }
 
-        // Ink, appearance-resolved so dark-remapped colors render correctly.
-        if let data = snapshot.drawingData, let drawing = try? PKDrawing(data: data), !drawing.strokes.isEmpty {
-            let traits = UITraitCollection(userInterfaceStyle: darkMode ? .dark : .light)
-            var inkImage: UIImage?
-            traits.performAsCurrent {
-                inkImage = drawing.image(from: pageRect, scale: 2)
-            }
-            inkImage?.draw(in: pageRect)
+        // Ink. iOS 26 renders PencilKit colors literally (performAsCurrent is
+        // inert), so map storage → display ourselves: black ink shows
+        // near-white on the dark page, matching the live canvas.
+        if let data = snapshot.drawingData, let stored = try? PKDrawing(data: data), !stored.strokes.isEmpty {
+            let drawing = InkColorAdapter.displayDrawing(stored, darkMode: darkMode)
+            drawing.image(from: pageRect, scale: 2).draw(in: pageRect)
         }
 
         // Typed text boxes.
