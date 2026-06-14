@@ -72,6 +72,7 @@
 
 /* Pages */
 "page.add" = "Add Page";
+"page.showNavigator" = "Show Pages";
 "page.addAfter" = "Add Page After";
 "page.duplicate" = "Duplicate Page";
 "page.moveBack" = "Move Back";

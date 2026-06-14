@@ -55,15 +55,17 @@ enum StrokeSelector {
         return inside
     }
 
-    /// Bakes a rotation about the selection's center into the strokes.
-    static func applyRotation(_ degrees: Double, selection: StrokeSelection, to drawing: PKDrawing) -> PKDrawing {
+    /// Bakes a rotation (about the selection's center) AND a page-space
+    /// translation into the strokes — one seamless move+rotate transform.
+    static func applyTransform(rotation degrees: Double, translation: CGSize, selection: StrokeSelection, to drawing: PKDrawing) -> PKDrawing {
         let center = CGPoint(x: selection.bounds.midX, y: selection.bounds.midY)
-        let rotation = CGAffineTransform(translationX: center.x, y: center.y)
+        let combined = CGAffineTransform(translationX: center.x, y: center.y)
             .rotated(by: degrees * .pi / 180)
             .translatedBy(x: -center.x, y: -center.y)
+            .concatenating(CGAffineTransform(translationX: translation.width, y: translation.height))
         var result = drawing
         for index in selection.strokeIndices where result.strokes.indices.contains(index) {
-            result.strokes[index].transform = result.strokes[index].transform.concatenating(rotation)
+            result.strokes[index].transform = result.strokes[index].transform.concatenating(combined)
         }
         return result
     }
@@ -189,19 +191,24 @@ struct TransformLassoOverlay: View {
     }
 }
 
-/// Live rotation preview for a captured selection: twist with two fingers or
-/// drag the corner handle; Done bakes the rotation, Cancel discards it.
+/// Live move+rotate preview for a captured selection — ONE seamless mode:
+/// drag the selection to move it, twist with two fingers or drag a handle to
+/// rotate. Done bakes the transform, Cancel discards it.
 struct StrokeTransformOverlay: View {
     let selection: StrokeSelection
     let transform: CanvasTransform
     @Binding var rotation: Double
+    /// Screen-space drag offset of the selection (converted to page space on Done).
+    @Binding var translation: CGSize
     var onDone: () -> Void
     var onCancel: () -> Void
 
     @State private var rotateStart: Double?
+    @State private var dragStart: CGSize?
 
     var body: some View {
         let frame = transform.toScreen(selection.bounds)
+        let center = CGPoint(x: frame.midX + translation.width, y: frame.midY + translation.height)
 
         ZStack {
             Color.black.opacity(0.03)
@@ -224,16 +231,18 @@ struct StrokeTransformOverlay: View {
                         .frame(width: 26, height: 26)
                         .overlay(Image(systemName: "rotate.right").font(.system(size: 12, weight: .bold)).foregroundStyle(.white))
                         .contentShape(Circle().scale(1.8))
-                        .gesture(handleGesture(center: CGPoint(x: frame.midX, y: frame.midY)))
+                        .gesture(handleGesture(center: center))
                         .accessibilityLabel(Text("media.rotate"))
                 }
                 .rotationEffect(.degrees(rotation))
-                .position(x: frame.midX, y: frame.midY)
-                .gesture(twistGesture)
+                .position(center)
+                // One-finger drag moves the selection; two-finger twist rotates.
+                .gesture(moveGesture)
+                .simultaneousGesture(twistGesture)
 
             // Rotation lollipop: a single-finger handle hanging off the
             // selection — precise finger rotation that always works.
-            rotationLollipop(frame: frame)
+            rotationLollipop(center: center)
 
             VStack {
                 HStack(spacing: 12) {
@@ -270,9 +279,20 @@ struct StrokeTransformOverlay: View {
         .coordinateSpace(name: "strokeTransform")
     }
 
+    private var moveGesture: some Gesture {
+        DragGesture(minimumDistance: 2, coordinateSpace: .named("strokeTransform"))
+            .onChanged { value in
+                if dragStart == nil { dragStart = translation }
+                let base = dragStart ?? .zero
+                translation = CGSize(width: base.width + value.translation.width,
+                                     height: base.height + value.translation.height)
+            }
+            .onEnded { _ in dragStart = nil }
+    }
+
     @ViewBuilder
-    private func rotationLollipop(frame: CGRect) -> some View {
-        let center = CGPoint(x: frame.midX, y: frame.midY)
+    private func rotationLollipop(center: CGPoint) -> some View {
+        let frame = transform.toScreen(selection.bounds)
         let radius = frame.height / 2 + 48
         let angle = (rotation + 90) * .pi / 180
         let handle = CGPoint(x: center.x + radius * CGFloat(cos(angle)), y: center.y + radius * CGFloat(sin(angle)))

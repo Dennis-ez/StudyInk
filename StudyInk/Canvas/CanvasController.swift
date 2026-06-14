@@ -134,6 +134,17 @@ final class CanvasController: NSObject, ObservableObject {
         engine?.commitPendingInk()
     }
 
+    /// The remembered ink color for a tool (the live color for the active
+    /// tool), used to tint it in the toolbar. Non-inking tools return nil.
+    func inkColor(for kind: ToolKind) -> Color? {
+        guard kind.isInking else { return nil }
+        let hex = kind == toolState.kind ? toolState.colorHex : (savedTools[kind.rawValue]?.colorHex ?? "#000000")
+        guard let base = UIColor(hex: hex) else { return nil }
+        // Use the display color so black ink shows as near-white in dark mode
+        // (matching the ink the user actually draws), not invisible-on-dark.
+        return Color(InkColorAdapter.displayColor(base, darkMode: isDarkMode))
+    }
+
     /// Switch tools, restoring that tool's own remembered color/width/opacity.
     func select(_ kind: ToolKind) {
         if kind == .eraserPixel || kind == .eraserObject {

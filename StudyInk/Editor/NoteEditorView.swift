@@ -49,6 +49,7 @@ struct NoteEditorView: View {
     @State private var transformLassoActive = false
     @State private var strokeSelection: StrokeSelection?
     @State private var strokeRotation: Double = 0
+    @State private var strokeTranslation: CGSize = .zero
     @State private var editingShape: EditingShape?
     @State private var circleAskRegion: CGRect?
     @Environment(\.managedObjectContext) private var context
@@ -211,6 +212,7 @@ struct NoteEditorView: View {
                 }
 
                 // Page navigator docks on the trailing edge (vertical strip).
+                // Slide it away by dragging right; a pull-tab slides it back.
                 HStack {
                     Spacer()
                     if showPageStrip {
@@ -222,6 +224,40 @@ struct NoteEditorView: View {
                         )
                         .padding(.trailing, 6)
                         .transition(.move(edge: .trailing).combined(with: .opacity))
+                        .gesture(
+                            DragGesture(minimumDistance: 24)
+                                .onEnded { value in
+                                    if value.translation.width > 36 {
+                                        Haptics.selection()
+                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showPageStrip = false }
+                                    }
+                                }
+                        )
+                    } else {
+                        Button {
+                            Haptics.selection()
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showPageStrip = true }
+                        } label: {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 22, height: 52)
+                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 9))
+                                .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(SemanticColor.toolbarBorder, lineWidth: 0.5))
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.trailing, 3)
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                        .accessibilityLabel(Text("page.showNavigator"))
+                        .gesture(
+                            DragGesture(minimumDistance: 16)
+                                .onEnded { value in
+                                    if value.translation.width < -24 {
+                                        Haptics.selection()
+                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showPageStrip = true }
+                                    }
+                                }
+                        )
                     }
                 }
 
@@ -347,10 +383,13 @@ struct NoteEditorView: View {
                     selection: selection,
                     transform: canvasController.transform(forPage: selection.pageIndex),
                     rotation: $strokeRotation,
-                    onDone: applyStrokeRotation,
+                    translation: $strokeTranslation,
+                    onDone: applyStrokeTransform,
                     onCancel: {
                         strokeSelection = nil
                         strokeRotation = 0
+                        strokeTranslation = .zero
+                        rearmLassoIfActive()
                     }
                 )
             }
@@ -678,10 +717,11 @@ struct NoteEditorView: View {
         return UIImage(cgImage: cropped)
     }
 
-    /// Lasso completed in transform mode: capture the strokes under the loop.
+    /// Lasso completed: capture the strokes under the loop for move+rotate.
     private func beginStrokeTransform(with polygon: [CGPoint]) {
         guard let drawing = canvasController.canvasView?.drawing else { return }
         strokeRotation = 0
+        strokeTranslation = .zero
         if let selection = StrokeSelector.selection(
             from: drawing,
             polygon: polygon,
@@ -692,23 +732,42 @@ struct NoteEditorView: View {
             strokeSelection = selection
         } else {
             Haptics.error()
+            // Empty loop — go straight back to capturing, no dead end.
+            rearmLassoIfActive()
         }
     }
 
-    /// Bake the previewed rotation into the strokes, undoably.
-    private func applyStrokeRotation() {
+    /// Bake the previewed move + rotation into the strokes, undoably.
+    private func applyStrokeTransform() {
         defer {
             strokeSelection = nil
             strokeRotation = 0
+            strokeTranslation = .zero
+            rearmLassoIfActive()
         }
         guard let selection = strokeSelection, let canvas = canvasController.canvasView,
-              abs(strokeRotation) > 0.5 else { return }
+              abs(strokeRotation) > 0.5 || strokeTranslation != .zero else { return }
+        // The overlay drag is in screen points; convert to page space.
+        let zoom = canvasController.transform(forPage: selection.pageIndex).zoomScale
+        let pageTranslation = CGSize(width: strokeTranslation.width / zoom,
+                                     height: strokeTranslation.height / zoom)
         let old = canvas.drawing
         canvas.undoManager?.registerUndo(withTarget: canvas) { target in
             target.drawing = old
         }
-        canvas.drawing = StrokeSelector.applyRotation(strokeRotation, selection: selection, to: old)
+        canvas.drawing = StrokeSelector.applyTransform(
+            rotation: strokeRotation, translation: pageTranslation, selection: selection, to: old
+        )
         Haptics.success()
+    }
+
+    /// Keep the lasso in its single seamless mode: after a selection finishes,
+    /// re-arm the capture so the next loop works immediately (no native-lasso
+    /// fallback, no second tap).
+    private func rearmLassoIfActive() {
+        if canvasController.toolState.kind == .lasso {
+            withAnimation { transformLassoActive = true }
+        }
     }
 
     private func sendAsk() {

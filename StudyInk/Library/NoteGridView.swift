@@ -357,16 +357,22 @@ struct NoteGridView: View {
     }
 
     private func gridCellLabel(_ note: Note) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if let first = note.sortedPages.first {
-                // Portrait, like a page — not a square box.
-                PageThumbnailView(page: first)
-                    .aspectRatio(3 / 4, contentMode: .fit)
-                    .shadow(color: .black.opacity(0.14), radius: 6, y: 3)
+        ZStack(alignment: .bottom) {
+            Group {
+                if let first = note.sortedPages.first {
+                    // Portrait, like a page — not a square box.
+                    PageThumbnailView(page: first)
+                } else {
+                    Rectangle().fill(SemanticColor.sidebarBackground)
+                }
             }
+            .aspectRatio(3 / 4, contentMode: .fit)
+
+            // Name + details overlaid on the page, over a legibility scrim.
             VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim: note.title ?? "")
                     .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
                     .lineLimit(1)
                 HStack(spacing: 6) {
                     Text(note.modifiedAt ?? .now, style: .date)
@@ -374,10 +380,34 @@ struct NoteGridView: View {
                     Text("library.pageCount \(note.sortedPages.count)")
                 }
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.white.opacity(0.85))
             }
-            .padding(.horizontal, 2)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 10)
+            .padding(.top, 24)
+            .padding(.bottom, 9)
+            .background(LinearGradient(colors: [.clear, .black.opacity(0.62)], startPoint: .top, endPoint: .bottom))
         }
+        .aspectRatio(3 / 4, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        // Subject tag pinned to the bottom-trailing corner of the thumbnail.
+        .overlay(alignment: .bottomTrailing) {
+            if let subject = note.subject {
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(Color(hex: subject.colorHex ?? "#0A84FF") ?? .accentColor)
+                        .frame(width: 6, height: 6)
+                    Text(verbatim: subject.name ?? "")
+                        .font(.caption2.weight(.semibold))
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(.ultraThinMaterial, in: Capsule())
+                .padding(8)
+            }
+        }
+        .shadow(color: .black.opacity(0.14), radius: 6, y: 3)
     }
 
     @ViewBuilder

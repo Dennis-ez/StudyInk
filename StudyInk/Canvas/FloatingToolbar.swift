@@ -316,13 +316,25 @@ struct FloatingToolbar: View {
                 }
             }
         } label: {
-            Image(systemName: kind.symbolName)
-                .foregroundStyle(isActive ? Color.accentColor : Color.primary)
-                .background(
-                    RoundedRectangle(cornerRadius: 7)
-                        .fill(isActive ? Color.accentColor.opacity(0.16) : .clear)
-                        .frame(width: 28, height: 28)
-                )
+            let ink = controller.inkColor(for: kind)
+            ZStack(alignment: .bottomTrailing) {
+                Image(systemName: kind.symbolName)
+                    // Ink tools wear their own color; others use the accent when active.
+                    .foregroundStyle(ink ?? (isActive ? Color.accentColor : Color.primary))
+                    .background(
+                        RoundedRectangle(cornerRadius: 7)
+                            .fill(isActive ? (ink ?? Color.accentColor).opacity(0.16) : .clear)
+                            .frame(width: 28, height: 28)
+                    )
+                // Current-color indicator dot for ink tools.
+                if let ink {
+                    Circle()
+                        .fill(ink)
+                        .frame(width: 7, height: 7)
+                        .overlay(Circle().strokeBorder(Color(.systemBackground), lineWidth: 1))
+                        .offset(x: 3, y: 3)
+                }
+            }
         }
         .accessibilityLabel(Text(kind.labelKey))
         .accessibilityHint(isActive ? Text("tool.optionsHint") : Text(""))
