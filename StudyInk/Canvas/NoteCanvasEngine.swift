@@ -241,8 +241,21 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
 
     // MARK: - Centering (the UIKit-native way)
 
+    /// Gutter above page 1, below the status bar: clears the floating toolbar
+    /// row AND leaves room for the note title, plus comfortable drag space so
+    /// the page never tucks under the clock or the tools.
+    private let topGutter: CGFloat = 96
+
     override func layoutSubviews() {
         super.layoutSubviews()
+        let top = safeAreaInsets.top + topGutter
+        if abs(contentInset.top - top) > 0.5 {
+            let restingAtTop = contentOffset.y <= -contentInset.top + 1
+            contentInset.top = top
+            verticalScrollIndicatorInsets.top = top
+            // Keep the page pinned just below the gutter if we were at the top.
+            if restingAtTop { contentOffset.y = -top }
+        }
         applyInitialZoomIfNeeded()
         centerDocument()
         publishGeometry()
@@ -261,7 +274,8 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         didSetInitialZoom = true
         let fit = bounds.width / (documentView.frame.width / zoomScale)
         setZoomScale(min(max(fit, minimumZoomScale), 1.5), animated: false)
-        contentOffset = CGPoint(x: max(0, (contentSize.width - bounds.width) / 2), y: 0)
+        // Rest just below the top gutter so page 1 clears the status bar.
+        contentOffset = CGPoint(x: max(0, (contentSize.width - bounds.width) / 2), y: -contentInset.top)
     }
 
     // MARK: - Active page management
