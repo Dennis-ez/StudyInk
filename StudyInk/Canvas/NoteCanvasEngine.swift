@@ -19,6 +19,10 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     let canvas = PKCanvasView()
     private var activeIndex = 0
     private var isProgrammaticChange = false
+    /// Appearance the live canvas is currently displaying ink for. iOS 26
+    /// renders colors literally, so loaded ink is mapped storage→display and
+    /// saved ink display→storage against this. Kept in sync via appearanceChanged().
+    private var displayDark = false
     private var saveWorkItem: DispatchWorkItem?
     private var didSetInitialZoom = false
     /// Cached-render resolution multiplier, raised when zoomed in.
@@ -56,6 +60,13 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         canvas.backgroundColor = .clear
         canvas.isOpaque = false
         canvas.isScrollEnabled = false
+        // Pin ONLY the PKCanvasView to light so PencilKit renders ink colors
+        // LITERALLY (no appearance adaptation of the live tool — which on iOS
+        // 26 still turns a near-white pen dark). The PAGE container stays on
+        // the real (dark) appearance and draws a dark page; the canvas is
+        // transparent, so dark page + the literal light ink show correctly.
+        // Ink colors are pre-adapted by appearance via InkColorAdapter.
+        canvas.overrideUserInterfaceStyle = .light
         controller.attach(canvas)
         controller.engine = self
 
@@ -214,7 +225,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
            let drawing = controller.drawingProvider?(activeIndex),
            !drawing.strokes.isEmpty {
             isProgrammaticChange = true
-            canvas.drawing = drawing
+            canvas.drawing = InkColorAdapter.displayDrawing(drawing, darkMode: displayDark)
             isProgrammaticChange = false
             lastStrokeCount = drawing.strokes.count
         }
@@ -262,7 +273,8 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         canvas.frame = CGRect(origin: .zero, size: pageSizes[index])
         container.addSubview(canvas)
         isProgrammaticChange = true
-        canvas.drawing = controller.drawingProvider?(index) ?? PKDrawing()
+        // Storage → display: black ink shows near-white on a dark canvas.
+        canvas.drawing = InkColorAdapter.displayDrawing(controller.drawingProvider?(index) ?? PKDrawing(), darkMode: displayDark)
         isProgrammaticChange = false
         // PencilKit renders the swapped-in drawing asynchronously; the canvas
         // would briefly show the PREVIOUS page's ink. Hide the live canvas and
@@ -298,7 +310,36 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     private func flushPendingSave() {
         saveWorkItem?.cancel()
         saveWorkItem = nil
-        controller.onDrawingChanged?(activeIndex, canvas.drawing)
+        persist(canvas.drawing, at: activeIndex)
+    }
+
+    /// Display → storage, then hand the canonical drawing to the editor to
+    /// persist. ALL save paths go through here so Core Data ink is always
+    /// canonical regardless of the canvas's current appearance.
+    private func persist(_ displayDrawing: PKDrawing, at index: Int) {
+        controller.onDrawingChanged?(index, InkColorAdapter.storageDrawing(displayDrawing, darkMode: displayDark))
+    }
+
+    /// The app appearance flipped while editing. Save under the OLD appearance,
+    /// then re-adapt the live canvas ink to the NEW one so nothing vanishes,
+    /// and re-render the cached page images.
+    func appearanceChanged() {
+        let newDark = controller.isDarkMode
+        guard newDark != displayDark else { return }
+        // Before the page stack is built (initial mount) there's nothing
+        // loaded to re-map — just record the appearance so the first load
+        // adapts correctly. Flushing here would save the empty canvas over
+        // page 0's real ink.
+        guard !containers.isEmpty else { displayDark = newDark; return }
+        flushPendingSave()                          // persists with old displayDark
+        // canvas holds display(old) colors → canonical → display(new).
+        let canonical = InkColorAdapter.storageDrawing(canvas.drawing, darkMode: displayDark)
+        displayDark = newDark
+        isProgrammaticChange = true
+        canvas.drawing = InkColorAdapter.displayDrawing(canonical, darkMode: displayDark)
+        isProgrammaticChange = false
+        lastStrokeCount = canvas.drawing.strokes.count
+        for index in containers.indices where index != activeIndex { renderImage(for: index) }
     }
 
     /// Saves are debounced and keyed by page *index* — reordering, duplicating,
@@ -499,8 +540,8 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
             }
         }
         saveWorkItem?.cancel()
-        let work = DispatchWorkItem { [controller] in
-            controller.onDrawingChanged?(index, drawing)
+        let work = DispatchWorkItem { [weak self] in
+            self?.persist(drawing, at: index)
         }
         saveWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
@@ -602,7 +643,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
             self.canvas.drawing = replaced
             self.isProgrammaticChange = false
             self.lastStrokeCount = replaced.strokes.count
-            self.controller.onDrawingChanged?(self.activeIndex, replaced)
+            self.persist(replaced, at: self.activeIndex)
             Haptics.tap()
             self.controller.onShapeCreated?(
                 self.activeIndex,
@@ -758,7 +799,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         canvas.drawing = drawing
         isProgrammaticChange = false
         lastStrokeCount = drawing.strokes.count
-        controller.onDrawingChanged?(activeIndex, drawing)
+        persist(drawing, at: activeIndex)
         DispatchQueue.main.async { [controller] in controller.refreshUndoState() }
     }
 
@@ -861,21 +902,19 @@ struct NoteCanvasView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> DocumentScrollView {
         let engine = DocumentScrollView(controller: controller)
-        // The paper is ALWAYS light (white), like Notability/GoodNotes. The
-        // iOS 26 SDK renders PencilKit stroke colors literally, so a dark
-        // canvas drew canonical-black ink invisibly — and a dark page blended
-        // into the dark desk so the page looked absent. Pinning the canvas
-        // subtree to light keeps paper white and ink black-on-white, visible
-        // on every SDK. (Verified on an iOS 26.3 simulator.)
-        engine.overrideUserInterfaceStyle = .light
-        controller.isDarkMode = false
+        // Paper follows appearance — dark page in dark mode. The iOS 26 SDK
+        // renders PencilKit colors literally, so ink is adapted at display
+        // time (black ↔ near-white) via InkColorAdapter; storage stays
+        // canonical. See CanvasController.isDarkMode / engine.appearanceChanged.
+        controller.isDarkMode = colorScheme == .dark
         engine.apply(pageSizes: pageSizes, signature: layoutSignature)
         return engine
     }
 
     func updateUIView(_ engine: DocumentScrollView, context: Context) {
-        engine.overrideUserInterfaceStyle = .light
-        controller.isDarkMode = false
+        if controller.isDarkMode != (colorScheme == .dark) {
+            controller.isDarkMode = colorScheme == .dark
+        }
         engine.apply(pageSizes: pageSizes, signature: layoutSignature)
         engine.ensureContent()
     }

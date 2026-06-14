@@ -64,16 +64,13 @@ struct ToolState: Codable, Equatable {
         // Drawing is disabled while the hand tool is active; the tool itself is inert.
         case .hand: return PKLassoTool()
         case .ballpoint, .fountain, .monoline, .highlighter, .pencil:
-            // What the user sees while drawing should be exactly this color:
-            var base = InkColorAdapter.rendered(from: UIColor(hex: colorHex) ?? .black, darkMode: darkMode)
-            if darkMode {
-                // PencilKit re-interprets tool colors against the current
-                // appearance (storing a light-mode equivalent and inverting at
-                // display). Without this pre-conversion our dark-adapted color
-                // gets inverted a second time — black AND white both came out
-                // black on the dark canvas.
-                base = PKInkingTool.convertColor(base, from: .dark, to: .light)
-            }
+            // iOS 26 SDK renders PencilKit tool/stroke colors LITERALLY (no
+            // appearance re-interpretation), so the tool color must already be
+            // the DISPLAY color: black ink → near-white on a dark canvas. No
+            // convertColor — that pre-conversion inverted dark ink into
+            // invisibility on this SDK. Storage stays canonical (the live
+            // drawing is mapped back via InkColorAdapter.storageDrawing).
+            let base = InkColorAdapter.displayColor(UIColor(hex: colorHex) ?? .black, darkMode: darkMode)
             let color = base.withAlphaComponent(kind == .highlighter ? min(opacity, 0.6) : opacity)
             return PKInkingTool(inkType, color: color, width: width)
         }
@@ -108,18 +105,59 @@ extension ToolState {
     }
 }
 
-/// Maps the user's logical ink color to a rendered color per appearance mode.
-/// Black ↔ near-white swap; saturated colors get a brightness lift in dark mode.
+/// iOS 26 SDK renders PencilKit stroke colors LITERALLY, so dark-mode ink
+/// adaptation is the app's job at DISPLAY time while storage stays canonical
+/// (light appearance). The mapping is an invertible achromatic swap — black
+/// ink ↔ near-white — so it round-trips losslessly; chromatic ink reads fine
+/// on both the white and dark canvas and passes through untouched.
 enum InkColorAdapter {
-    static func rendered(from logical: UIColor, darkMode: Bool) -> UIColor {
+    /// The near-white used for black ink on a dark canvas (Notability-style).
+    private static let darkInk = UIColor(white: 0.92, alpha: 1)
+
+    /// Canonical (light/storage) → display color for the current appearance.
+    static func displayColor(_ logical: UIColor, darkMode: Bool) -> UIColor {
         guard darkMode else { return logical }
         var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
         logical.getHue(&h, saturation: &s, brightness: &b, alpha: &a)
-        if s < 0.15 && b < 0.3 {
-            // Black-ish ink → near-white, like Notability.
-            return UIColor(white: 0.92, alpha: a)
+        // Black-ish ink → near-white.
+        return (s < 0.2 && b < 0.25) ? darkInk.withAlphaComponent(a) : logical
+    }
+
+    /// Display → canonical (light/storage): the inverse of `displayColor`.
+    static func storageColor(_ shown: UIColor, darkMode: Bool) -> UIColor {
+        guard darkMode else { return shown }
+        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        shown.getHue(&h, saturation: &s, brightness: &b, alpha: &a)
+        // The near-white we produced → back to black.
+        return (s < 0.2 && b > 0.8) ? UIColor(white: 0, alpha: a) : shown
+    }
+
+    /// Storage → display for a whole drawing (load into a dark canvas/render).
+    static func displayDrawing(_ drawing: PKDrawing, darkMode: Bool) -> PKDrawing {
+        guard darkMode, !drawing.strokes.isEmpty else { return drawing }
+        return mapInk(drawing) { displayColor($0, darkMode: true) }
+    }
+
+    /// Display → storage for a whole drawing (save back from a dark canvas).
+    static func storageDrawing(_ drawing: PKDrawing, darkMode: Bool) -> PKDrawing {
+        guard darkMode, !drawing.strokes.isEmpty else { return drawing }
+        return mapInk(drawing) { storageColor($0, darkMode: true) }
+    }
+
+    private static func mapInk(_ drawing: PKDrawing, _ transform: (UIColor) -> UIColor) -> PKDrawing {
+        var strokes = drawing.strokes
+        for i in strokes.indices {
+            let ink = strokes[i].ink
+            let newColor = transform(ink.color)
+            guard newColor != ink.color else { continue }
+            strokes[i] = PKStroke(
+                ink: PKInk(ink.inkType, color: newColor),
+                path: strokes[i].path,
+                transform: strokes[i].transform,
+                mask: strokes[i].mask
+            )
         }
-        return UIColor(hue: h, saturation: s, brightness: min(1.0, b + 0.18), alpha: a)
+        return PKDrawing(strokes: strokes)
     }
 }
 

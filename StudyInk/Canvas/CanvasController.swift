@@ -47,7 +47,12 @@ final class CanvasController: NSObject, ObservableObject {
     @Published var currentPageIndex = 0
 
     var isDarkMode = false {
-        didSet { applyTool() }
+        didSet {
+            applyTool()
+            // Re-adapt existing ink to the new appearance (iOS 26 renders
+            // colors literally — see InkColorAdapter / engine.appearanceChanged).
+            engine?.appearanceChanged()
+        }
     }
 
     /// Per-tool settings (color/width/opacity remembered separately for each
