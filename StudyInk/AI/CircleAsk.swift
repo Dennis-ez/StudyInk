@@ -85,54 +85,74 @@ struct CircleAskSheet: View {
     @State private var question = ""
     @FocusState private var focused: Bool
 
-    private let suggestionKeys: [LocalizedStringKey] = [
-        "ai.suggestion.checkThis",
-        "ai.suggestion.explainThis",
-        "ai.suggestion.nextStep",
-        "ai.suggestion.similarExample",
-    ]
-    private let suggestionStrings = [
-        "ai.suggestion.checkThis",
-        "ai.suggestion.explainThis",
-        "ai.suggestion.nextStep",
-        "ai.suggestion.similarExample",
+    private struct Suggestion: Identifiable {
+        let id = UUID()
+        let key: LocalizedStringKey
+        let raw: String
+        let icon: String
+    }
+    private let suggestions: [Suggestion] = [
+        .init(key: "ai.suggestion.checkThis", raw: "ai.suggestion.checkThis", icon: "checkmark.seal"),
+        .init(key: "ai.suggestion.explainThis", raw: "ai.suggestion.explainThis", icon: "text.book.closed"),
+        .init(key: "ai.suggestion.nextStep", raw: "ai.suggestion.nextStep", icon: "arrow.turn.down.right"),
+        .init(key: "ai.suggestion.similarExample", raw: "ai.suggestion.similarExample", icon: "doc.on.doc"),
     ]
 
     var body: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: 16) {
-                TextField("ai.askPlaceholder", text: $question, axis: .vertical)
-                    .textFieldStyle(.roundedBorder)
-                    .lineLimit(2...5)
-                    .focused($focused)
+            VStack(alignment: .leading, spacing: 18) {
+                // The prompt field, styled as a prominent rounded capsule with
+                // a sparkles cue and inline send.
+                HStack(alignment: .bottom, spacing: 10) {
+                    Image(systemName: "sparkles")
+                        .foregroundStyle(SemanticColor.accentBlue)
+                        .padding(.bottom, 7)
+                    TextField("ai.askPlaceholder", text: $question, axis: .vertical)
+                        .textFieldStyle(.plain)
+                        .lineLimit(1...4)
+                        .focused($focused)
+                        .onSubmit { ask(question) }
+                    Button {
+                        ask(question)
+                    } label: {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.title2)
+                            .foregroundStyle(question.trimmingCharacters(in: .whitespaces).isEmpty ? Color.secondary : SemanticColor.accentBlue)
+                    }
+                    .disabled(question.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .accessibilityLabel(Text("ai.ask"))
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(SemanticColor.aiMessageBubble, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(SemanticColor.toolbarBorder, lineWidth: 0.5))
 
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(Array(suggestionKeys.enumerated()), id: \.offset) { index, key in
-                            Button {
-                                ask(String(localized: String.LocalizationValue(suggestionStrings[index])))
-                            } label: {
-                                Text(key)
+                // Quick-ask suggestions, two-up with icons.
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                    ForEach(suggestions) { suggestion in
+                        Button {
+                            ask(String(localized: String.LocalizationValue(suggestion.raw)))
+                        } label: {
+                            HStack(spacing: 7) {
+                                Image(systemName: suggestion.icon)
                                     .font(.caption)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 7)
-                                    .background(SemanticColor.aiMessageBubble, in: Capsule())
+                                    .foregroundStyle(SemanticColor.accentBlue)
+                                Text(suggestion.key)
+                                    .font(.caption.weight(.medium))
+                                    .lineLimit(1)
+                                    .foregroundStyle(.primary)
+                                Spacer(minLength: 0)
                             }
-                            .buttonStyle(.plain)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(SemanticColor.aiMessageBubble, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                         }
+                        .buttonStyle(.plain)
                     }
                 }
 
-                Button {
-                    ask(question)
-                } label: {
-                    Label("ai.ask", systemImage: "sparkles")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(question.trimmingCharacters(in: .whitespaces).isEmpty)
-
-                Spacer()
+                Spacer(minLength: 0)
             }
             .padding(20)
             .navigationTitle(Text("ai.circleAsk.title"))
@@ -144,7 +164,8 @@ struct CircleAskSheet: View {
             }
             .onAppear { focused = true }
         }
-        .presentationDetents([.height(260)])
+        .presentationDetents([.height(300)])
+        .presentationDragIndicator(.visible)
     }
 
     private func ask(_ text: String) {
