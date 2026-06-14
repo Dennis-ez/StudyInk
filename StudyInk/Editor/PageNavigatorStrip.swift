@@ -247,9 +247,12 @@ struct PageThumbnailView: View {
         }
         // Pixels-per-page-point that fills the actual cell on this screen.
         let renderScale = min(2, max(0.2, displayWidth * UIScreen.main.scale / max(snapshot.pageSize.width, 1)))
-        let dark = colorScheme == .dark
+        // Always render light (white paper, literal black ink): on the iOS 26
+        // SDK a dark render draws canonical-black ink on a dark page —
+        // invisible — and the dark page blends away. Matches the always-light
+        // editor canvas.
         Task.detached(priority: .utility) {
-            let image = PageRenderer.render(snapshot, darkMode: dark, scale: renderScale)
+            let image = PageRenderer.render(snapshot, darkMode: false, scale: renderScale)
             await MainActor.run { thumbnail = image }
         }
     }
