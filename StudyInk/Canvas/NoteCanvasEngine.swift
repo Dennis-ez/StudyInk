@@ -25,8 +25,10 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     private var displayDark = false
     private var saveWorkItem: DispatchWorkItem?
     private var didSetInitialZoom = false
-    /// Cached-render resolution multiplier, raised when zoomed in.
-    private var imageRenderScale: CGFloat = 1
+    /// Cached-render resolution in PIXELS per point, raised when zoomed in.
+    /// Starts at the screen scale so adjacent (inactive) pages are retina-sharp
+    /// at default zoom, not a soft 1x bitmap.
+    private var imageRenderScale: CGFloat = UIScreen.main.scale
     private var rasterWorkItem: DispatchWorkItem?
     private var shapeWorkItem: DispatchWorkItem?
     private var lastStrokeCount = 0
@@ -503,12 +505,13 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         // PencilKit renders ink in nested internal views — the scale bump must
         // reach the whole tree or zoomed ink stays soft.
         applyRasterScale(raster, to: canvas)
-        // Cached full-page bitmaps of inactive pages are NOT tiled — cap their
-        // render scale to keep memory sane (zoomed that far, you're looking at
-        // the live page anyway).
-        let imageZoom = min(effectiveZoom, 4)
-        if abs(imageZoom - imageRenderScale) > 0.5 {
-            imageRenderScale = imageZoom
+        // Cached full-page bitmaps of inactive pages are NOT tiled — render at
+        // screen scale (retina-sharp at rest) and bump with zoom, but cap the
+        // zoom contribution at 2x to keep memory sane (zoomed past that you're
+        // looking at the live page anyway).
+        let imageTarget = min(effectiveZoom, 2) * UIScreen.main.scale
+        if abs(imageTarget - imageRenderScale) > 0.5 {
+            imageRenderScale = imageTarget
             for index in containers.indices where index != activeIndex {
                 renderImage(for: index)
             }

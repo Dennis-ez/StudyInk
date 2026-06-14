@@ -72,6 +72,7 @@
 
 /* עמודים */
 "page.add" = "הוספת עמוד";
+"page.showNavigator" = "הצגת עמודים";
 "page.addAfter" = "הוספת עמוד אחרי";
 "page.duplicate" = "שכפול עמוד";
 "page.moveBack" = "הזזה אחורה";

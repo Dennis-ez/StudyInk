@@ -61,48 +61,96 @@ struct NotesPane: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Picker("editor.notesPane", selection: $tab) {
-                ForEach(Tab.allCases, id: \.self) { tab in
-                    Image(systemName: tab.symbolName)
-                        .accessibilityLabel(Text(tab.labelKey))
-                        .tag(tab)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 2) {
+                // Sidebar-style section rows, like the main screen's sidebar.
+                if let subject = shownSubject {
+                    sectionRow(.subject, name: subject.name ?? "",
+                               dot: Color(hex: subject.colorHex ?? "#0A84FF") ?? .accentColor)
+                }
+                sectionRow(.all, tint: .accentColor)
+                sectionRow(.recents, tint: .accentColor)
+                sectionRow(.favorites, tint: .yellow)
+
+                Text(headerTitle)
+                    .font(.caption.smallCaps())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .padding(.horizontal, 14)
+                    .padding(.top, 14)
+                    .padding(.bottom, 6)
+
+                ForEach(visibleNotes, id: \.objectID) { note in
+                    noteCell(note)
                 }
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
             .padding(.horizontal, 10)
-            .padding(.top, 10)
-            .padding(.bottom, 6)
-
-            headerTitle
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .padding(.horizontal, 14)
-                .padding(.bottom, 8)
-
-            ScrollView {
-                VStack(spacing: 14) {
-                    ForEach(visibleNotes, id: \.objectID) { note in
-                        noteCell(note)
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.bottom, 12)
-            }
+            .padding(.top, 12)
+            .padding(.bottom, 12)
         }
         // No glass of its own — the editor wraps notes + subjects panes in
         // ONE container so the drawer reads as a single sidebar.
-        .frame(width: 196)
+        .frame(width: 216)
         .frame(maxHeight: .infinity)
     }
 
-    private var headerTitle: Text {
+    private var headerTitle: LocalizedStringKey {
         if tab == .subject, let name = shownSubject?.name {
-            return Text(verbatim: name)
+            return LocalizedStringKey(name)
         }
-        return Text(tab.labelKey)
+        return tab.labelKey
+    }
+
+    private func count(for t: Tab) -> Int {
+        let active = allNotes.filter { $0.deletedAt == nil }
+        switch t {
+        case .subject: return active.filter { $0.subject == shownSubject }.count
+        case .all: return active.count
+        case .recents:
+            let cutoff = Date().addingTimeInterval(-7 * 24 * 3600)
+            return active.filter { ($0.modifiedAt ?? .distantPast) > cutoff }.count
+        case .favorites: return active.filter(\.isFavorite).count
+        }
+    }
+
+    private func sectionRow(_ t: Tab, name: String? = nil, dot: Color? = nil, tint: Color = .accentColor) -> some View {
+        let selected = tab == t
+        return Button {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { tab = t }
+        } label: {
+            HStack(spacing: 10) {
+                if let dot {
+                    Circle().fill(dot).frame(width: 13, height: 13).frame(width: 24, height: 24)
+                } else {
+                    Image(systemName: t.symbolName)
+                        .font(.subheadline)
+                        .foregroundStyle(tint)
+                        .frame(width: 24, height: 24)
+                }
+                Group {
+                    if let name { Text(verbatim: name) } else { Text(t.labelKey) }
+                }
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                Spacer(minLength: 0)
+                Text(verbatim: "\(count(for: t))")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(.quaternary.opacity(0.5), in: Capsule())
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(selected ? Color.accentColor.opacity(0.14) : .clear)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private func noteCell(_ note: Note) -> some View {
