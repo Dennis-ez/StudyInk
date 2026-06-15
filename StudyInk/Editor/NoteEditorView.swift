@@ -56,6 +56,7 @@ struct NoteEditorView: View {
     @Environment(\.managedObjectContext) private var context
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.themeDesk) private var themeDesk
 
     private var currentPage: Page? {
         let pages = note.sortedPages
@@ -89,7 +90,7 @@ struct NoteEditorView: View {
 
     var body: some View {
         ZStack {
-            Color("deskBackground").ignoresSafeArea()
+            themeDesk.ignoresSafeArea()
 
             // The stitched document: every page in one continuous scroll.
             NoteCanvasView(

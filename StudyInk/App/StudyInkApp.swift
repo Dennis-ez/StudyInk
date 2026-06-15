@@ -25,6 +25,7 @@ struct StudyInkApp: App {
                 .environment(\.aiAccent, theme.accent)
                 .environment(\.themePaper, theme.paper)
                 .environment(\.themeSidebar, theme.sidebar)
+                .environment(\.themeDesk, theme.desk)
                 // Each theme carries its own app icon.
                 .onChange(of: themeRaw) { _, _ in applyAppIcon() }
                 .task { applyAppIcon() }
@@ -139,6 +140,18 @@ enum AppTheme: String, CaseIterable, Identifiable {
             : UIColor(red: lr * 0.955, green: lg * 0.952, blue: lb * 0.948, alpha: 1) })
     }
 
+    /// The editor "desk" behind the page — deeper than the paper (and tinted
+    /// per theme) so the white page still pops against it. Exposed as UIColor
+    /// too for the UIKit scroll view that draws the canvas backdrop.
+    var deskUIColor: UIColor {
+        let (lr, lg, lb) = lightPaper
+        let (dr, dg, db) = darkPaper
+        return UIColor { $0.userInterfaceStyle == .dark
+            ? UIColor(red: dr, green: dg, blue: db, alpha: 1)
+            : UIColor(red: lr * 0.90, green: lg * 0.90, blue: lb * 0.90, alpha: 1) }
+    }
+    var desk: Color { Color(deskUIColor) }
+
     /// Alternate app-icon name for this theme; nil = the primary (default) icon.
     var iconName: String? { self == .paperInk ? nil : "AppIcon-\(rawValue)" }
 
@@ -160,6 +173,9 @@ private struct ThemePaperKey: EnvironmentKey {
 private struct ThemeSidebarKey: EnvironmentKey {
     static let defaultValue: Color = AppTheme.paperInk.sidebar
 }
+private struct ThemeDeskKey: EnvironmentKey {
+    static let defaultValue: Color = AppTheme.paperInk.desk
+}
 extension EnvironmentValues {
     var aiAccent: Color {
         get { self[AIAccentKey.self] }
@@ -172,6 +188,10 @@ extension EnvironmentValues {
     var themeSidebar: Color {
         get { self[ThemeSidebarKey.self] }
         set { self[ThemeSidebarKey.self] = newValue }
+    }
+    var themeDesk: Color {
+        get { self[ThemeDeskKey.self] }
+        set { self[ThemeDeskKey.self] = newValue }
     }
 }
 
