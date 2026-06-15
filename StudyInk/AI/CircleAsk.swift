@@ -7,7 +7,7 @@ import UIKit
 struct AskLassoOverlay: View {
     @Binding var isActive: Bool
     let transform: CanvasTransform
-    var onRegionSelected: (CGRect) -> Void   // page-space rect
+    var onRegionSelected: (CGRect) -> Void   // SCREEN-space rect (page resolved by the caller)
 
     @State private var points: [CGPoint] = []
 
@@ -67,13 +67,10 @@ struct AskLassoOverlay: View {
             width: max(xs.max()! - xs.min()!, 20),
             height: max(ys.max()! - ys.min()!, 20)
         )
-        let origin = transform.toPage(screenRect.origin)
-        let pageRect = CGRect(
-            x: origin.x, y: origin.y,
-            width: screenRect.width / transform.zoomScale,
-            height: screenRect.height / transform.zoomScale
-        )
-        onRegionSelected(pageRect)
+        // Hand back the SCREEN rect — which page it lands on (and the page-space
+        // crop) is resolved by the caller, so circling a non-centered page still
+        // targets the right one.
+        onRegionSelected(screenRect)
     }
 }
 

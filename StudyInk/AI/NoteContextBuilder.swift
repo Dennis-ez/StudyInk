@@ -52,10 +52,10 @@ enum NoteContextBuilder {
         }
 
         if let focusRegion {
-            summary += "\nThe student circled/selected the region at x:\(Int(focusRegion.minX)) y:\(Int(focusRegion.minY)) w:\(Int(focusRegion.width)) h:\(Int(focusRegion.height)) on the current page. Focus your answer there."
+            summary += "\nIMPORTANT: The student circled a specific region on page \(currentPageIndex + 1) (at x:\(Int(focusRegion.minX)) y:\(Int(focusRegion.minY)) w:\(Int(focusRegion.width)) h:\(Int(focusRegion.height))). The cropped image below shows EXACTLY what they circled — answer ONLY about that content. The other page images are background context; do not answer about them unless the circled content explicitly refers to them."
         }
         if let focusImage, let block = AIContent.image(focusImage) {
-            blocks.append(.text("Cropped image of the circled region:"))
+            blocks.append(.text("Cropped image of the circled region (this is what the student is asking about):"))
             blocks.append(block)
         }
 

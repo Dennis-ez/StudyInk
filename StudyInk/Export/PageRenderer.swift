@@ -22,7 +22,7 @@ enum PageRenderer {
 
         @MainActor
         init(page: Page) {
-            pageSize = PageSize.from(id: page.pageSizeID).size
+            pageSize = page.canvasSize
             template = page.template
             templateSpacing = page.effectiveTemplateSpacing
             customTemplatePDF = page.customTemplatePDF
@@ -94,8 +94,11 @@ enum PageRenderer {
         cg.setFillColor(backgroundColor(darkMode: darkMode).cgColor)
         cg.fill(pageRect)
 
+        // Rasterize the PDF at the destination's actual pixel scale (capped to
+        // bound memory) so it stays sharp at retina + zoom, not a soft 2x.
+        let pixelScale = min(max(abs(cg.ctm.a), 2), 3)
         if snapshot.template == .customPDF, let data = snapshot.customTemplatePDF,
-           let pdfImage = PDFTemplateRenderer.image(from: data, targetWidth: snapshot.pageSize.width * 2, darkMode: darkMode) {
+           let pdfImage = PDFTemplateRenderer.image(from: data, targetWidth: snapshot.pageSize.width * pixelScale, darkMode: darkMode) {
             // Aspect-fit: a PDF must never run wider (or taller) than the page.
             let imageSize = pdfImage.size
             let fit = min(pageRect.width / max(imageSize.width, 1), pageRect.height / max(imageSize.height, 1))

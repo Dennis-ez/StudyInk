@@ -196,7 +196,7 @@ struct PageThumbnailView: View {
 
     var body: some View {
         GeometryReader { geo in
-            let pageSize = PageSize.from(id: page.pageSizeID).size
+            let pageSize = page.canvasSize
             let scale = geo.size.width / pageSize.width
 
             ZStack {

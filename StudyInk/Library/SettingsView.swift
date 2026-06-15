@@ -8,8 +8,15 @@ struct SettingsView: View {
     @AppStorage("settings.autoBackup") private var autoBackup = true
     @AppStorage("settings.iCloudSync") private var iCloudSync = false
     @AppStorage("settings.ai.provider") private var providerRaw = AIProvider.claude.rawValue
-    @AppStorage("settings.defaultTemplate") private var defaultTemplate = "blank"
+    @AppStorage("settings.defaultTemplate") private var defaultTemplate = "wideRuled"
+    @AppStorage("settings.defaultTemplateSpacing") private var defaultSpacing = 1.0
     @Environment(\.dismiss) private var dismiss
+
+    /// Wide-ruled first; PDF excluded (it needs a file, not a default).
+    private let templateOrder: [PageTemplate] = [
+        .wideRuled, .collegeRuled, .narrowRuled, .blank,
+        .dotGrid, .squareGrid, .isometricGrid, .cornell, .musicStaff,
+    ]
 
     @State private var models: [String] = []
     @State private var loadingModels = false
@@ -73,10 +80,24 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
                 Section(header: Label("settings.notes", systemImage: "book.closed")) {
-                    Picker("settings.defaultTemplate", selection: $defaultTemplate) {
-                        ForEach(PageTemplate.allCases.filter { $0 != .customPDF }) { template in
-                            Text(template.labelKey).tag(template.rawValue)
+                    Text("settings.defaultTemplate")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 14)], spacing: 14) {
+                        ForEach(templateOrder) { template in
+                            templatePreview(template)
                         }
+                    }
+                    .padding(.vertical, 4)
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("page.spacing").font(.subheadline)
+                            Spacer()
+                            Text(verbatim: String(format: "%.2f×", defaultSpacing))
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                        Slider(value: $defaultSpacing, in: 0.6...1.8)
                     }
                 }
                 aiKeySection
@@ -91,6 +112,42 @@ struct SettingsView: View {
             .onChange(of: providerRaw) { refreshProviderState() }
             .onAppear { refreshProviderState() }
         }
+    }
+
+    /// Selectable live template preview — paints the actual template at the
+    /// current default spacing, so the picker shows what new notes will look like.
+    private func templatePreview(_ template: PageTemplate) -> some View {
+        let isSelected = defaultTemplate == template.rawValue
+        return Button {
+            defaultTemplate = template.rawValue
+        } label: {
+            VStack(spacing: 5) {
+                Canvas { ctx, size in
+                    ctx.fill(Path(roundedRect: CGRect(origin: .zero, size: size), cornerRadius: 7),
+                             with: .color(Color("canvasBackground")))
+                    template.draw(
+                        in: &ctx,
+                        rect: CGRect(origin: .zero, size: size),
+                        scale: 0.24,
+                        lineColor: Color("templateLine"),
+                        accentColor: Color("accentBlue"),
+                        spacing: defaultSpacing
+                    )
+                }
+                .frame(width: 92, height: 80)
+                .clipShape(RoundedRectangle(cornerRadius: 7))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7)
+                        .strokeBorder(isSelected ? Color.accentColor : Color.primary.opacity(0.12),
+                                      lineWidth: isSelected ? 2 : 1)
+                )
+                Text(template.labelKey)
+                    .font(.caption2)
+                    .foregroundStyle(isSelected ? Color.accentColor : .primary)
+                    .lineLimit(1)
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - API key
