@@ -4,7 +4,7 @@ import SwiftUI
 /// API keys (pasted in-app, stored in the Keychain), and model.
 struct SettingsView: View {
     @AppStorage("settings.appearance") private var appearance = "system"
-    @AppStorage("settings.theme") private var themeRaw = AppTheme.classic.rawValue
+    @AppStorage("settings.theme") private var themeRaw = AppTheme.paperInk.rawValue
     @AppStorage("settings.autoBackup") private var autoBackup = true
     @AppStorage("settings.iCloudSync") private var iCloudSync = false
     @AppStorage("settings.ai.provider") private var providerRaw = AIProvider.claude.rawValue
@@ -48,25 +48,44 @@ struct SettingsView: View {
 
                     VStack(alignment: .leading, spacing: 10) {
                         Text("settings.theme")
-                        HStack(spacing: 14) {
+                        // Each theme: the "you" accent + the "AI" accent, plus
+                        // its name. Picking one also swaps the app icon.
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], spacing: 12) {
                             ForEach(AppTheme.allCases) { theme in
+                                let selected = themeRaw == theme.rawValue
                                 Button {
                                     themeRaw = theme.rawValue
                                 } label: {
-                                    Circle()
-                                        .fill(theme.accent)
-                                        .frame(width: 32, height: 32)
-                                        .overlay {
-                                            if themeRaw == theme.rawValue {
-                                                Image(systemName: "checkmark")
-                                                    .font(.caption.bold())
-                                                    .foregroundStyle(.white)
-                                            }
+                                    HStack(spacing: 10) {
+                                        ZStack {
+                                            Circle().fill(theme.accent).frame(width: 26, height: 26)
+                                            Circle().fill(theme.aiAccent).frame(width: 26, height: 26)
+                                                .mask(Rectangle().offset(x: 13))
+                                            Circle().strokeBorder(.white.opacity(0.6), lineWidth: 1).frame(width: 26, height: 26)
                                         }
+                                        Text(theme.labelKey)
+                                            .font(.subheadline)
+                                            .foregroundStyle(.primary)
+                                        Spacer(minLength: 0)
+                                        if selected {
+                                            Image(systemName: "checkmark.circle.fill")
+                                                .foregroundStyle(theme.accent)
+                                        }
+                                    }
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 10)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                            .fill(selected ? theme.accent.opacity(0.12) : Color(.secondarySystemBackground))
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                            .strokeBorder(selected ? theme.accent : .clear, lineWidth: 1.5)
+                                    )
                                 }
                                 .buttonStyle(.plain)
                                 .accessibilityLabel(Text(theme.labelKey))
-                                .accessibilityAddTraits(themeRaw == theme.rawValue ? .isSelected : [])
+                                .accessibilityAddTraits(selected ? .isSelected : [])
                             }
                         }
                     }

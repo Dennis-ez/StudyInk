@@ -22,7 +22,7 @@ struct AskLassoOverlay: View {
                     for point in points.dropFirst() { path.addLine(to: point) }
                 }
                 .stroke(
-                    SemanticColor.accentBlue,
+                    AppTheme.current.aiAccent,
                     style: StrokeStyle(lineWidth: 2.5, lineCap: .round, dash: [7, 5])
                 )
 
@@ -108,7 +108,7 @@ struct CircleAskSheet: View {
                 // a sparkles cue and inline send.
                 HStack(alignment: .bottom, spacing: 10) {
                     Image(systemName: "sparkles")
-                        .foregroundStyle(SemanticColor.accentBlue)
+                        .foregroundStyle(AppTheme.current.aiAccent)
                         .padding(.bottom, 7)
                     TextField("ai.askPlaceholder", text: $question, axis: .vertical)
                         .textFieldStyle(.plain)
@@ -120,7 +120,7 @@ struct CircleAskSheet: View {
                     } label: {
                         Image(systemName: "arrow.up.circle.fill")
                             .font(.title2)
-                            .foregroundStyle(question.trimmingCharacters(in: .whitespaces).isEmpty ? Color.secondary : SemanticColor.accentBlue)
+                            .foregroundStyle(question.trimmingCharacters(in: .whitespaces).isEmpty ? Color.secondary : AppTheme.current.aiAccent)
                     }
                     .disabled(question.trimmingCharacters(in: .whitespaces).isEmpty)
                     .accessibilityLabel(Text("ai.ask"))
@@ -139,7 +139,7 @@ struct CircleAskSheet: View {
                             HStack(spacing: 7) {
                                 Image(systemName: suggestion.icon)
                                     .font(.caption)
-                                    .foregroundStyle(SemanticColor.accentBlue)
+                                    .foregroundStyle(AppTheme.current.aiAccent)
                                 Text(suggestion.key)
                                     .font(.caption.weight(.medium))
                                     .lineLimit(1)
