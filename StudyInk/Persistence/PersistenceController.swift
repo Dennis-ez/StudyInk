@@ -85,6 +85,10 @@ final class PersistenceController {
             attr("templateID", .string, default: "blank"),
             attr("templateSpacing", .double, default: 1.0),
             attr("pageSizeID", .string, default: "letter"),
+            // Per-page exact dimensions (points); 0 = fall back to pageSizeID.
+            // Imported PDF pages use these to match the note width + PDF aspect.
+            attr("pageWidth", .double, default: 0),
+            attr("pageHeight", .double, default: 0),
             attr("customTemplatePDF", .binaryData, external: true),
             attr("textBoxesData", .binaryData),         // JSON [TextBoxModel]
             attr("mediaItemsData", .binaryData),        // JSON [MediaItemModel] (phase 2)

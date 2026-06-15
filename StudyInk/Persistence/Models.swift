@@ -103,6 +103,10 @@ final class Page: NSManagedObject {
     @NSManaged var templateID: String?
     @NSManaged var templateSpacing: Double
     @NSManaged var pageSizeID: String?
+    /// Exact page dimensions in points; 0 = use pageSizeID's preset. Imported
+    /// PDF pages set these so the page matches the note width × the PDF aspect.
+    @NSManaged var pageWidth: Double
+    @NSManaged var pageHeight: Double
     @NSManaged var customTemplatePDF: Data?
     @NSManaged var textBoxesData: Data?
     @NSManaged var mediaItemsData: Data?
@@ -134,6 +138,12 @@ final class Page: NSManagedObject {
 
     var template: PageTemplate { PageTemplate.from(id: templateID) }
 
+    /// Exact page size in points: per-page dimensions when set, else the preset.
+    var canvasSize: CGSize {
+        if pageWidth > 0, pageHeight > 0 { return CGSize(width: pageWidth, height: pageHeight) }
+        return PageSize.from(id: pageSizeID).size
+    }
+
     /// Line/grid density multiplier (0.75 compact … 1.4 wide); 0 = legacy rows.
     var effectiveTemplateSpacing: CGFloat {
         templateSpacing > 0 ? CGFloat(templateSpacing) : 1
@@ -145,6 +155,8 @@ final class Page: NSManagedObject {
         templateID = other.templateID
         templateSpacing = other.templateSpacing
         pageSizeID = other.pageSizeID
+        pageWidth = other.pageWidth
+        pageHeight = other.pageHeight
         customTemplatePDF = other.customTemplatePDF
         textBoxesData = other.textBoxesData
         mediaItemsData = other.mediaItemsData

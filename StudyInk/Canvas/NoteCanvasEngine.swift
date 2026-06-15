@@ -244,9 +244,9 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     // MARK: - Centering (the UIKit-native way)
 
     /// Gutter above page 1, below the status bar: clears the floating toolbar
-    /// row AND leaves room for the note title, plus comfortable drag space so
-    /// the page never tucks under the clock or the tools.
-    private let topGutter: CGFloat = 96
+    /// row AND leaves room for the larger two-line note title, plus comfortable
+    /// drag space so the page never tucks under the clock or the tools.
+    private let topGutter: CGFloat = 112
 
     override func layoutSubviews() {
         super.layoutSubviews()
@@ -260,6 +260,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         }
         applyInitialZoomIfNeeded()
         centerDocument()
+        restorePageIfNeeded()
         publishGeometry()
     }
 
@@ -278,6 +279,18 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         setZoomScale(min(max(fit, minimumZoomScale), 1.5), animated: false)
         // Rest just below the top gutter so page 1 clears the status bar.
         contentOffset = CGPoint(x: max(0, (contentSize.width - bounds.width) / 2), y: -contentInset.top)
+    }
+
+    private var didRestorePage = false
+    /// Scroll to the page the user last left off on — once, after the stack is
+    /// laid out. Runs from layoutSubviews so it lands even if the editor sets
+    /// the restore index slightly after the first layout pass.
+    private func restorePageIfNeeded() {
+        guard !didRestorePage, didSetInitialZoom else { return }
+        let restore = controller.initialPageIndex
+        guard restore > 0, pageFrames.indices.contains(restore) else { return }
+        didRestorePage = true
+        scrollToPage(restore, animated: false)
     }
 
     // MARK: - Active page management

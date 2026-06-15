@@ -48,7 +48,7 @@ final class AITutorController: ObservableObject {
         panelOnly: Bool = false
     ) async {
         guard let note, let page = currentPage else { return }
-        let pageSize = PageSize.from(id: page.pageSizeID).size
+        let pageSize = page.canvasSize
         let position = AIBubbleModel.position(anchor: anchor, pageSize: pageSize)
         var bubble = AIBubbleModel(
             pageIndex: currentPageIndex,
@@ -173,7 +173,7 @@ final class AITutorController: ObservableObject {
         // Clamp inside the page so a bubble can never be dragged out of reach.
         let pages = note?.sortedPages ?? []
         let pageSize = pages.indices.contains(bubbles[index].pageIndex)
-            ? PageSize.from(id: pages[bubbles[index].pageIndex].pageSizeID).size
+            ? pages[bubbles[index].pageIndex].canvasSize
             : CGSize(width: 800, height: 1100)
         bubbles[index].x = min(max(point.x, -bubbles[index].width / 2), pageSize.width - 60)
         bubbles[index].y = min(max(point.y, -20), pageSize.height - 80)
@@ -187,7 +187,7 @@ final class AITutorController: ObservableObject {
             await followUp(bubbleID: id, question: question)
             return
         }
-        let pageSize = currentPage.map { PageSize.from(id: $0.pageSizeID).size } ?? CGSize(width: 800, height: 1100)
+        let pageSize = currentPage.map(\.canvasSize) ?? CGSize(width: 800, height: 1100)
         await ask(
             question: question,
             anchor: CGPoint(x: pageSize.width - 140, y: 100),

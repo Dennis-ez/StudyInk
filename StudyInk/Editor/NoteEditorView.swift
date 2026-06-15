@@ -62,7 +62,7 @@ struct NoteEditorView: View {
         return pages[pageIndex]
     }
 
-    private var pageSize: CGSize { PageSize.from(id: currentPage?.pageSizeID).size }
+    private var pageSize: CGSize { currentPage?.canvasSize ?? PageSize.letter.size }
 
     private var transform: CanvasTransform {
         canvasController.transform(forPage: pageIndex)
@@ -71,7 +71,7 @@ struct NoteEditorView: View {
     /// Engine rebuilds the page stack when this changes (count/size/template).
     private var layoutSignature: String {
         note.sortedPages.map {
-            "\($0.id?.uuidString ?? "?")|\($0.pageSizeID ?? "letter")|\($0.templateID ?? "blank")|\($0.customTemplatePDF?.count ?? 0)|\($0.templateSpacing)"
+            "\($0.id?.uuidString ?? "?")|\(Int($0.canvasSize.width))x\(Int($0.canvasSize.height))|\($0.templateID ?? "blank")|\($0.customTemplatePDF?.count ?? 0)|\($0.templateSpacing)"
         }.joined(separator: ",")
     }
 
@@ -93,7 +93,7 @@ struct NoteEditorView: View {
             // The stitched document: every page in one continuous scroll.
             NoteCanvasView(
                 controller: canvasController,
-                pageSizes: note.sortedPages.map { PageSize.from(id: $0.pageSizeID).size },
+                pageSizes: note.sortedPages.map { $0.canvasSize },
                 layoutSignature: layoutSignature
             )
             .ignoresSafeArea(edges: .bottom)
@@ -159,22 +159,22 @@ struct NoteEditorView: View {
                     renameText = note.title ?? ""
                     showRenameAlert = true
                 } label: {
-                    HStack(spacing: 6) {
+                    VStack(alignment: .leading, spacing: 1) {
                         Text(verbatim: note.title ?? "")
-                            .font(.subheadline.weight(.semibold))
+                            .font(.title3.weight(.bold))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                         Text(note.createdAt ?? .now, format: .dateTime.day().month().year().hour().minute())
-                            .font(.caption2)
+                            .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                    .frame(maxWidth: 320, alignment: .leading)
+                    .frame(maxWidth: 360, alignment: .leading)
                     .fixedSize(horizontal: true, vertical: false)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(Text("library.renameNote"))
                 // Sits in the gutter just above the page, below the toolbar row.
-                .offset(x: pageOrigin.x + 4, y: pageOrigin.y - 34)
+                .offset(x: pageOrigin.x + 4, y: pageOrigin.y - 52)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
 
@@ -531,6 +531,14 @@ struct NoteEditorView: View {
         }
         .statusBarHidden(distractionFree)
         .onAppear {
+            // Restore the page the user last left off on for this note.
+            if let key = note.id?.uuidString {
+                let saved = UserDefaults.standard.integer(forKey: "note.lastPage.\(key)")
+                if saved > 0, saved < note.sortedPages.count {
+                    pageIndex = saved
+                    canvasController.initialPageIndex = saved
+                }
+            }
             loadPage()
             tutor.attach(note: note)
             tutor.isDarkMode = colorScheme == .dark
@@ -600,6 +608,10 @@ struct NoteEditorView: View {
             persistOverlays(to: page(at: oldIndex))
             canvasController.engine?.refreshPage(oldIndex)
             loadPage()
+            // Remember where the user is so re-opening the note returns here.
+            if let key = note.id?.uuidString {
+                UserDefaults.standard.set(newIndex, forKey: "note.lastPage.\(key)")
+            }
             tutor.pageChanged(to: newIndex)
             guidedMode.pageTurned()
             if canvasController.currentPageIndex != newIndex {
@@ -696,14 +708,44 @@ struct NoteEditorView: View {
 
     /// Circle & Ask submit: crop the circled region from a fresh page render and
     /// send it with the question; the bubble anchors to the circled content.
-    private func sendCircleAsk(question: String, region: CGRect) {
-        guard let page = currentPage else { return }
-        let crop = croppedImage(of: region, page: page)
-        let anchor = CGPoint(x: region.midX, y: region.midY)
+    private func sendCircleAsk(question: String, region screenRect: CGRect) {
+        // Resolve which page the circle actually landed on (not just the
+        // viewport-center page) so the crop + answer target what was circled.
+        let pages = note.sortedPages
+        let resolved = resolveCirclePage(screenRect: screenRect)
+        guard pages.indices.contains(resolved.index) else { return }
+        let page = pages[resolved.index]
+        let crop = croppedImage(of: resolved.pageRect, page: page)
+        let anchor = CGPoint(x: resolved.pageRect.midX, y: resolved.pageRect.midY)
         circleAskRegion = nil
+        // Point the tutor at the circled page so context + bubble anchor match.
+        tutor.currentPageIndex = resolved.index
         Task {
-            await tutor.ask(question: question, anchor: anchor, focusRegion: region, focusImage: crop)
+            await tutor.ask(question: question, anchor: anchor, focusRegion: resolved.pageRect, focusImage: crop)
         }
+    }
+
+    /// Which page a screen-space rect is over, plus that rect in the page's
+    /// own coordinate space. Falls back to the current page if none contains it.
+    private func resolveCirclePage(screenRect: CGRect) -> (index: Int, pageRect: CGRect) {
+        let center = CGPoint(x: screenRect.midX, y: screenRect.midY)
+        let pages = note.sortedPages
+        for i in pages.indices {
+            let t = canvasController.transform(forPage: i)
+            let p = t.toPage(center)
+            let size = pages[i].canvasSize
+            if (0...size.width).contains(p.x), (0...size.height).contains(p.y) {
+                return (i, screenRectToPage(screenRect, t))
+            }
+        }
+        let t = canvasController.transform(forPage: pageIndex)
+        return (pageIndex, screenRectToPage(screenRect, t))
+    }
+
+    private func screenRectToPage(_ rect: CGRect, _ t: CanvasTransform) -> CGRect {
+        let origin = t.toPage(rect.origin)
+        return CGRect(x: origin.x, y: origin.y,
+                      width: rect.width / t.zoomScale, height: rect.height / t.zoomScale)
     }
 
     private func croppedImage(of region: CGRect, page: Page) -> UIImage? {

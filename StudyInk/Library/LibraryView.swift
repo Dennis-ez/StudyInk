@@ -60,6 +60,7 @@ struct LibraryView: View {
     @AppStorage("library.layout.grid") private var gridLayout = true
     @AppStorage("library.sort") private var sortRaw = LibrarySort.dateModified.rawValue
     @State private var showSettings = false
+    @State private var importingPDF = false
     @State private var renamingSubject: Subject?
     @State private var renameText = ""
     @FocusState private var renameFieldFocused: Bool
@@ -95,6 +96,9 @@ struct LibraryView: View {
                 )
                 .navigationTitle(detailTitle)
                 .toolbar { detailToolbar }
+                .fileImporter(isPresented: $importingPDF, allowedContentTypes: [.pdf]) { result in
+                    if case .success(let url) = result { importPDFAsNote(from: url) }
+                }
                 // The toolbar's New Note goes straight into the editor.
                 .navigationDestination(isPresented: Binding(
                     get: { autoOpenNote != nil },
@@ -276,7 +280,10 @@ struct LibraryView: View {
                     .onSubmit(commitInlineRename)
             }
             .padding(.leading, CGFloat(depth) * 20)
-            .onAppear { renameFieldFocused = true }
+            // Focus on the next runloop so the field is in the responder chain
+            // first — otherwise the keyboard doesn't come up for a just-added
+            // subject (the row is still being inserted when onAppear fires).
+            .onAppear { DispatchQueue.main.async { renameFieldFocused = true } }
             .onChange(of: renameFieldFocused) { _, focused in
                 // Tapping away commits too — never strand an unnamed folder.
                 if !focused { commitInlineRename() }
@@ -334,7 +341,7 @@ struct LibraryView: View {
             // Subject rows carry their color as a soft wash; selection darkens
             // it. Rounded, and indented WITH the row so nesting reads as a tree.
             .listRowBackground(
-                roundedRowBackground(tint.opacity(isSelected ? 0.26 : 0.10))
+                roundedRowBackground(tint.opacity(isSelected ? 0.38 : 0.18))
                     .padding(.leading, CGFloat(depth) * 20)
             )
             .draggable("subject:\(subject.id?.uuidString ?? "")")
@@ -520,6 +527,11 @@ struct LibraryView: View {
                 Button {
                     selectingNotes = true
                 } label: { Label("library.selectNotes", systemImage: "checkmark.circle") }
+                if selection != .deleted {
+                    Button {
+                        importingPDF = true
+                    } label: { Label("media.importPDF", systemImage: "doc.badge.plus") }
+                }
                 Menu {
                     Picker("library.sort", selection: $sortRaw) {
                         ForEach(LibrarySort.allCases, id: \.rawValue) { sort in
@@ -552,6 +564,25 @@ struct LibraryView: View {
         (subject.children ?? []).sorted {
             ($0.sortIndex, $0.createdAt ?? .distantPast) < ($1.sortIndex, $1.createdAt ?? .distantPast)
         }
+    }
+
+    /// Import a PDF as a brand-new note (each PDF page → a note page).
+    private func importPDFAsNote(from url: URL) {
+        let access = url.startAccessingSecurityScopedResource()
+        defer { if access { url.stopAccessingSecurityScopedResource() } }
+        guard let data = try? Data(contentsOf: url) else { return }
+        var subject: Subject?
+        if case .subject(let s) = selection { subject = s }
+        let title = url.deletingPathExtension().lastPathComponent
+        let note = Note.create(in: context, title: title, subject: subject)
+        // Import after the default blank page, then drop the blank.
+        PDFImporter.importAsPages(data: data, into: note, after: 0)
+        if note.sortedPages.count > 1, let blank = note.sortedPages.first {
+            note.deletePage(blank)
+        }
+        note.searchableText = SearchableTextBuilder.build(for: note)
+        PersistenceController.shared.save()
+        autoOpenNote = note
     }
 
     private func addSubject(kind: String, parent: Subject? = nil) {

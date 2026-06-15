@@ -211,13 +211,28 @@ struct TemplateBackgroundView: View {
 
 enum PDFTemplateRenderer {
     private static let ciContext = CIContext(options: [.useSoftwareRenderer: false])
+    /// Rasterizing a PDF page is expensive and `drawBackground` runs on every
+    /// redraw/zoom — cache by content + resolution bucket + appearance so we
+    /// rasterize once per resolution, not every frame.
+    private static let cache: NSCache<NSString, UIImage> = {
+        let c = NSCache<NSString, UIImage>()
+        c.countLimit = 24
+        return c
+    }()
 
     static func image(from data: Data, targetWidth: CGFloat, darkMode: Bool = false) -> UIImage? {
+        // Bucket the width to 256px steps so small zoom changes reuse a render.
+        let bucket = max(256, (targetWidth / 256).rounded(.up) * 256)
+        let key = "\(data.count)-\(data.hashValue)-\(Int(bucket))-\(darkMode)" as NSString
+        if let cached = cache.object(forKey: key) { return cached }
+
         guard let doc = PDFDocument(data: data), let page = doc.page(at: 0) else { return nil }
         let bounds = page.bounds(for: .mediaBox)
-        let scale = max(targetWidth / max(bounds.width, 1), 1)
+        let scale = max(bucket / max(bounds.width, 1), 1)
         let rendered = page.thumbnail(of: CGSize(width: bounds.width * scale, height: bounds.height * scale), for: .mediaBox)
-        return darkMode ? darkOptimized(rendered) : rendered
+        let result = darkMode ? darkOptimized(rendered) : rendered
+        cache.setObject(result, forKey: key)
+        return result
     }
 
     /// "Smart invert" for documents: invert luminance, then rotate hue 180° so

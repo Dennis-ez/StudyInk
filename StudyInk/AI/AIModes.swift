@@ -7,7 +7,7 @@ extension AITutorController {
     /// with highlights across the page's key concepts.
     func explainCurrentPage() async {
         guard let page = currentPage else { return }
-        let pageSize = PageSize.from(id: page.pageSizeID).size
+        let pageSize = page.canvasSize
         let anchor = CGPoint(x: pageSize.width - 120, y: 80)
         await ask(
             question: String(localized: "ai.explainPage.question"),
@@ -26,7 +26,7 @@ extension AITutorController {
     /// canvas as real strokes (erasable, lassoable, undoable like handwriting).
     func drawSketch(request: String, on canvas: PKCanvasView?) async {
         guard let page = currentPage, let canvas else { return }
-        let pageSize = PageSize.from(id: page.pageSizeID).size
+        let pageSize = page.canvasSize
 
         do {
             let prompt = """
@@ -98,7 +98,7 @@ extension AITutorController {
     /// strokes (hand-style font → real PencilKit ink via InkWriter).
     func answerInInk(request: String, on canvas: PKCanvasView?, colorHex: String, penWidth: Double) async {
         guard let note, let page = currentPage, let canvas else { return }
-        let pageSize = PageSize.from(id: page.pageSizeID).size
+        let pageSize = page.canvasSize
 
         do {
             let context = await NoteContextBuilder.build(note: note, currentPageIndex: currentPageIndex, darkMode: isDarkMode)
