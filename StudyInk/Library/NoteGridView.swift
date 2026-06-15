@@ -205,9 +205,12 @@ struct NoteGridView: View {
             TextField("library.noteTitle", text: $renameText)
             Button("action.cancel", role: .cancel) { renamingNote = nil }
             Button("action.done") {
-                renamingNote?.title = renameText
-                renamingNote?.touch()
-                PersistenceController.shared.save()
+                let trimmed = renameText.trimmingCharacters(in: .whitespaces)
+                if !trimmed.isEmpty {
+                    renamingNote?.title = trimmed
+                    renamingNote?.touch()
+                    PersistenceController.shared.save()
+                }
                 renamingNote = nil
             }
         }
@@ -483,7 +486,8 @@ struct NoteGridView: View {
             }
 
             Button {
-                renameText = note.title ?? ""
+                let untitled = String(localized: "library.untitledNote")
+                renameText = (note.title == untitled) ? "" : (note.title ?? "")
                 renamingNote = note
             } label: { Label("action.rename", systemImage: "pencil") }
 

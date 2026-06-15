@@ -37,6 +37,9 @@ struct AskLassoOverlay: View {
                 }
             }
             .contentShape(Rectangle())
+            // A plain tap (no loop drawn) cancels — e.g. tapping the UI or off
+            // the page to back out of Circle & Ask.
+            .onTapGesture { points = []; isActive = false }
             .gesture(
                 DragGesture(minimumDistance: 2)
                     .onChanged { points.append($0.location) }
@@ -97,7 +100,10 @@ struct CircleAskSheet: View {
 
     var body: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: 18) {
+            // Scrollable so a floating/split keyboard can't clip the field or
+            // suggestions on a short sheet.
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
                 // The prompt field, styled as a prominent rounded capsule with
                 // a sparkles cue and inline send.
                 HStack(alignment: .bottom, spacing: 10) {
@@ -149,9 +155,10 @@ struct CircleAskSheet: View {
                     }
                 }
 
-                Spacer(minLength: 0)
+                }
+                .padding(20)
             }
-            .padding(20)
+            .scrollBounceBehavior(.basedOnSize)
             .navigationTitle(Text("ai.circleAsk.title"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -161,7 +168,7 @@ struct CircleAskSheet: View {
             }
             .onAppear { focused = true }
         }
-        .presentationDetents([.height(300)])
+        .presentationDetents([.height(320), .medium])
         .presentationDragIndicator(.visible)
     }
 
