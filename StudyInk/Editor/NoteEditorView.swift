@@ -173,7 +173,8 @@ struct NoteEditorView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(Text("library.renameNote"))
-                .offset(x: pageOrigin.x + 2, y: pageOrigin.y - 26)
+                // Sits in the gutter just above the page, below the toolbar row.
+                .offset(x: pageOrigin.x + 4, y: pageOrigin.y - 34)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
 
