@@ -3,6 +3,7 @@ import SwiftUI
 /// App settings: appearance override, backup, and the AI tutor's provider,
 /// API keys (pasted in-app, stored in the Keychain), and model.
 struct SettingsView: View {
+    @Environment(\.themePaper) private var themePaper
     @AppStorage("settings.appearance") private var appearance = "system"
     @AppStorage("settings.theme") private var themeRaw = AppTheme.paperInk.rawValue
     @AppStorage("settings.autoBackup") private var autoBackup = true
@@ -122,6 +123,8 @@ struct SettingsView: View {
                 aiKeySection
                 aiModelSection
             }
+            .scrollContentBackground(.hidden)
+            .background(themePaper.ignoresSafeArea())
             .navigationTitle(Text("settings.title"))
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {

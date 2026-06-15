@@ -196,22 +196,35 @@ extension EnvironmentValues {
 }
 
 /// Typed accessors for the semantic palette so call sites can't typo a token name.
+///
+/// Chrome tokens (panels, bubbles, borders) are *computed* from the active
+/// theme so every surface in the app follows the theme with no per-call-site
+/// wiring — they refresh whenever their view re-renders on a theme change.
+/// Page-content tokens (`canvasBackground`, `templateLine`, the AI annotation
+/// colours drawn onto the page) stay fixed assets so pages/thumbnails keep
+/// their default look.
 enum SemanticColor {
-    static let paperBackground = Color("paperBackground")
+    // Page content — fixed, never themed.
     static let canvasBackground = Color("canvasBackground")
     static let templateLine = Color("templateLine")
-    static let toolbarBackground = Color("toolbarBackground")
-    static let toolbarBorder = Color("toolbarBorder")
-    static let sidebarBackground = Color("sidebarBackground")
     static let primaryText = Color("primaryText")
     static let secondaryText = Color("secondaryText")
-    static let aiPanelBackground = Color("aiPanelBackground")
-    static let aiMessageBubble = Color("aiMessageBubble")
-    static let userMessageBubble = Color("userMessageBubble")
-    static let accentBlue = Color("accentBlue")
-    static let aiBubbleBorder = Color("aiBubbleBorder")
     static let aiHighlightYellow = Color("aiHighlightYellow")
     static let aiHighlightBlue = Color("aiHighlightBlue")
     static let aiCircleStroke = Color("aiCircleStroke")
     static let aiArrow = Color("aiArrow")
+    static let accentBlue = Color("accentBlue")
+
+    // Chrome — follows the active theme.
+    static var paperBackground: Color { AppTheme.current.paper }
+    static var sidebarBackground: Color { AppTheme.current.sidebar }
+    static var toolbarBackground: Color { AppTheme.current.sidebar }
+    static var aiPanelBackground: Color { AppTheme.current.sidebar }
+    /// AI's message card — the light paper tone so it reads as a card on the
+    /// (sidebar-toned) panel.
+    static var aiMessageBubble: Color { AppTheme.current.paper }
+    /// Your message — the theme accent (used at low opacity at call sites).
+    static var userMessageBubble: Color { AppTheme.current.accent }
+    static var toolbarBorder: Color { AppTheme.current.accent.opacity(0.18) }
+    static var aiBubbleBorder: Color { AppTheme.current.accent.opacity(0.18) }
 }

@@ -8,10 +8,13 @@ struct StudyGlass<S: InsettableShape>: ViewModifier {
 
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
-            content.glassEffect(.regular, in: shape)
+            // A faint accent tint so glass chrome (toolbar, AI panel) carries
+            // the active theme instead of reading as neutral grey.
+            content.glassEffect(.regular.tint(Color.accentColor.opacity(0.10)), in: shape)
         } else {
             content
                 .background(.ultraThinMaterial, in: shape)
+                .background(Color.accentColor.opacity(0.07), in: shape)
                 .overlay(
                     shape.strokeBorder(
                         LinearGradient(
