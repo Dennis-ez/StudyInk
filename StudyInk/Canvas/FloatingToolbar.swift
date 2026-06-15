@@ -29,6 +29,7 @@ struct FloatingToolbar: View {
     @AppStorage("toolbar.accessories") private var enabledAccessoriesRaw = "ruler,textbox,ask-ai,ai-history"
     /// The quick strip (colors/sizes) — opened by re-tapping the active tool.
     @State private var showInlineOptions = false
+    @Environment(\.aiAccent) private var aiAccent
     /// Measured bar size — the dock placeholders mirror it.
     @State private var barSize: CGSize = .zero
     @State private var showCustomize = false
@@ -193,13 +194,28 @@ struct FloatingToolbar: View {
                 .accessibilityLabel(Text("tool.textbox"))
             }
             ForEach(extraItems.filter { enabledAccessories.contains($0.id) }) { item in
-                Button(action: item.action) {
-                    Image(systemName: item.symbolName)
-                        // The AI pen wears the AI accent (teal), set apart from
-                        // the ink tools.
-                        .foregroundStyle(item.id == "ask-ai" ? AppTheme.current.aiAccent : Color.primary)
+                if item.id == "ask-ai" {
+                    // The AI pen: a teal pill (sparkles + label) — the study
+                    // partner, set apart from the ink tools.
+                    Button(action: item.action) {
+                        HStack(spacing: 5) {
+                            Image(systemName: item.symbolName)
+                            if dock.isHorizontal { Text("ai.pen") }
+                        }
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, dock.isHorizontal ? 11 : 7)
+                        .padding(.vertical, 6)
+                        .background(aiAccent, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Text(item.labelKey))
+                } else {
+                    Button(action: item.action) {
+                        Image(systemName: item.symbolName).foregroundStyle(.primary)
+                    }
+                    .accessibilityLabel(Text(item.labelKey))
                 }
-                .accessibilityLabel(Text(item.labelKey))
             }
             Menu {
                 Button { showCustomize = true } label: { Label("toolbar.customize", systemImage: "slider.horizontal.3") }

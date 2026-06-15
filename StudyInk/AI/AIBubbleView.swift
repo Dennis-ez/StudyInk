@@ -16,6 +16,7 @@ struct AIBubbleView: View {
     @State private var resizeStartHeight: Double?
     @State private var appeared = false
     @FocusState private var followUpFocused: Bool
+    @Environment(\.aiAccent) private var aiAccent
 
     private var isRTL: Bool { bubble.latestAnswer.isMostlyRTL }
 
@@ -133,7 +134,7 @@ struct AIBubbleView: View {
             avatar
             Text("ai.tutorName")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(aiAccent)
             Circle()
                 .fill(Color(bubble.tone.colorToken))
                 .frame(width: 7, height: 7)
@@ -171,21 +172,14 @@ struct AIBubbleView: View {
     }
 
     private var avatar: some View {
-        Circle()
-            .fill(
-                LinearGradient(
-                    colors: [SemanticColor.accentBlue, Color(red: 0.62, green: 0.36, blue: 0.96)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .fill(aiAccent)
             .frame(width: 26, height: 26)
             .overlay(
                 Image(systemName: "sparkles")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.white)
             )
-            .shadow(color: SemanticColor.accentBlue.opacity(0.4), radius: 4, y: 1)
     }
 
     /// Natural height for short threads; scrolls once content exceeds the
@@ -240,11 +234,11 @@ struct AIBubbleView: View {
                         Text(chip)
                             .font(.caption)
                             .lineLimit(1)
-                            .foregroundStyle(SemanticColor.accentBlue)
+                            .foregroundStyle(aiAccent)
                             .padding(.horizontal, 11)
                             .padding(.vertical, 6)
                             .background(.thinMaterial, in: Capsule())
-                            .overlay(Capsule().strokeBorder(SemanticColor.accentBlue.opacity(0.35), lineWidth: 0.8))
+                            .overlay(Capsule().strokeBorder(aiAccent.opacity(0.35), lineWidth: 0.8))
                     }
                     .buttonStyle(.plain)
                 }
@@ -267,7 +261,7 @@ struct AIBubbleView: View {
             } label: {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.title3)
-                    .foregroundStyle(followUpText.isEmpty ? Color.secondary : SemanticColor.accentBlue)
+                    .foregroundStyle(followUpText.isEmpty ? Color.secondary : aiAccent)
             }
             .disabled(followUpText.isEmpty || isLoading)
             .accessibilityLabel(Text("ai.send"))

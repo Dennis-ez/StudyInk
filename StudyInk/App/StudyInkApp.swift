@@ -19,6 +19,11 @@ struct StudyInkApp: App {
                 // Color.accentColor call site on-theme.
                 .tint(theme.accent)
                 .accentColor(theme.accent)
+                // The AI accent flows down reactively so every AI surface
+                // updates the instant the theme changes.
+                .environment(\.aiAccent, theme.aiAccent)
+                .environment(\.themePaper, theme.paper)
+                .environment(\.themeSidebar, theme.sidebar)
                 // Each theme carries its own app icon.
                 .onChange(of: themeRaw) { _, _ in applyAppIcon() }
                 .task { applyAppIcon() }
@@ -88,6 +93,35 @@ enum AppTheme: String, CaseIterable, Identifiable {
         }
     }
 
+    /// Each theme warms the paper a touch differently (light mode); dark mode
+    /// shares a warm charcoal. Backed by a dynamic UIColor so it auto-adapts.
+    private var lightPaper: (CGFloat, CGFloat, CGFloat) {
+        switch self {
+        case .paperInk:  return (0.984, 0.973, 0.949)
+        case .bright:    return (0.984, 0.976, 0.961)
+        case .editorial: return (0.980, 0.965, 0.941)
+        case .grounded:  return (0.969, 0.961, 0.937)
+        case .minimal:   return (0.973, 0.969, 0.957)
+        case .notebook:  return (0.980, 0.961, 0.941)
+        }
+    }
+
+    /// The page/library background for this theme.
+    var paper: Color {
+        let (r, g, b) = lightPaper
+        return Color(UIColor { $0.userInterfaceStyle == .dark
+            ? UIColor(red: 0.094, green: 0.086, blue: 0.063, alpha: 1)
+            : UIColor(red: r, green: g, blue: b, alpha: 1) })
+    }
+
+    /// The sidebar — a half-step darker than the paper.
+    var sidebar: Color {
+        let (r, g, b) = lightPaper
+        return Color(UIColor { $0.userInterfaceStyle == .dark
+            ? UIColor(red: 0.122, green: 0.114, blue: 0.086, alpha: 1)
+            : UIColor(red: r * 0.965, green: g * 0.962, blue: b * 0.955, alpha: 1) })
+    }
+
     /// Alternate app-icon name for this theme; nil = the primary (default) icon.
     var iconName: String? { self == .paperInk ? nil : "AppIcon-\(rawValue)" }
 
@@ -95,6 +129,32 @@ enum AppTheme: String, CaseIterable, Identifiable {
     /// AI accent). SwiftUI views should prefer @AppStorage for reactivity.
     static var current: AppTheme {
         AppTheme(rawValue: UserDefaults.standard.string(forKey: "settings.theme") ?? "") ?? .paperInk
+    }
+}
+
+/// The current theme's AI accent, propagated through the environment so AI
+/// views re-render the moment the theme changes.
+private struct AIAccentKey: EnvironmentKey {
+    static let defaultValue: Color = AppTheme.paperInk.aiAccent
+}
+private struct ThemePaperKey: EnvironmentKey {
+    static let defaultValue: Color = AppTheme.paperInk.paper
+}
+private struct ThemeSidebarKey: EnvironmentKey {
+    static let defaultValue: Color = AppTheme.paperInk.sidebar
+}
+extension EnvironmentValues {
+    var aiAccent: Color {
+        get { self[AIAccentKey.self] }
+        set { self[AIAccentKey.self] = newValue }
+    }
+    var themePaper: Color {
+        get { self[ThemePaperKey.self] }
+        set { self[ThemePaperKey.self] = newValue }
+    }
+    var themeSidebar: Color {
+        get { self[ThemeSidebarKey.self] }
+        set { self[ThemeSidebarKey.self] = newValue }
     }
 }
 

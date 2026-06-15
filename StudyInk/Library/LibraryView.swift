@@ -34,6 +34,8 @@ enum LibrarySection: Hashable {
 /// sidebar, notes in a grid or list, full-text + handwriting-OCR search.
 struct LibraryView: View {
     @Environment(\.managedObjectContext) private var context
+    @Environment(\.themePaper) private var themePaper
+    @Environment(\.themeSidebar) private var themeSidebar
     // ALL subjects, not just roots: the fetch request is what makes SwiftUI
     // re-render — fetching only roots meant a nested folder's color change
     // never refreshed until its parent collapsed/expanded.
@@ -165,11 +167,13 @@ struct LibraryView: View {
         // Explicit selection buttons: List(selection:) silently stopped
         // selecting once rows became custom HStacks.
         List {
-            // Wordmark: the ink drop + serif name (Paper & Ink).
-            HStack(spacing: 9) {
-                Image(systemName: "drop.fill")
-                    .font(.title3)
-                    .foregroundStyle(.tint)
+            // Wordmark: the app-icon mark (accent square + drop) + serif name.
+            HStack(spacing: 10) {
+                Image("LaunchLogo")
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: 30, height: 30)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 Text(verbatim: "StudyInk")
                     .font(.system(.title2, design: .serif).weight(.bold))
                     .foregroundStyle(.primary)
@@ -191,7 +195,7 @@ struct LibraryView: View {
                 }
             }
             .padding(.horizontal, 12).padding(.vertical, 9)
-            .background(SemanticColor.paperBackground, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .background(themePaper, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(.black.opacity(0.06)))
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
@@ -254,7 +258,8 @@ struct LibraryView: View {
             .listRowSeparator(.hidden)
         }
         .scrollContentBackground(.hidden)
-        .background(SemanticColor.sidebarBackground)
+        // Full-bleed, full-height warm sidebar (no floating-panel inset).
+        .background(themeSidebar.ignoresSafeArea())
         // The sidebar is the library's spine — it can't be hidden from the
         // main screen (the editor still takes the full screen when a note opens).
         .hideSidebarToggle()
@@ -589,7 +594,10 @@ struct LibraryView: View {
                     Text((LibrarySort(rawValue: sortRaw) ?? .dateModified).labelKey)
                 }
             } label: {
-                Image(systemName: "ellipsis.circle")
+                Image(systemName: "ellipsis")
+                    .frame(width: 32, height: 32)
+                    .background(themePaper, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.black.opacity(0.1)))
             }
             .accessibilityLabel(Text("library.sort"))
 
@@ -612,7 +620,7 @@ struct LibraryView: View {
                 Button(action: addNote) {
                     Image(systemName: "square.and.pencil")
                         .frame(width: 32, height: 32)
-                        .background(SemanticColor.paperBackground, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .background(themePaper, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.black.opacity(0.1)))
                 }
                 .buttonStyle(.plain)

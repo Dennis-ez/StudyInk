@@ -216,11 +216,8 @@ struct PageThumbnailView: View {
                         .resizable()
                         .scaledToFit()
                 } else {
-                    // Still rendering — show a loader so the note doesn't read
-                    // as empty before its ink/PDF has been rasterized.
-                    ProgressView()
-                        .controlSize(.small)
-                        .tint(.secondary)
+                    // Still rendering — the ink-stroke loader, not a beachball.
+                    InkSpinner(size: 26)
                 }
             }
             .onAppear {

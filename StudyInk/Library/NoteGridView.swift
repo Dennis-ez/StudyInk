@@ -15,6 +15,7 @@ struct NoteGridView: View {
     var onNoteClosed: () -> Void = {}
 
     @Environment(\.managedObjectContext) private var context
+    @Environment(\.themePaper) private var themePaper
     @FetchRequest(
         entity: PersistenceController.model.entitiesByName["Note"]!,
         sortDescriptors: [NSSortDescriptor(key: "modifiedAt", ascending: false)]
@@ -147,7 +148,7 @@ struct NoteGridView: View {
             }
             content
         }
-        .background(SemanticColor.paperBackground.ignoresSafeArea())
+        .background(themePaper.ignoresSafeArea())
     }
 
     @ViewBuilder

@@ -226,6 +226,7 @@
 "ai.tutorName" = "מורה AI";
 "ai.menu" = "תפריט מורה AI";
 "ai.ask" = "שאלו את ה-AI";
+"ai.pen" = "עט AI";
 "ai.askPlaceholder" = "שאלו על המחברת שלכם…";
 "ai.askHint" = "המורה רואה את כל עמודי המחברת.";
 "ai.askMore" = "שאלו עוד…";

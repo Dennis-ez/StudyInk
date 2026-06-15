@@ -226,6 +226,7 @@
 "ai.tutorName" = "AI Tutor";
 "ai.menu" = "AI Tutor Menu";
 "ai.ask" = "Ask AI";
+"ai.pen" = "AI pen";
 "ai.askPlaceholder" = "Ask about your notes…";
 "ai.askHint" = "The tutor sees all pages of this note.";
 "ai.askMore" = "Ask more…";
