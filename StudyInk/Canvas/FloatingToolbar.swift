@@ -193,8 +193,13 @@ struct FloatingToolbar: View {
                 .accessibilityLabel(Text("tool.textbox"))
             }
             ForEach(extraItems.filter { enabledAccessories.contains($0.id) }) { item in
-                Button(action: item.action) { Image(systemName: item.symbolName) }
-                    .accessibilityLabel(Text(item.labelKey))
+                Button(action: item.action) {
+                    Image(systemName: item.symbolName)
+                        // The AI pen wears the AI accent (teal), set apart from
+                        // the ink tools.
+                        .foregroundStyle(item.id == "ask-ai" ? AppTheme.current.aiAccent : Color.primary)
+                }
+                .accessibilityLabel(Text(item.labelKey))
             }
             Menu {
                 Button { showCustomize = true } label: { Label("toolbar.customize", systemImage: "slider.horizontal.3") }
