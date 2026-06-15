@@ -17,7 +17,7 @@ struct AudioBar: View {
             } label: {
                 Image(systemName: audio.isRecording ? "stop.circle.fill" : "mic.circle.fill")
                     .font(.title2)
-                    .foregroundStyle(audio.isRecording ? Color("errorRed") : SemanticColor.accentBlue)
+                    .foregroundStyle(audio.isRecording ? Color("errorRed") : Color.accentColor)
                     .symbolEffect(.pulse, isActive: audio.isRecording)
             }
             .accessibilityLabel(Text(audio.isRecording ? "audio.stop" : "audio.record"))

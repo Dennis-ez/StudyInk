@@ -53,7 +53,7 @@ struct ShapeNodeOverlay: View {
                 Circle()
                     .fill(.white)
                     .frame(width: 10, height: 10)
-                    .overlay(Circle().strokeBorder(SemanticColor.accentBlue, lineWidth: 1.5))
+                    .overlay(Circle().strokeBorder(Color.accentColor, lineWidth: 1.5))
                     .shadow(color: .black.opacity(0.12), radius: 1, y: 0.5)
                     .contentShape(Circle().scale(3.4))
                     .position(transform.toScreen(node))

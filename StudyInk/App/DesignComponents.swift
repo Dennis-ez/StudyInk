@@ -1,5 +1,21 @@
 import SwiftUI
 
+/// The brand display face — Fraunces, bundled. Used for every title/heading so
+/// the serif voice is consistent across the app (the mockup's display font).
+/// Falls back to the system serif if the face ever fails to load.
+extension Font {
+    static func fraunces(_ size: CGFloat, weight: Font.Weight = .semibold, relativeTo textStyle: Font.TextStyle = .body) -> Font {
+        .custom("Fraunces", size: size, relativeTo: textStyle).weight(weight)
+    }
+}
+
+extension View {
+    /// Display text in the brand serif at a fixed scale-relative size.
+    func frauncesTitle(_ size: CGFloat, weight: Font.Weight = .bold, relativeTo style: Font.TextStyle = .title) -> some View {
+        self.font(.fraunces(size, weight: weight, relativeTo: style))
+    }
+}
+
 /// The app's loading indicator: a stroke of ink drawing itself round, in the
 /// theme accent — never the system beachball. Used on note thumbnails, AI
 /// waits, and launch.
@@ -44,7 +60,7 @@ struct SplashView: View {
                     .scaleEffect(appeared ? 1 : 0.82)
                     .opacity(appeared ? 1 : 0)
                 Text(verbatim: "StudyInk")
-                    .font(.system(.title, design: .serif).weight(.bold))
+                    .font(.fraunces(30, weight: .bold, relativeTo: .title))
                     .foregroundStyle(.primary)
                     .opacity(appeared ? 1 : 0)
                     .offset(y: appeared ? 0 : 6)

@@ -165,7 +165,7 @@ struct NoteEditorView: View {
                 } label: {
                     VStack(alignment: .leading, spacing: 1) {
                         Text(verbatim: note.title ?? "")
-                            .font(.system(.title3, design: .serif).weight(.bold))
+                            .font(.fraunces(20, weight: .bold, relativeTo: .title3))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                         Text(note.createdAt ?? .now, format: .dateTime.day().month().year().hour().minute())

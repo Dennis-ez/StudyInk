@@ -114,7 +114,7 @@ struct NoteGridView: View {
                     if case .subject(let s) = section { Text(verbatim: s.name ?? "") }
                     else { Text(section.titleKey) }
                 }
-                .font(.system(.largeTitle, design: .serif).weight(.bold))
+                .font(.fraunces(34, weight: .bold, relativeTo: .largeTitle))
                 .foregroundStyle(.primary)
                 Spacer()
             }

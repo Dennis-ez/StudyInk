@@ -175,7 +175,7 @@ struct LibraryView: View {
                     .frame(width: 30, height: 30)
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 Text(verbatim: "StudyInk")
-                    .font(.system(.title2, design: .serif).weight(.bold))
+                    .font(.fraunces(22, weight: .bold, relativeTo: .title2))
                     .foregroundStyle(.primary)
                 Spacer()
             }
@@ -244,8 +244,16 @@ struct LibraryView: View {
             Section {
                 sectionRow(.deleted, systemName: "trash", count: deletedCount)
             }
-
-            // Settings at the bottom of the sidebar (Paper & Ink).
+        }
+        .scrollContentBackground(.hidden)
+        // Plain (not .sidebar) = edge-to-edge rows with no grouped inset, so the
+        // warm panel reads as a full-bleed spine.
+        .listStyle(.plain)
+        .environment(\.defaultMinListRowHeight, 44)
+        // Full-bleed, full-height warm sidebar (no floating-panel inset).
+        .background(themeSidebar.ignoresSafeArea())
+        // Settings pinned to the very bottom of the sidebar (Paper & Ink).
+        .safeAreaInset(edge: .bottom, spacing: 0) {
             Button { showSettings = true } label: {
                 HStack(spacing: 11) {
                     Image(systemName: "gearshape").font(.system(size: 16)).frame(width: 22)
@@ -253,13 +261,13 @@ struct LibraryView: View {
                     Spacer()
                 }
                 .foregroundStyle(.secondary)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 14)
+                .contentShape(Rectangle())
             }
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
+            .buttonStyle(.plain)
+            .background(themeSidebar.ignoresSafeArea())
         }
-        .scrollContentBackground(.hidden)
-        // Full-bleed, full-height warm sidebar (no floating-panel inset).
-        .background(themeSidebar.ignoresSafeArea())
         // The sidebar is the library's spine — it can't be hidden from the
         // main screen (the editor still takes the full screen when a note opens).
         .hideSidebarToggle()
@@ -288,7 +296,8 @@ struct LibraryView: View {
             }
             .foregroundStyle(selected ? Color.white : .primary)
         }
-        .listRowBackground(roundedRowBackground(selected ? Color.accentColor : .clear))
+        // A faint surface on every row so they read as buttons, not plain text.
+        .listRowBackground(roundedRowBackground(selected ? Color.accentColor : Color.primary.opacity(0.04)))
         .listRowSeparator(.hidden)
     }
 

@@ -19,9 +19,10 @@ struct StudyInkApp: App {
                 // Color.accentColor call site on-theme.
                 .tint(theme.accent)
                 .accentColor(theme.accent)
-                // The AI accent flows down reactively so every AI surface
-                // updates the instant the theme changes.
-                .environment(\.aiAccent, theme.aiAccent)
+                // AI surfaces use the theme's accent (not a separate colour),
+                // flowing down reactively so they update the instant the theme
+                // changes.
+                .environment(\.aiAccent, theme.accent)
                 .environment(\.themePaper, theme.paper)
                 .environment(\.themeSidebar, theme.sidebar)
                 // Each theme carries its own app icon.

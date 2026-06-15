@@ -5,6 +5,7 @@ import SwiftUI
 struct AIPanelView: View {
     @ObservedObject var tutor: AITutorController
     @Environment(\.layoutDirection) private var layoutDirection
+    @Environment(\.aiAccent) private var aiAccent
     @State private var input = ""
     @FocusState private var inputFocused: Bool
 
@@ -51,7 +52,7 @@ struct AIPanelView: View {
                 } else {
                     Image(systemName: "arrow.up.circle.fill")
                         .font(.title3)
-                        .foregroundStyle(input.isEmpty ? Color.secondary : SemanticColor.accentBlue)
+                        .foregroundStyle(input.isEmpty ? Color.secondary : aiAccent)
                 }
             }
             .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isLoading)
@@ -81,7 +82,7 @@ struct AIPanelView: View {
                 .accessibilityLabel(Text("action.back"))
             }
             Text(tutor.panelBubbleID == nil ? "ai.history" : "ai.thread")
-                .font(.headline)
+                .font(.fraunces(18, weight: .semibold, relativeTo: .headline))
             Spacer()
             Button {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {

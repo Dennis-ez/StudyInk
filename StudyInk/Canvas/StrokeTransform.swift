@@ -193,13 +193,13 @@ struct StrokeTransformOverlay: View {
             Image(uiImage: selection.image)
                 .resizable()
                 .frame(width: size.width, height: size.height)
-                .overlay(Rectangle().strokeBorder(SemanticColor.accentBlue, style: StrokeStyle(lineWidth: 1.5, dash: [6, 4])))
+                .overlay(Rectangle().strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 1.5, dash: [6, 4])))
                 .overlay {
                     ForEach(corners, id: \.self) { corner in
                         Circle()
                             .fill(.white)
                             .frame(width: 15, height: 15)
-                            .overlay(Circle().strokeBorder(SemanticColor.accentBlue, lineWidth: 2))
+                            .overlay(Circle().strokeBorder(Color.accentColor, lineWidth: 2))
                             .shadow(color: .black.opacity(0.2), radius: 1)
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: Alignment(corner))
                             .contentShape(Rectangle().size(width: 30, height: 30))
