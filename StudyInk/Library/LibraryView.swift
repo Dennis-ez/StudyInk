@@ -313,6 +313,7 @@ struct LibraryView: View {
         AnyView(
             Group {
                 subjectRow(subject, depth: depth)
+                    .listRowSeparator(.hidden)
                 if !collapsedSubjects.contains(subject.objectID) {
                     ForEach(sortedChildren(of: subject), id: \.objectID) { child in
                         subjectRows(child, depth: depth + 1)
