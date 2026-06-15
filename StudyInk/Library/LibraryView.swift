@@ -296,8 +296,8 @@ struct LibraryView: View {
             }
             .foregroundStyle(selected ? Color.white : .primary)
         }
-        // A faint surface on every row so they read as buttons, not plain text.
-        .listRowBackground(roundedRowBackground(selected ? Color.accentColor : Color.primary.opacity(0.04)))
+        .buttonStyle(SidebarRowButtonStyle())
+        .listRowBackground(roundedRowBackground(selected ? Color.accentColor : .clear))
         .listRowSeparator(.hidden)
     }
 

@@ -16,6 +16,18 @@ extension View {
     }
 }
 
+/// Sidebar nav row: no resting fill — it reads as text until touched, then
+/// dims/insets on press so it reacts like a button under the finger.
+struct SidebarRowButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.45 : 1)
+            .scaleEffect(configuration.isPressed ? 0.97 : 1, anchor: .leading)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+            .contentShape(Rectangle())
+    }
+}
+
 /// The app's loading indicator: a stroke of ink drawing itself round, in the
 /// theme accent — never the system beachball. Used on note thumbnails, AI
 /// waits, and launch.
