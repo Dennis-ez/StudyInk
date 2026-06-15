@@ -94,7 +94,11 @@ struct LibraryView: View {
                         columnVisibility = .all
                     }
                 )
-                .navigationTitle(detailTitle)
+                // The big title lives in the content (serif); keep the bar for
+                // the action buttons only, transparent over the warm paper.
+                .navigationTitle("")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbarBackground(.hidden, for: .navigationBar)
                 .toolbar { detailToolbar }
                 .fileImporter(isPresented: $importingPDF, allowedContentTypes: [.pdf]) { result in
                     if case .success(let url) = result { importPDFAsNote(from: url) }
@@ -161,12 +165,43 @@ struct LibraryView: View {
         // Explicit selection buttons: List(selection:) silently stopped
         // selecting once rows became custom HStacks.
         List {
+            // Wordmark: the ink drop + serif name (Paper & Ink).
+            HStack(spacing: 9) {
+                Image(systemName: "drop.fill")
+                    .font(.title3)
+                    .foregroundStyle(.tint)
+                Text(verbatim: "StudyInk")
+                    .font(.system(.title2, design: .serif).weight(.bold))
+                    .foregroundStyle(.primary)
+                Spacer()
+            }
+            .padding(.vertical, 2)
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+
+            // Search — a rounded paper field, not the system search bar.
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass").font(.subheadline).foregroundStyle(.secondary)
+                TextField("library.searchPrompt", text: $searchText)
+                    .textFieldStyle(.plain)
+                    .font(.subheadline)
+                if !searchText.isEmpty {
+                    Button { searchText = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                        .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 12).padding(.vertical, 9)
+            .background(SemanticColor.paperBackground, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(.black.opacity(0.06)))
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+
             Section {
                 // One tint across the smart sections — the sidebar reads as a
                 // set, not a rainbow.
-                sectionRow(.all, systemName: "tray.full.fill", count: activeNotes.count)
-                sectionRow(.recents, systemName: "clock.fill", count: recentsCount)
-                sectionRow(.favorites, systemName: "star.fill", count: favoritesCount)
+                sectionRow(.all, systemName: "tray.full", count: activeNotes.count)
+                sectionRow(.recents, systemName: "clock", count: recentsCount)
+                sectionRow(.favorites, systemName: "star", count: favoritesCount)
             }
             Section(header:
                 HStack {
@@ -203,10 +238,21 @@ struct LibraryView: View {
                 }
             }
             Section {
-                sectionRow(.deleted, systemName: "trash.fill", count: deletedCount)
+                sectionRow(.deleted, systemName: "trash", count: deletedCount)
             }
+
+            // Settings at the bottom of the sidebar (Paper & Ink).
+            Button { showSettings = true } label: {
+                HStack(spacing: 11) {
+                    Image(systemName: "gearshape").font(.system(size: 16)).frame(width: 22)
+                    Text("settings.title").font(.subheadline.weight(.medium))
+                    Spacer()
+                }
+                .foregroundStyle(.secondary)
+            }
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
         }
-        .searchable(text: $searchText, placement: .sidebar, prompt: Text("library.searchPrompt"))
         .scrollContentBackground(.hidden)
         .background(SemanticColor.sidebarBackground)
         // The sidebar is the library's spine — it can't be hidden from the
@@ -214,31 +260,31 @@ struct LibraryView: View {
         .hideSidebarToggle()
         // Single fixed width = the user can't drag-resize the sidebar.
         .navigationSplitViewColumnWidth(280)
-        // No app-name header — the sidebar speaks for itself.
-        .toolbarTitleDisplayMode(.inline)
-        .toolbar {
-            // Settings lives top-LEFT of the sidebar.
-            ToolbarItem(placement: .topBarLeading) {
-                Button { showSettings = true } label: { Image(systemName: "gearshape") }
-                    .accessibilityLabel(Text("settings.title"))
-            }
-        }
+        .toolbar(.hidden, for: .navigationBar)
     }
 
     private func sectionRow(_ section: LibrarySection, systemName: String, count: Int) -> some View {
-        Button {
+        let selected = selection == section
+        return Button {
             selection = section
         } label: {
-            HStack(spacing: 10) {
-                iconTile(systemName: systemName, tint: .accentColor)
+            HStack(spacing: 11) {
+                Image(systemName: systemName)
+                    .font(.system(size: 16))
+                    .frame(width: 22)
                 Text(section.titleKey)
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(.primary)
+                    .font(.subheadline.weight(.medium))
                 Spacer()
-                countBadge(count)
+                Text(verbatim: "\(count)")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(selected ? Color.white.opacity(0.85) : .secondary)
+                    .padding(.horizontal, 7).padding(.vertical, 2)
+                    .background(selected ? Color.white.opacity(0.22) : Color.secondary.opacity(0.12), in: Capsule())
             }
+            .foregroundStyle(selected ? Color.white : .primary)
         }
-        .listRowBackground(selection == section ? roundedRowBackground(Color.accentColor.opacity(0.14)) : nil)
+        .listRowBackground(roundedRowBackground(selected ? Color.accentColor : .clear))
+        .listRowSeparator(.hidden)
     }
 
     private func roundedRowBackground(_ color: Color) -> some View {
@@ -548,8 +594,29 @@ struct LibraryView: View {
             .accessibilityLabel(Text("library.sort"))
 
             if selection != .deleted {
-                Button(action: addNote) { Image(systemName: "square.and.pencil") }
-                    .accessibilityLabel(Text("library.newNote"))
+                // Ask AI — a prominent pill that starts a new note (the AI lives
+                // in the editor). Matches the Paper & Ink header.
+                Button(action: addNote) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "sparkles")
+                        Text("ai.ask")
+                    }
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 13).padding(.vertical, 7)
+                    .background(Color.accentColor, in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text("ai.ask"))
+
+                Button(action: addNote) {
+                    Image(systemName: "square.and.pencil")
+                        .frame(width: 32, height: 32)
+                        .background(SemanticColor.paperBackground, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.black.opacity(0.1)))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text("library.newNote"))
             }
         }
     }

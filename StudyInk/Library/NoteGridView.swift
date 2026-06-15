@@ -107,21 +107,47 @@ struct NoteGridView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Sub-filters live under the All Notes title — only there.
-            if section == .all {
-                Picker("library.allNotes", selection: $allTab) {
-                    ForEach(AllTab.allCases, id: \.self) { tab in
-                        Text(tab.labelKey).tag(tab)
-                    }
+            // Big serif title (Paper & Ink), in the content not the nav bar.
+            HStack {
+                Group {
+                    if case .subject(let s) = section { Text(verbatim: s.name ?? "") }
+                    else { Text(section.titleKey) }
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
+                .font(.system(.largeTitle, design: .serif).weight(.bold))
+                .foregroundStyle(.primary)
+                Spacer()
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 12)
+            // Sub-filters live under the All Notes title — only there. Pill
+            // tabs (Paper & Ink), not the iOS segmented control.
+            if section == .all {
+                HStack(spacing: 6) {
+                    ForEach(AllTab.allCases, id: \.self) { tab in
+                        let on = allTab == tab
+                        Button {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { allTab = tab }
+                        } label: {
+                            Text(tab.labelKey)
+                                .font(.subheadline.weight(on ? .semibold : .regular))
+                                .foregroundStyle(on ? Color(.systemBackground) : .secondary)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 7)
+                                .background(
+                                    Capsule().fill(on ? Color.primary : .clear)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    Spacer()
+                }
                 .padding(.horizontal, 20)
-                .padding(.top, 6)
-                .padding(.bottom, 2)
+                .padding(.top, 8)
+                .padding(.bottom, 4)
             }
             content
         }
+        .background(SemanticColor.paperBackground.ignoresSafeArea())
     }
 
     @ViewBuilder

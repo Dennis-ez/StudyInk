@@ -100,6 +100,7 @@ enum AppTheme: String, CaseIterable, Identifiable {
 
 /// Typed accessors for the semantic palette so call sites can't typo a token name.
 enum SemanticColor {
+    static let paperBackground = Color("paperBackground")
     static let canvasBackground = Color("canvasBackground")
     static let templateLine = Color("templateLine")
     static let toolbarBackground = Color("toolbarBackground")
