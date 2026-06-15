@@ -224,6 +224,7 @@
 
 /* מורה AI */
 "ai.tutorName" = "מורה AI";
+"ai.tutorRole" = "שותף ללמידה";
 "ai.menu" = "תפריט מורה AI";
 "ai.ask" = "שאלו את ה-AI";
 "ai.pen" = "עט AI";

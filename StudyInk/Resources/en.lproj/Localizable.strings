@@ -224,6 +224,7 @@
 
 /* AI tutor */
 "ai.tutorName" = "AI Tutor";
+"ai.tutorRole" = "Study partner";
 "ai.menu" = "AI Tutor Menu";
 "ai.ask" = "Ask AI";
 "ai.pen" = "AI pen";

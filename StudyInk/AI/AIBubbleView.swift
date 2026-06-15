@@ -78,22 +78,23 @@ struct AIBubbleView: View {
             askMoreField
             footer
         }
-        // Paper styling: the bubble reads as part of the page — same paper
-        // color, template-line border, tone shown as a thin top rule.
-        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color("canvasBackground")))
+        // Paper-card styling: a clean rounded card with a hairline in the AI
+        // accent and a soft lift off the page; the tone shows as a colored
+        // shoulder along the leading edge.
+        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color("canvasBackground")))
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color("templateLine"), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(aiAccent.opacity(0.22), lineWidth: 1)
         )
-        .overlay(alignment: .top) {
+        .overlay(alignment: .leading) {
             Capsule()
                 .fill(Color(bubble.tone.colorToken))
-                .frame(height: 3)
-                .padding(.horizontal, 14)
+                .frame(width: 3)
+                .padding(.vertical, 14)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(alignment: .bottomTrailing) { resizeHandle }
-        .shadow(color: .black.opacity(0.10), radius: 4, y: 2)
+        .shadow(color: .black.opacity(0.12), radius: 12, y: 5)
         .environment(\.layoutDirection, isRTL ? .rightToLeft : .leftToRight)
     }
 
@@ -127,59 +128,62 @@ struct AIBubbleView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "line.3.horizontal")
-                .font(.caption2)
-                .foregroundStyle(.quaternary)
+        HStack(spacing: 9) {
             avatar
-            Text("ai.tutorName")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(aiAccent)
-            Circle()
-                .fill(Color(bubble.tone.colorToken))
-                .frame(width: 7, height: 7)
+            VStack(alignment: .leading, spacing: 0) {
+                Text("ai.tutorName")
+                    .font(.fraunces(15, weight: .semibold, relativeTo: .subheadline))
+                    .foregroundStyle(aiAccent)
+                Text("ai.tutorRole")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
             Spacer()
-            Button {
+            headerButton(bubble.isPinned ? "pin.fill" : "pin", label: "ai.pin") {
                 Haptics.tap()
                 tutor.pin(bubbleID: bubble.id)
-            } label: {
-                Image(systemName: bubble.isPinned ? "pin.fill" : "pin")
-                    .font(.caption)
-                    .frame(width: 28, height: 28)
-                    .contentShape(Rectangle())
             }
-            .accessibilityLabel(Text("ai.pin"))
-            Button {
+            headerButton("xmark", label: "ai.dismiss") {
                 Haptics.tap()
                 withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
                     tutor.dismiss(bubbleID: bubble.id)
                 }
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.caption.weight(.semibold))
-                    .frame(width: 28, height: 28)
-                    .contentShape(Rectangle())
             }
-            .accessibilityLabel(Text("ai.dismiss"))
         }
         .padding(.horizontal, 14)
-        .padding(.top, 10)
-        .padding(.bottom, 4)
+        .padding(.top, 12)
+        .padding(.bottom, 6)
         .contentShape(Rectangle())
         // The header is the drag handle — the scrollable thread below would
         // otherwise swallow drags.
         .highPriorityGesture(dragGesture)
     }
 
+    /// Soft circular header control — pin / dismiss.
+    private func headerButton(_ symbol: String, label: LocalizedStringKey, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 26, height: 26)
+                .background(Circle().fill(.ultraThinMaterial))
+                .overlay(Circle().strokeBorder(.black.opacity(0.06)))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(label))
+    }
+
     private var avatar: some View {
-        RoundedRectangle(cornerRadius: 8, style: .continuous)
+        RoundedRectangle(cornerRadius: 9, style: .continuous)
             .fill(aiAccent)
-            .frame(width: 26, height: 26)
+            .frame(width: 30, height: 30)
             .overlay(
                 Image(systemName: "sparkles")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.white)
             )
+            .shadow(color: aiAccent.opacity(0.35), radius: 4, y: 2)
     }
 
     /// Natural height for short threads; scrolls once content exceeds the
@@ -197,10 +201,11 @@ struct AIBubbleView: View {
             ForEach(bubble.thread) { exchange in
                 if let question = exchange.question, !question.isEmpty {
                     Text(question)
-                        .font(.caption)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(SemanticColor.userMessageBubble.opacity(0.16), in: RoundedRectangle(cornerRadius: 8))
+                        .font(.subheadline)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(aiAccent.opacity(0.13), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                        .frame(maxWidth: .infinity, alignment: .trailing)
                 }
                 if !exchange.answer.isEmpty {
                     AIRichText(content: exchange.answer)

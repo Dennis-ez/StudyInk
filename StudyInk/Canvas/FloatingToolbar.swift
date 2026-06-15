@@ -342,12 +342,13 @@ struct FloatingToolbar: View {
             let ink = controller.inkColor(for: kind)
             ZStack(alignment: .bottom) {
                 Image(systemName: kind.symbolName)
+                    .symbolVariant(isActive ? .fill : .none)
                     // Ink tools wear their own color; others use the accent when active.
                     .foregroundStyle(ink ?? (isActive ? Color.accentColor : Color.primary))
                     .background(
-                        RoundedRectangle(cornerRadius: 7)
-                            .fill(isActive ? (ink ?? Color.accentColor).opacity(0.16) : .clear)
-                            .frame(width: 28, height: 28)
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            .fill(isActive ? (ink ?? Color.accentColor).opacity(0.18) : .clear)
+                            .frame(width: 30, height: 30)
                     )
                 // Current-color indicator dot, centered under the tool.
                 if let ink {
@@ -602,7 +603,7 @@ private struct ToolbarButtonStyle: ButtonStyle {
         configuration.label
             .font(.system(size: 15, weight: .medium))
             .frame(width: 30, height: 30)
-            .background(configuration.isPressed ? Color.primary.opacity(0.08) : .clear, in: RoundedRectangle(cornerRadius: 7))
+            .background(configuration.isPressed ? Color.primary.opacity(0.08) : .clear, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
             .contentShape(Rectangle())
     }
 }
