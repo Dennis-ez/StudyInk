@@ -539,18 +539,10 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         // PencilKit renders ink in nested internal views — the scale bump must
         // reach the whole tree or zoomed ink stays soft.
         applyRasterScale(raster, to: canvas)
-        // Setting contentsScale alone does NOT make PencilKit re-rasterize the
-        // ink — it keeps showing the bitmap captured at the old scale, so zoomed
-        // ink stays blurry. Re-assigning the (unchanged) drawing forces a fresh
-        // render at the new scale. Guarded as a programmatic change so it never
-        // counts as an edit. (Runs only on zoom-settle, never mid-stroke.)
-        if canvas.drawingGestureRecognizer.state != .began,
-           canvas.drawingGestureRecognizer.state != .changed {
-            let snapshot = canvas.drawing
-            isProgrammaticChange = true
-            canvas.drawing = snapshot
-            isProgrammaticChange = false
-        }
+        // NOTE: re-assigning canvas.drawing here to force a sharper re-render
+        // BROKE new ink input (existing strokes showed, new ones never
+        // registered). PencilKit's input state can't survive a drawing swap.
+        // Deep-zoom sharpness needs PencilKit-native zoom, not this. Reverted.
         // Cached full-page bitmaps of inactive pages are NOT tiled — render at
         // screen scale (retina-sharp at rest) and bump with zoom, but cap the
         // zoom contribution at 2x to keep memory sane (zoomed past that you're
