@@ -28,7 +28,7 @@ struct AIBubbleView: View {
 
     var body: some View {
         let screenPos = transform.toScreen(CGPoint(x: bubble.x, y: bubble.y))
-        let cardWidth = max(bubble.width, 260)
+        let cardWidth = max(bubble.width, 200)
 
         Group {
             if bubble.isCollapsed {
@@ -81,20 +81,20 @@ struct AIBubbleView: View {
         // Paper-card styling: a clean rounded card with a hairline in the AI
         // accent and a soft lift off the page; the tone shows as a colored
         // shoulder along the leading edge.
-        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color("canvasBackground")))
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color("canvasBackground")))
         .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .strokeBorder(aiAccent.opacity(0.22), lineWidth: 1)
         )
         .overlay(alignment: .leading) {
             Capsule()
                 .fill(Color(bubble.tone.colorToken))
                 .frame(width: 3)
-                .padding(.vertical, 14)
+                .padding(.vertical, 10)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(alignment: .bottomTrailing) { resizeHandle }
-        .shadow(color: .black.opacity(0.12), radius: 12, y: 5)
+        .shadow(color: .black.opacity(0.10), radius: 8, y: 3)
         .environment(\.layoutDirection, isRTL ? .rightToLeft : .leftToRight)
     }
 
@@ -128,17 +128,12 @@ struct AIBubbleView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 9) {
+        HStack(spacing: 7) {
             avatar
-            VStack(alignment: .leading, spacing: 0) {
-                Text("ai.tutorName")
-                    .font(.fraunces(15, weight: .semibold, relativeTo: .subheadline))
-                    .foregroundStyle(aiAccent)
-                Text("ai.tutorRole")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
+            Text("ai.tutorName")
+                .font(.fraunces(13, weight: .semibold, relativeTo: .footnote))
+                .foregroundStyle(aiAccent)
+            Spacer(minLength: 4)
             headerButton(bubble.isPinned ? "pin.fill" : "pin", label: "ai.pin") {
                 Haptics.tap()
                 tutor.pin(bubbleID: bubble.id)
@@ -150,9 +145,10 @@ struct AIBubbleView: View {
                 }
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.top, 12)
-        .padding(.bottom, 6)
+        .padding(.leading, 11)
+        .padding(.trailing, 7)
+        .padding(.top, 8)
+        .padding(.bottom, 3)
         .contentShape(Rectangle())
         // The header is the drag handle — the scrollable thread below would
         // otherwise swallow drags.
@@ -163,9 +159,9 @@ struct AIBubbleView: View {
     private func headerButton(_ symbol: String, label: LocalizedStringKey, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(.secondary)
-                .frame(width: 26, height: 26)
+                .frame(width: 22, height: 22)
                 .background(Circle().fill(.ultraThinMaterial))
                 .overlay(Circle().strokeBorder(.black.opacity(0.06)))
                 .contentShape(Circle())
@@ -175,15 +171,14 @@ struct AIBubbleView: View {
     }
 
     private var avatar: some View {
-        RoundedRectangle(cornerRadius: 9, style: .continuous)
+        RoundedRectangle(cornerRadius: 7, style: .continuous)
             .fill(aiAccent)
-            .frame(width: 30, height: 30)
+            .frame(width: 22, height: 22)
             .overlay(
                 Image(systemName: "sparkles")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.white)
             )
-            .shadow(color: aiAccent.opacity(0.35), radius: 4, y: 2)
     }
 
     /// Natural height for short threads; scrolls once content exceeds the
@@ -201,10 +196,10 @@ struct AIBubbleView: View {
             ForEach(bubble.thread) { exchange in
                 if let question = exchange.question, !question.isEmpty {
                     Text(question)
-                        .font(.subheadline)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 7)
-                        .background(aiAccent.opacity(0.13), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                        .font(.footnote)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(aiAccent.opacity(0.13), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 }
                 if !exchange.answer.isEmpty {
@@ -212,8 +207,8 @@ struct AIBubbleView: View {
                 }
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 4)
     }
 
     private var loadingRow: some View {
