@@ -103,14 +103,25 @@ final class GuidedModeController: ObservableObject {
         await OCRService.indexPage(page)
         let typed = page.textBoxes.map(\.text).joined(separator: "\n")
         let content = [(page.ocrText ?? ""), typed].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-        guard content.count > 12, force || content != lastSeenText else { return }
-        lastSeenText = content
+        // Use stroke count too, so we still re-evaluate handwriting that OCR
+        // can't read (the model SEES the page image below regardless).
+        let strokeCount = page.drawing.strokes.count
+        let signature = "\(content)#\(strokeCount)"
+        guard strokeCount > 2 || content.count > 8 else { return }     // something to look at
+        guard force || signature != lastSeenText else { return }       // and it changed
+        lastSeenText = signature
         lastRequestAt = Date()
         inFlight = true
         defer { inFlight = false }
 
+        // Render the page so the model can read handwriting visually, not just OCR.
+        let snapshot = PageRenderer.Snapshot(page: page)
+        let pageImage = await Task.detached(priority: .utility) {
+            PageRenderer.render(snapshot, darkMode: false, scale: 1)
+        }.value
+
         let hint = """
-        GUIDED MODE: You are passively watching the student write. Below is the OCR + typed text of the current page.
+        GUIDED MODE: You are passively watching the student write. The image above is the student's CURRENT PAGE — read their handwriting from it (OCR is unreliable). Any OCR/typed text follows for reference.
         Decide whether ONE genuinely useful, proactive suggestion exists. A good suggestion:
         - quotes or names the exact expression/line it is about (e.g. "you wrote lim x→0 sin(x)/x — want me to check the evaluation?")
         - offers a concrete next action (check a step, verify a base case, test an edge case, finish a definition)
@@ -120,14 +131,21 @@ final class GuidedModeController: ObservableObject {
         {"suggestion": "<the one-sentence suggestion>", "match_string": "<exact string copied verbatim from the page text it refers to — required whenever possible, else null>"}
         If nothing clears that bar, respond with exactly {}.
 
-        Page content:
+        OCR/typed text (may be empty or wrong):
         \(content.prefix(3000))
         """
+
+        var blocks: [AIContent] = []
+        if let imageBlock = AIContent.image(pageImage) {
+            blocks.append(.text("The student's current page:"))
+            blocks.append(imageBlock)
+        }
+        blocks.append(.text(hint))
 
         do {
             let raw = try await AIService.send(
                 system: SystemPrompt.tutor(subjectContext: note.subjectContext ?? "calculus1"),
-                messages: [.user(text: hint)],
+                messages: [.user(blocks)],
                 maxTokens: 300
             )
             guard let data = extractJSON(from: raw)?.data(using: .utf8),

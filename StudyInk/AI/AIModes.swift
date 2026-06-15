@@ -37,7 +37,7 @@ extension AITutorController {
             Connect points smoothly; prefer fewer, longer strokes over many tiny ones.
             """
             let raw = try await AIService.send(
-                system: SystemPrompt.tutor(subjectContext: note?.subjectContext ?? "calculus1"),
+                system: SystemPrompt.tutor(subjectContext: note?.subjectContext ?? "calculus1", directAnswer: true),
                 messages: [.user(text: prompt)],
                 maxTokens: 3000
             )
@@ -112,7 +112,7 @@ extension AITutorController {
             """))
 
             let raw = try await AIService.send(
-                system: SystemPrompt.tutor(subjectContext: note.subjectContext ?? "calculus1"),
+                system: SystemPrompt.tutor(subjectContext: note.subjectContext ?? "calculus1", directAnswer: true),
                 messages: [.user(blocks)],
                 maxTokens: 800
             )

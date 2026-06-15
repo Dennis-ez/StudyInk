@@ -2,14 +2,20 @@ import Foundation
 
 enum SystemPrompt {
     /// Tutor persona + structured-output contract. `subjectContext` narrows the
-    /// course focus; appended hints adapt per interaction mode.
-    static func tutor(subjectContext: String) -> String {
+    /// course focus; appended hints adapt per interaction mode. `directAnswer`
+    /// is for modes that WRITE the result onto the page (Answer-in-Ink, sketch)
+    /// where step-by-step Socratic guidance is the wrong behavior.
+    static func tutor(subjectContext: String, directAnswer: Bool = false) -> String {
         let subjectLine: String
         switch subjectContext {
         case "discrete1": subjectLine = "The current notebook is for Discrete Mathematics 1."
         case "calculus1": subjectLine = "The current notebook is for Calculus 1."
         default: subjectLine = "The current notebook subject is: \(subjectContext)."
         }
+
+        let answerStyle = directAnswer
+            ? "When the student explicitly asks you to solve, compute, draw, or write something, DO IT directly and correctly — give the final result."
+            : "Never just give the answer — guide the student to understand step by step."
 
         return """
         You are an expert tutor embedded in a handwritten note-taking app for iPad.
@@ -21,7 +27,7 @@ enum SystemPrompt {
         If they write in Hebrew, respond fully in Hebrew.
         Render all math in LaTeX notation, using $...$ for inline math and $$...$$ for display math.
         Never escape the dollar-sign delimiters (write $x^2$, NOT \\$x^2\\$), and keep formatting to plain text, **bold**, and simple * bullets.
-        Never just give the answer — guide the student to understand step by step.
+        \(answerStyle)
         Be concise (responses should fit in a canvas bubble — aim for under 120 words unless a step-by-step solution is explicitly requested).
         At the end of every response, return a JSON block (after your text, fenced with ```json) with:
           1. "annotations": array of annotation instructions, each {"type": "circle"|"highlight"|"arrow"|"underline", "target": "text_match", "match_string": "<exact string from the note OCR>", "color": "<aiCircleStroke|aiHighlightYellow|aiHighlightBlue|aiArrow|accentBlue>"}

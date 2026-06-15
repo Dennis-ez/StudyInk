@@ -340,7 +340,11 @@ enum AIConfig {
     static var geminiKey: String? { apiKey(for: .gemini) }
 
     static var provider: AIProvider {
-        AIProvider(rawValue: UserDefaults.standard.string(forKey: "settings.ai.provider") ?? "") ?? .claude
+        let selected = AIProvider(rawValue: UserDefaults.standard.string(forKey: "settings.ai.provider") ?? "") ?? .claude
+        // A single configured key should just work: if the selected provider
+        // has no key but another does, use the one that's actually set up.
+        if isConfigured(for: selected) { return selected }
+        return AIProvider.allCases.first(where: { isConfigured(for: $0) }) ?? selected
     }
 
     static func model(for provider: AIProvider) -> String {
