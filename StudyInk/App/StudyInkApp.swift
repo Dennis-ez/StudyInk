@@ -94,33 +94,49 @@ enum AppTheme: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Each theme warms the paper a touch differently (light mode); dark mode
-    /// shares a warm charcoal. Backed by a dynamic UIColor so it auto-adapts.
+    /// Each theme tints the paper toward its own mood so switching themes is
+    /// clearly visible — warm/cool/grey hue shifts, not six near-identical
+    /// creams. Backed by a dynamic UIColor so it auto-adapts to dark mode.
     private var lightPaper: (CGFloat, CGFloat, CGFloat) {
         switch self {
-        case .paperInk:  return (0.984, 0.973, 0.949)
-        case .bright:    return (0.984, 0.976, 0.961)
-        case .editorial: return (0.980, 0.965, 0.941)
-        case .grounded:  return (0.969, 0.961, 0.937)
-        case .minimal:   return (0.973, 0.969, 0.957)
-        case .notebook:  return (0.980, 0.961, 0.941)
+        case .paperInk:  return (0.980, 0.968, 0.940)  // warm ivory
+        case .bright:    return (0.940, 0.955, 0.980)  // cool blue-white
+        case .editorial: return (0.980, 0.950, 0.952)  // plum blush
+        case .grounded:  return (0.944, 0.962, 0.940)  // sage paper
+        case .minimal:   return (0.940, 0.945, 0.952)  // cool grey
+        case .notebook:  return (0.984, 0.948, 0.942)  // rosy cream
+        }
+    }
+
+    /// Dark mode tints a warm charcoal toward the same mood so themes read in
+    /// both appearances.
+    private var darkPaper: (CGFloat, CGFloat, CGFloat) {
+        switch self {
+        case .paperInk:  return (0.094, 0.086, 0.072)  // warm
+        case .bright:    return (0.070, 0.078, 0.098)  // cool blue
+        case .editorial: return (0.098, 0.078, 0.090)  // plum
+        case .grounded:  return (0.072, 0.090, 0.076)  // forest
+        case .minimal:   return (0.082, 0.086, 0.094)  // neutral
+        case .notebook:  return (0.100, 0.078, 0.078)  // warm red
         }
     }
 
     /// The page/library background for this theme.
     var paper: Color {
-        let (r, g, b) = lightPaper
+        let (lr, lg, lb) = lightPaper
+        let (dr, dg, db) = darkPaper
         return Color(UIColor { $0.userInterfaceStyle == .dark
-            ? UIColor(red: 0.094, green: 0.086, blue: 0.063, alpha: 1)
-            : UIColor(red: r, green: g, blue: b, alpha: 1) })
+            ? UIColor(red: dr, green: dg, blue: db, alpha: 1)
+            : UIColor(red: lr, green: lg, blue: lb, alpha: 1) })
     }
 
     /// The sidebar — a half-step darker than the paper.
     var sidebar: Color {
-        let (r, g, b) = lightPaper
+        let (lr, lg, lb) = lightPaper
+        let (dr, dg, db) = darkPaper
         return Color(UIColor { $0.userInterfaceStyle == .dark
-            ? UIColor(red: 0.122, green: 0.114, blue: 0.086, alpha: 1)
-            : UIColor(red: r * 0.965, green: g * 0.962, blue: b * 0.955, alpha: 1) })
+            ? UIColor(red: dr * 1.22, green: dg * 1.22, blue: db * 1.22, alpha: 1)
+            : UIColor(red: lr * 0.955, green: lg * 0.952, blue: lb * 0.948, alpha: 1) })
     }
 
     /// Alternate app-icon name for this theme; nil = the primary (default) icon.
