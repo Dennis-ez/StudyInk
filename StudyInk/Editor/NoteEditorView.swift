@@ -50,6 +50,7 @@ struct NoteEditorView: View {
     @State private var strokeSelection: StrokeSelection?
     @State private var strokeRotation: Double = 0
     @State private var strokeTranslation: CGSize = .zero
+    @State private var strokeScale: CGFloat = 1
     @State private var editingShape: EditingShape?
     @State private var circleAskRegion: CGRect?
     @Environment(\.managedObjectContext) private var context
@@ -156,7 +157,10 @@ struct NoteEditorView: View {
             // the desk gap, riding along with scroll/zoom) — never over ink.
             if !distractionFree, let pageOrigin = canvasController.pageScreenOrigins.first {
                 Button {
-                    renameText = note.title ?? ""
+                    // Start empty when it's still the default "Untitled" name,
+                    // so the user types over nothing (commit keeps it if blank).
+                    let untitled = String(localized: "library.untitledNote")
+                    renameText = (note.title == untitled) ? "" : (note.title ?? "")
                     showRenameAlert = true
                 } label: {
                     VStack(alignment: .leading, spacing: 1) {
@@ -347,7 +351,7 @@ struct NoteEditorView: View {
 
             // Select & rotate: lasso capture (freeform or marquee, switchable
             // inline), then live rotation preview.
-            TransformLassoOverlay(isActive: $transformLassoActive, transform: transform) { polygon in
+            TransformLassoOverlay(isActive: $transformLassoActive, transform: transform, rectangular: canvasController.lassoRectangular) { polygon in
                 beginStrokeTransform(with: polygon)
             }
             // Node editing for freshly created shapes.
@@ -385,11 +389,13 @@ struct NoteEditorView: View {
                     transform: canvasController.transform(forPage: selection.pageIndex),
                     rotation: $strokeRotation,
                     translation: $strokeTranslation,
+                    scale: $strokeScale,
                     onDone: applyStrokeTransform,
                     onCancel: {
                         strokeSelection = nil
                         strokeRotation = 0
                         strokeTranslation = .zero
+                        strokeScale = 1
                         rearmLassoIfActive()
                     }
                 )
@@ -765,6 +771,7 @@ struct NoteEditorView: View {
         guard let drawing = canvasController.canvasView?.drawing else { return }
         strokeRotation = 0
         strokeTranslation = .zero
+        strokeScale = 1
         if let selection = StrokeSelector.selection(
             from: drawing,
             polygon: polygon,
@@ -780,16 +787,17 @@ struct NoteEditorView: View {
         }
     }
 
-    /// Bake the previewed move + rotation into the strokes, undoably.
+    /// Bake the previewed move + resize + rotation into the strokes, undoably.
     private func applyStrokeTransform() {
         defer {
             strokeSelection = nil
             strokeRotation = 0
             strokeTranslation = .zero
+            strokeScale = 1
             rearmLassoIfActive()
         }
         guard let selection = strokeSelection, let canvas = canvasController.canvasView,
-              abs(strokeRotation) > 0.5 || strokeTranslation != .zero else { return }
+              abs(strokeRotation) > 0.5 || strokeTranslation != .zero || abs(strokeScale - 1) > 0.01 else { return }
         // The overlay drag is in screen points; convert to page space.
         let zoom = canvasController.transform(forPage: selection.pageIndex).zoomScale
         let pageTranslation = CGSize(width: strokeTranslation.width / zoom,
@@ -799,7 +807,7 @@ struct NoteEditorView: View {
             target.drawing = old
         }
         canvas.drawing = StrokeSelector.applyTransform(
-            rotation: strokeRotation, translation: pageTranslation, selection: selection, to: old
+            rotation: strokeRotation, scale: strokeScale, translation: pageTranslation, selection: selection, to: old
         )
         Haptics.success()
     }
@@ -1033,8 +1041,10 @@ private struct AskTutorBar: View {
 extension NoteEditorView {
     private var toolbarExtras: [ToolbarExtraItem] {
         [
-            ToolbarExtraItem(id: "ask-ai", symbolName: "sparkles", labelKey: "ai.ask") {
-                showAskField = true
+            // The AI pen: arm Circle & Ask straight from the toolbar — circle
+            // anything on the page and ask about it.
+            ToolbarExtraItem(id: "ask-ai", symbolName: "lasso.badge.sparkles", labelKey: "ai.circleAsk.title") {
+                withAnimation { askLassoActive = true }
             },
             ToolbarExtraItem(id: "ai-history", symbolName: "bubble.left.and.text.bubble.right", labelKey: "ai.history") {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {

@@ -159,6 +159,10 @@ struct FloatingToolbar: View {
                 EraserOptionsStrip(controller: controller, horizontal: dock.isHorizontal)
                     .studyGlass(cornerRadius: 18)
                     .transition(.scale(scale: 0.92, anchor: dock == .bottom ? .bottom : .top).combined(with: .opacity))
+            } else if kind == .lasso {
+                LassoOptionsStrip(controller: controller, horizontal: dock.isHorizontal)
+                    .studyGlass(cornerRadius: 18)
+                    .transition(.scale(scale: 0.92, anchor: dock == .bottom ? .bottom : .top).combined(with: .opacity))
             }
         }
     }
@@ -292,17 +296,15 @@ struct FloatingToolbar: View {
 
     private func toolButton(_ kind: ToolKind) -> some View {
         let isActive = controller.toolState.kind == kind
-        let hasOptions = kind != .hand && kind != .lasso
+        let hasOptions = kind != .hand
         return Button {
             if isActive {
-                // Second tap on the active tool = toggle its quick options strip.
-                // The lasso re-arms select-and-rotate directly instead.
+                // Second tap on the active tool = toggle its quick options strip
+                // (lasso's strip is the free/square shape selector).
                 if hasOptions {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
                         showInlineOptions.toggle()
                     }
-                } else if kind == .lasso {
-                    onTransformSelection()
                 }
             } else {
                 Haptics.selection()
@@ -317,7 +319,7 @@ struct FloatingToolbar: View {
             }
         } label: {
             let ink = controller.inkColor(for: kind)
-            ZStack(alignment: .bottomTrailing) {
+            ZStack(alignment: .bottom) {
                 Image(systemName: kind.symbolName)
                     // Ink tools wear their own color; others use the accent when active.
                     .foregroundStyle(ink ?? (isActive ? Color.accentColor : Color.primary))
@@ -326,13 +328,13 @@ struct FloatingToolbar: View {
                             .fill(isActive ? (ink ?? Color.accentColor).opacity(0.16) : .clear)
                             .frame(width: 28, height: 28)
                     )
-                // Current-color indicator dot for ink tools.
+                // Current-color indicator dot, centered under the tool.
                 if let ink {
                     Circle()
                         .fill(ink)
-                        .frame(width: 7, height: 7)
+                        .frame(width: 6, height: 6)
                         .overlay(Circle().strokeBorder(Color(.systemBackground), lineWidth: 1))
-                        .offset(x: 3, y: 3)
+                        .offset(y: 5)
                 }
             }
         }
@@ -463,6 +465,39 @@ private struct InkOptionsStrip: View {
 
 /// Inline eraser options: pixel/object mode and (for pixel) eraser size.
 /// Runs along the same axis as the bar it belongs to.
+/// Free-loop vs drag-rectangle selector for the lasso, shown when the lasso is
+/// re-tapped — the shape choice lives here, not as an on-canvas toast.
+private struct LassoOptionsStrip: View {
+    @ObservedObject var controller: CanvasController
+    var horizontal = true
+
+    var body: some View {
+        let layout = horizontal ? AnyLayout(HStackLayout(spacing: 8)) : AnyLayout(VStackLayout(spacing: 8))
+        layout {
+            modeButton(symbol: "lasso", labelKey: "tool.lasso.freeform", isRect: false)
+            modeButton(symbol: "rectangle.dashed", labelKey: "tool.lasso.rect", isRect: true)
+        }
+        .padding(8)
+    }
+
+    private func modeButton(symbol: String, labelKey: LocalizedStringKey, isRect: Bool) -> some View {
+        let selected = controller.lassoRectangular == isRect
+        return Button {
+            Haptics.selection()
+            controller.lassoRectangular = isRect
+        } label: {
+            Image(systemName: symbol)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(selected ? Color.accentColor : Color.secondary)
+                .frame(width: 30, height: 30)
+                .background(RoundedRectangle(cornerRadius: 7).fill(selected ? Color.accentColor.opacity(0.16) : .clear))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(labelKey))
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
 private struct EraserOptionsStrip: View {
     @ObservedObject var controller: CanvasController
     var horizontal = true

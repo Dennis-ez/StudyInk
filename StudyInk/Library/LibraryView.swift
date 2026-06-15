@@ -595,8 +595,9 @@ struct LibraryView: View {
             ?? palette.randomElement() ?? "#0A84FF"
         let subject = Subject.create(in: context, name: baseName, colorHex: color, kind: kind, parent: parent)
         PersistenceController.shared.save()
-        // Straight into naming — nobody wants a folder called "New Subject".
-        renameText = baseName
+        // Straight into naming — start EMPTY so the user types over nothing,
+        // not the "New Subject" placeholder (commit keeps baseName if blank).
+        renameText = ""
         renamingSubject = subject
     }
 

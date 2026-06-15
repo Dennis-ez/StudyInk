@@ -47,6 +47,8 @@ final class CanvasController: NSObject, ObservableObject {
     @Published var currentPageIndex = 0
     /// Page to scroll to on first layout (restores where the user left off).
     var initialPageIndex = 0
+    /// Lasso capture shape: false = freeform loop, true = drag a rectangle.
+    @Published var lassoRectangular = false
 
     var isDarkMode = false {
         didSet {

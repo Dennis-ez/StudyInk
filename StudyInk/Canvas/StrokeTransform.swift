@@ -55,12 +55,13 @@ enum StrokeSelector {
         return inside
     }
 
-    /// Bakes a rotation (about the selection's center) AND a page-space
-    /// translation into the strokes — one seamless move+rotate transform.
-    static func applyTransform(rotation degrees: Double, translation: CGSize, selection: StrokeSelection, to drawing: PKDrawing) -> PKDrawing {
+    /// Bakes a scale + rotation (both about the selection's center) AND a
+    /// page-space translation into the strokes — one seamless move/resize/rotate.
+    static func applyTransform(rotation degrees: Double, scale: CGFloat, translation: CGSize, selection: StrokeSelection, to drawing: PKDrawing) -> PKDrawing {
         let center = CGPoint(x: selection.bounds.midX, y: selection.bounds.midY)
         let combined = CGAffineTransform(translationX: center.x, y: center.y)
             .rotated(by: degrees * .pi / 180)
+            .scaledBy(x: scale, y: scale)
             .translatedBy(x: -center.x, y: -center.y)
             .concatenating(CGAffineTransform(translationX: translation.width, y: translation.height))
         var result = drawing
@@ -71,14 +72,14 @@ enum StrokeSelector {
     }
 }
 
-/// Lasso capture for transform mode: draw a loop (or, in rectangular mode,
-/// drag a marquee) and get its page-space polygon. The mode is switchable
-/// inline, right in the capture overlay.
+/// Lasso capture: draw a loop (or, in rectangular mode, drag a marquee) and get
+/// its page-space polygon. The free/rectangle shape comes from the toolbar
+/// (LassoOptionsStrip) — no on-canvas toast. Tap off to cancel.
 struct TransformLassoOverlay: View {
     @Binding var isActive: Bool
     let transform: CanvasTransform
-    /// false = freeform loop; true = drag-a-rectangle marquee.
-    @State private var rectangular = false
+    /// false = freeform loop; true = drag-a-rectangle marquee (from the toolbar).
+    let rectangular: Bool
     var onComplete: ([CGPoint]) -> Void
 
     @State private var points: [CGPoint] = []
@@ -102,24 +103,10 @@ struct TransformLassoOverlay: View {
                     }
                     .stroke(SemanticColor.aiCircleStroke, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, dash: [7, 5]))
                 }
-
-                VStack {
-                    HStack(spacing: 10) {
-                        Text(rectangular ? "lasso.rect.hint" : "lasso.transform.hint")
-                            .font(.footnote)
-                        Divider().frame(height: 18)
-                        // Inline mode switch — no extra toolbar round-trip.
-                        modeToggle(symbol: "lasso", labelKey: "tool.lasso.freeform", isRect: false)
-                        modeToggle(symbol: "rectangle.dashed", labelKey: "tool.lasso.rect", isRect: true)
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background(.regularMaterial, in: Capsule())
-                    .padding(.top, 70)
-                    Spacer()
-                }
             }
             .contentShape(Rectangle())
+            // A plain tap (no loop) cancels — e.g. tapping off the page or on UI.
+            .onTapGesture { points = []; marquee = nil; isActive = false }
             .gesture(
                 DragGesture(minimumDistance: 2)
                     .onChanged { value in
@@ -168,114 +155,62 @@ struct TransformLassoOverlay: View {
             .transition(.opacity)
         }
     }
-
-    private func modeToggle(symbol: String, labelKey: LocalizedStringKey, isRect: Bool) -> some View {
-        Button {
-            Haptics.selection()
-            rectangular = isRect
-            points = []
-            marquee = nil
-        } label: {
-            Image(systemName: symbol)
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(rectangular == isRect ? Color.accentColor : Color.secondary)
-                .frame(width: 26, height: 26)
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(rectangular == isRect ? Color.accentColor.opacity(0.16) : .clear)
-                )
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(Text(labelKey))
-        .accessibilityAddTraits(rectangular == isRect ? .isSelected : [])
-    }
 }
 
-/// Live move+rotate preview for a captured selection — ONE seamless mode:
-/// drag the selection to move it, twist with two fingers or drag a handle to
-/// rotate. Done bakes the transform, Cancel discards it.
+/// Apple-style transform for a captured selection: drag to move, twist with
+/// TWO fingers to rotate, drag a corner handle to resize. Tap off the selection
+/// commits; no anchor/rotation handle, no toolbar of buttons.
 struct StrokeTransformOverlay: View {
     let selection: StrokeSelection
     let transform: CanvasTransform
     @Binding var rotation: Double
-    /// Screen-space drag offset of the selection (converted to page space on Done).
+    /// Screen-space drag offset of the selection (→ page space on commit).
     @Binding var translation: CGSize
+    /// Uniform scale factor applied on commit.
+    @Binding var scale: CGFloat
     var onDone: () -> Void
     var onCancel: () -> Void
 
     @State private var rotateStart: Double?
     @State private var dragStart: CGSize?
+    @State private var scaleStart: CGFloat?
+
+    private let corners: [UnitPoint] = [.topLeading, .topTrailing, .bottomLeading, .bottomTrailing]
 
     var body: some View {
-        let frame = transform.toScreen(selection.bounds)
-        let center = CGPoint(x: frame.midX + translation.width, y: frame.midY + translation.height)
+        let base = transform.toScreen(selection.bounds)
+        let size = CGSize(width: base.width * scale, height: base.height * scale)
+        let center = CGPoint(x: base.midX + translation.width, y: base.midY + translation.height)
 
         ZStack {
-            Color.black.opacity(0.03)
+            // Tap off the selection to commit, like Apple's lasso.
+            Color.black.opacity(0.02)
                 .ignoresSafeArea()
+                .contentShape(Rectangle())
                 .onTapGesture(perform: onDone)
-                // Two-finger twist anywhere on screen rotates the selection —
-                // precise finger rotation, no buttons needed.
                 .simultaneousGesture(twistGesture)
 
             Image(uiImage: selection.image)
                 .resizable()
-                .frame(width: frame.width, height: frame.height)
-                .overlay(
-                    Rectangle()
-                        .strokeBorder(SemanticColor.accentBlue, style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
-                )
-                .overlay(alignment: .topTrailing) {
-                    Circle()
-                        .fill(SemanticColor.accentBlue)
-                        .frame(width: 26, height: 26)
-                        .overlay(Image(systemName: "rotate.right").font(.system(size: 12, weight: .bold)).foregroundStyle(.white))
-                        .contentShape(Circle().scale(1.8))
-                        .gesture(handleGesture(center: center))
-                        .accessibilityLabel(Text("media.rotate"))
+                .frame(width: size.width, height: size.height)
+                .overlay(Rectangle().strokeBorder(SemanticColor.accentBlue, style: StrokeStyle(lineWidth: 1.5, dash: [6, 4])))
+                .overlay {
+                    ForEach(corners, id: \.self) { corner in
+                        Circle()
+                            .fill(.white)
+                            .frame(width: 15, height: 15)
+                            .overlay(Circle().strokeBorder(SemanticColor.accentBlue, lineWidth: 2))
+                            .shadow(color: .black.opacity(0.2), radius: 1)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: Alignment(corner))
+                            .contentShape(Rectangle().size(width: 30, height: 30))
+                            .gesture(resizeGesture(center: center))
+                    }
                 }
                 .rotationEffect(.degrees(rotation))
                 .position(center)
-                // One-finger drag moves the selection; two-finger twist rotates.
-                .gesture(moveGesture)
-                .simultaneousGesture(twistGesture)
-
-            // Rotation lollipop: a single-finger handle hanging off the
-            // selection — precise finger rotation that always works.
-            rotationLollipop(center: center)
-
-            VStack {
-                HStack(spacing: 12) {
-                    Button {
-                        rotation -= 90
-                        Haptics.tap()
-                    } label: {
-                        Image(systemName: "rotate.left")
-                    }
-                    Button {
-                        rotation += 90
-                        Haptics.tap()
-                    } label: {
-                        Image(systemName: "rotate.right")
-                    }
-                    Text(verbatim: "\(Int(rotation.rounded()))°")
-                        .font(.callout.monospacedDigit())
-                        .frame(minWidth: 44)
-                    Button("action.cancel", role: .cancel, action: onCancel)
-                    Button("action.done", action: onDone)
-                        .buttonStyle(.borderedProminent)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .background(.regularMaterial, in: Capsule())
-                .overlay(Capsule().strokeBorder(SemanticColor.toolbarBorder, lineWidth: 0.5))
-                .padding(.top, 70)
-                Spacer()
-            }
+                .gesture(moveGesture)               // one finger drags
+                .simultaneousGesture(twistGesture)  // two fingers rotate
         }
-        // Handle drags resolve in this space so locations line up with the
-        // selection frame (global space is offset by the editor's chrome,
-        // which made the handles rotate around the wrong point).
         .coordinateSpace(name: "strokeTransform")
     }
 
@@ -283,43 +218,24 @@ struct StrokeTransformOverlay: View {
         DragGesture(minimumDistance: 2, coordinateSpace: .named("strokeTransform"))
             .onChanged { value in
                 if dragStart == nil { dragStart = translation }
-                let base = dragStart ?? .zero
-                translation = CGSize(width: base.width + value.translation.width,
-                                     height: base.height + value.translation.height)
+                let b = dragStart ?? .zero
+                translation = CGSize(width: b.width + value.translation.width, height: b.height + value.translation.height)
             }
             .onEnded { _ in dragStart = nil }
     }
 
-    @ViewBuilder
-    private func rotationLollipop(center: CGPoint) -> some View {
-        let frame = transform.toScreen(selection.bounds)
-        let radius = frame.height / 2 + 48
-        let angle = (rotation + 90) * .pi / 180
-        let handle = CGPoint(x: center.x + radius * CGFloat(cos(angle)), y: center.y + radius * CGFloat(sin(angle)))
-
-        Path { path in
-            let edge = CGPoint(
-                x: center.x + (frame.height / 2) * CGFloat(cos(angle)),
-                y: center.y + (frame.height / 2) * CGFloat(sin(angle))
-            )
-            path.move(to: edge)
-            path.addLine(to: handle)
-        }
-        .stroke(SemanticColor.accentBlue.opacity(0.7), style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
-
-        Circle()
-            .fill(SemanticColor.accentBlue)
-            .frame(width: 30, height: 30)
-            .overlay(
-                Image(systemName: "arrow.triangle.2.circlepath")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(.white)
-            )
-            .shadow(color: .black.opacity(0.3), radius: 3, y: 1)
-            .contentShape(Circle().scale(2))
-            .position(handle)
-            .gesture(handleGesture(center: center))
-            .accessibilityLabel(Text("media.rotate"))
+    /// Uniform resize from a corner: scale by how the drag's distance from the
+    /// selection center changes — works under any rotation.
+    private func resizeGesture(center: CGPoint) -> some Gesture {
+        DragGesture(minimumDistance: 1, coordinateSpace: .named("strokeTransform"))
+            .onChanged { value in
+                if scaleStart == nil { scaleStart = scale }
+                let startDist = hypot(value.startLocation.x - center.x, value.startLocation.y - center.y)
+                let nowDist = hypot(value.location.x - center.x, value.location.y - center.y)
+                let factor = nowDist / max(startDist, 1)
+                scale = min(6, max(0.2, (scaleStart ?? 1) * factor))
+            }
+            .onEnded { _ in scaleStart = nil }
     }
 
     private var twistGesture: some Gesture {
@@ -330,15 +246,16 @@ struct StrokeTransformOverlay: View {
             }
             .onEnded { _ in rotateStart = nil }
     }
+}
 
-    private func handleGesture(center: CGPoint) -> some Gesture {
-        DragGesture(minimumDistance: 2, coordinateSpace: .named("strokeTransform"))
-            .onChanged { value in
-                let start = atan2(value.startLocation.y - center.y, value.startLocation.x - center.x)
-                let now = atan2(value.location.y - center.y, value.location.x - center.x)
-                if rotateStart == nil { rotateStart = rotation }
-                rotation = (rotateStart ?? 0) + Double((now - start) * 180 / .pi)
-            }
-            .onEnded { _ in rotateStart = nil }
+private extension Alignment {
+    init(_ unit: UnitPoint) {
+        switch unit {
+        case .topLeading: self = .topLeading
+        case .topTrailing: self = .topTrailing
+        case .bottomLeading: self = .bottomLeading
+        case .bottomTrailing: self = .bottomTrailing
+        default: self = .center
+        }
     }
 }

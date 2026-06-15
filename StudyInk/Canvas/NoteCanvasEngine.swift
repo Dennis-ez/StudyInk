@@ -50,7 +50,11 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
             NSNumber(value: UITouch.TouchType.indirectPointer.rawValue),
         ]
         minimumZoomScale = 0.4
-        maximumZoomScale = 5
+        // Cap at the raster ceiling (transform-zoom rasterizes ink to a bitmap;
+        // past 3x it can't get sharper without breaking PencilKit — see
+        // updateRasterScale). So all reachable zoom stays crisp instead of
+        // letting the user zoom into blur.
+        maximumZoomScale = 3
         bouncesZoom = true
         alwaysBounceVertical = true
         contentInsetAdjustmentBehavior = .never
@@ -329,9 +333,12 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         flushPendingSave()
         let oldIndex = activeIndex
         if containers.indices.contains(oldIndex) {
-            // Reveal the old page only once its fresh render (with the just-
-            // saved ink) is ready — never a stale cache.
-            renderImage(for: oldIndex, revealWhenReady: true)
+            // Show the old page's cached render IMMEDIATELY as the canvas leaves
+            // — otherwise it goes blank until the async re-render lands and the
+            // ink visibly flashes back in. Then refresh it in place (a seamless
+            // image swap) to pick up any strokes added while it was active.
+            containers[oldIndex].imageView.isHidden = false
+            renderImage(for: oldIndex)
         }
         mountCanvas(on: index)
     }

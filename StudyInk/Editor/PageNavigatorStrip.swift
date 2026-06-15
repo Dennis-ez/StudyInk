@@ -215,6 +215,12 @@ struct PageThumbnailView: View {
                     Image(uiImage: thumbnail)
                         .resizable()
                         .scaledToFit()
+                } else {
+                    // Still rendering — show a loader so the note doesn't read
+                    // as empty before its ink/PDF has been rasterized.
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(.secondary)
                 }
             }
             .onAppear {
