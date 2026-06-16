@@ -230,6 +230,28 @@ struct NoteGridView: View {
             .accessibilityLabel(Text(label))
     }
 
+    /// Spec empty state: a sparkles glyph in a soft circle + serif heading.
+    private var emptyState: some View {
+        VStack(spacing: DS.Space.md) {
+            Circle()
+                .fill(SemanticColor.surface2)
+                .frame(width: 56, height: 56)
+                .overlay(Lucide("sparkles", size: 24).foregroundStyle(Color.accentColor))
+            Text("library.empty")
+                .font(.fraunces(20, weight: .semibold, relativeTo: .title3))
+                .foregroundStyle(.primary)
+            Text("library.empty.subtitle")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            Button(action: createNote) {
+                Label("library.newNote", systemImage: "square.and.pencil")
+            }
+            .buttonStyle(.borderedProminent)
+            .padding(.top, DS.Space.xs)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
     @ViewBuilder
     private var content: some View {
         Group {
@@ -243,18 +265,7 @@ struct NoteGridView: View {
                         Text("library.trashEmpty.subtitle")
                     }
                 } else {
-                    ContentUnavailableView {
-                        Label("library.empty", systemImage: "pencil.and.outline")
-                    } description: {
-                        Text("library.empty.subtitle")
-                    } actions: {
-                        Button {
-                            createNote()
-                        } label: {
-                            Label("library.newNote", systemImage: "square.and.pencil")
-                        }
-                        .buttonStyle(.borderedProminent)
-                    }
+                    emptyState
                 }
             } else if gridLayout {
                 ScrollView {
