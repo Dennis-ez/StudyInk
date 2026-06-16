@@ -16,6 +16,23 @@ extension View {
     }
 }
 
+/// The app mark: a you-accent rounded square with a gold highlight dot — the
+/// shared brand glyph used in the sidebar wordmark and the splash.
+struct BrandMark: View {
+    var size: CGFloat = 26
+    var body: some View {
+        RoundedRectangle(cornerRadius: size * 0.36, style: .continuous)
+            .fill(Color.accentColor)
+            .frame(width: size, height: size)
+            .overlay(
+                Circle()
+                    .fill(Color(red: 1.0, green: 0.839, blue: 0.039)) // #FFD60A
+                    .frame(width: size * 0.46, height: size * 0.46)
+            )
+            .accessibilityHidden(true)
+    }
+}
+
 /// Sidebar nav row: no resting fill — it reads as text until touched, then
 /// dims/insets on press so it reacts like a button under the finger.
 struct SidebarRowButtonStyle: ButtonStyle {

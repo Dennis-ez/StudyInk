@@ -167,36 +167,39 @@ struct LibraryView: View {
         // Explicit selection buttons: List(selection:) silently stopped
         // selecting once rows became custom HStacks.
         List {
-            // Wordmark: the app-icon mark (accent square + drop) + serif name.
+            // Wordmark: the brand mark (accent square + gold dot) + serif name.
             HStack(spacing: 10) {
-                Image("LaunchLogo")
-                    .resizable()
-                    .interpolation(.high)
-                    .frame(width: 30, height: 30)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                BrandMark(size: 26)
                 Text(verbatim: "StudyInk")
-                    .font(.fraunces(22, weight: .bold, relativeTo: .title2))
+                    .font(.fraunces(20, weight: .semibold, relativeTo: .title2))
                     .foregroundStyle(.primary)
                 Spacer()
             }
-            .padding(.vertical, 2)
+            .padding(.bottom, DS.Space.xs)
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
 
-            // Search — a rounded paper field, not the system search bar.
-            HStack(spacing: 8) {
+            // Search — a rounded paper field with a ⌘K hint chip.
+            HStack(spacing: DS.Space.sm) {
                 Image(systemName: "magnifyingglass").font(.subheadline).foregroundStyle(.secondary)
                 TextField("library.searchPrompt", text: $searchText)
                     .textFieldStyle(.plain)
-                    .font(.subheadline)
-                if !searchText.isEmpty {
+                    .font(.callout)
+                if searchText.isEmpty {
+                    Text(verbatim: "⌘K")
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 5).padding(.vertical, 2)
+                        .background(SemanticColor.separator.opacity(0.5), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                } else {
                     Button { searchText = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
                         .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 12).padding(.vertical, 9)
-            .background(themePaper, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(.black.opacity(0.06)))
+            .frame(height: 38)
+            .padding(.horizontal, DS.Space.md)
+            .background(themePaper, in: RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous).strokeBorder(SemanticColor.separator))
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
 
@@ -209,7 +212,11 @@ struct LibraryView: View {
             }
             Section(header:
                 HStack {
-                    Text("library.subjects").font(.caption.smallCaps()).foregroundStyle(.secondary)
+                    Text("library.subjects")
+                        .font(.system(size: 11.5, weight: .bold))
+                        .tracking(1.1)
+                        .textCase(.uppercase)
+                        .foregroundStyle(.secondary)
                     Spacer()
                     // New folder/divider lives next to its section title.
                     Menu {
@@ -272,7 +279,7 @@ struct LibraryView: View {
         // main screen (the editor still takes the full screen when a note opens).
         .hideSidebarToggle()
         // Single fixed width = the user can't drag-resize the sidebar.
-        .navigationSplitViewColumnWidth(280)
+        .navigationSplitViewColumnWidth(260)
         .toolbar(.hidden, for: .navigationBar)
     }
 
@@ -283,21 +290,31 @@ struct LibraryView: View {
         } label: {
             HStack(spacing: 11) {
                 Image(systemName: systemName)
-                    .font(.system(size: 16))
-                    .frame(width: 22)
+                    .font(.system(size: 19))
+                    .foregroundStyle(selected ? Color.accentColor : .secondary)
+                    .frame(width: 24)
                 Text(section.titleKey)
-                    .font(.subheadline.weight(.medium))
+                    .font(.callout.weight(selected ? .semibold : .regular))
                 Spacer()
                 Text(verbatim: "\(count)")
                     .font(.caption.monospacedDigit())
-                    .foregroundStyle(selected ? Color.white.opacity(0.85) : .secondary)
-                    .padding(.horizontal, 7).padding(.vertical, 2)
-                    .background(selected ? Color.white.opacity(0.22) : Color.secondary.opacity(0.12), in: Capsule())
+                    .foregroundStyle(.secondary)
             }
-            .foregroundStyle(selected ? Color.white : .primary)
+            .foregroundStyle(.primary)
+            .frame(height: 40)
         }
         .buttonStyle(SidebarRowButtonStyle())
-        .listRowBackground(roundedRowBackground(selected ? Color.accentColor : .clear))
+        // Selected = subtle fill + a 3pt accent bar inset at the leading edge.
+        .listRowBackground(
+            roundedRowBackground(selected ? SemanticColor.fillSelected : .clear)
+                .overlay(alignment: .leading) {
+                    if selected {
+                        Capsule().fill(Color.accentColor)
+                            .frame(width: 3, height: 20)
+                            .padding(.leading, 6)
+                    }
+                }
+        )
         .listRowSeparator(.hidden)
     }
 
@@ -330,10 +347,10 @@ struct LibraryView: View {
             // immediately so the keyboard comes up with it.
             HStack(spacing: 10) {
                 if !subject.isDivider {
-                    Circle()
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
                         .fill(Color(hex: subject.colorHex ?? "#0A84FF") ?? .accentColor)
-                        .frame(width: 13, height: 13)
-                        .frame(width: 30, height: 30)
+                        .frame(width: 11, height: 11)
+                        .frame(width: 24, height: 24)
                 }
                 TextField("library.subjectName", text: $renameText)
                     .focused($renameFieldFocused)
@@ -367,12 +384,13 @@ struct LibraryView: View {
                 selection = .subject(subject)
             } label: {
                 HStack(spacing: 10) {
-                    // The subject IS its color — a plain dot, not a folder glyph.
-                    Circle()
+                    // The subject IS its color — a rounded chip, not a folder glyph.
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
                         .fill(tint)
-                        .frame(width: 13, height: 13)
-                        .frame(width: 30, height: 30)
+                        .frame(width: 11, height: 11)
+                        .frame(width: 24, height: 24)
                     Text(verbatim: subject.name ?? "")
+                        .font(.callout)
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                     Spacer()

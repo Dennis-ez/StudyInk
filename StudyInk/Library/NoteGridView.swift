@@ -114,12 +114,12 @@ struct NoteGridView: View {
                     if case .subject(let s) = section { Text(verbatim: s.name ?? "") }
                     else { Text(section.titleKey) }
                 }
-                .font(.fraunces(34, weight: .bold, relativeTo: .largeTitle))
+                .font(.fraunces(30, weight: .semibold, relativeTo: .largeTitle))
                 .foregroundStyle(.primary)
                 Spacer()
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 12)
+            .padding(.horizontal, 28)
+            .padding(.top, 24)
             // Sub-filters live under the All Notes title — only there. Pill
             // tabs (Paper & Ink), not the iOS segmented control.
             if section == .all {
@@ -130,20 +130,23 @@ struct NoteGridView: View {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { allTab = tab }
                         } label: {
                             Text(tab.labelKey)
-                                .font(.subheadline.weight(on ? .semibold : .regular))
+                                .font(.callout.weight(on ? .semibold : .regular))
                                 .foregroundStyle(on ? Color(.systemBackground) : .secondary)
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 7)
                                 .background(
-                                    Capsule().fill(on ? Color.primary : .clear)
+                                    Capsule().fill(on ? AnyShapeStyle(Color.primary) : AnyShapeStyle(SemanticColor.sidebarBackground))
+                                )
+                                .overlay(
+                                    Capsule().strokeBorder(on ? Color.clear : SemanticColor.separator)
                                 )
                         }
                         .buttonStyle(.plain)
                     }
                     Spacer()
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 8)
+                .padding(.horizontal, 28)
+                .padding(.top, 10)
                 .padding(.bottom, 4)
             }
             content
@@ -179,12 +182,13 @@ struct NoteGridView: View {
                 }
             } else if gridLayout {
                 ScrollView {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 22)], spacing: 26) {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 240), spacing: DS.Space.xl)], spacing: DS.Space.xl) {
                         ForEach(notes, id: \.objectID) { note in
                             noteCell(note)
                         }
                     }
-                    .padding(20)
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 22)
                 }
             } else {
                 List {
@@ -387,57 +391,49 @@ struct NoteGridView: View {
     }
 
     private func gridCellLabel(_ note: Note) -> some View {
-        ZStack(alignment: .bottom) {
+        VStack(spacing: 0) {
+            // Cover: the top of the first page, like a real notebook cover.
             Group {
                 if let first = note.sortedPages.first {
-                    // Portrait, like a page — not a square box.
                     PageThumbnailView(page: first)
+                        .aspectRatio(3 / 4, contentMode: .fill)
                 } else {
                     Rectangle().fill(SemanticColor.sidebarBackground)
                 }
             }
-            .aspectRatio(3 / 4, contentMode: .fit)
+            .frame(maxWidth: .infinity)
+            .frame(height: 168)
+            .clipped()
+            .overlay(alignment: .bottom) {
+                Rectangle().fill(SemanticColor.cardEdge).frame(height: 1)
+            }
 
-            // Name + details overlaid on the page, over a legibility scrim.
-            VStack(alignment: .leading, spacing: 2) {
-                Text(verbatim: note.title ?? "")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                HStack(spacing: 6) {
-                    Text(note.modifiedAt ?? .now, style: .date)
-                    Text(verbatim: "·")
-                    Text("library.pageCount \(note.sortedPages.count)")
+            // Footer on the card's paper: name + subject dot, then date.
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 7) {
+                    Text(verbatim: note.title ?? "")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Spacer(minLength: 2)
+                    if let subject = note.subject {
+                        Circle()
+                            .fill(Color(hex: subject.colorHex ?? "#0A84FF") ?? .accentColor)
+                            .frame(width: 9, height: 9)
+                    }
                 }
-                .font(.caption2)
-                .foregroundStyle(.white.opacity(0.85))
+                Text(note.modifiedAt ?? .now, style: .date)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 10)
-            .padding(.top, 24)
-            .padding(.bottom, 9)
-            .background(LinearGradient(colors: [.clear, .black.opacity(0.62)], startPoint: .top, endPoint: .bottom))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
         }
-        .aspectRatio(3 / 4, contentMode: .fit)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        // Subject tag pinned to the bottom-trailing corner of the thumbnail.
-        .overlay(alignment: .bottomTrailing) {
-            if let subject = note.subject {
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(Color(hex: subject.colorHex ?? "#0A84FF") ?? .accentColor)
-                        .frame(width: 6, height: 6)
-                    Text(verbatim: subject.name ?? "")
-                        .font(.caption2.weight(.semibold))
-                        .lineLimit(1)
-                }
-                .padding(.horizontal, 7)
-                .padding(.vertical, 3)
-                .background(.ultraThinMaterial, in: Capsule())
-                .padding(8)
-            }
-        }
-        .shadow(color: .black.opacity(0.14), radius: 6, y: 3)
+        .background(SemanticColor.canvasBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(SemanticColor.cardEdge))
+        .elevation(.e1)
     }
 
     @ViewBuilder

@@ -107,6 +107,8 @@ enum AppTheme: String, CaseIterable, Identifiable {
     var desk: Color { Color(uiColor: deskUIColor) }
     /// Hairlines / borders.
     var separator: Color { Self.dynamic("#DED3BE", "#34302A") }
+    /// Selected sidebar-row fill.
+    var fillSelected: Color { Self.dynamic("#E4D9C2", "#2C2820") }
 
     var labelKey: LocalizedStringKey {
         switch self {
@@ -197,6 +199,7 @@ enum SemanticColor {
     /// Warm hairlines / borders (Foolscap `separator`).
     static var separator: Color { AppTheme.current.separator }
     static var cardEdge: Color { AppTheme.current.separator }
+    static var fillSelected: Color { AppTheme.current.fillSelected }
     static var toolbarBorder: Color { AppTheme.current.separator }
     static var aiBubbleBorder: Color { AppTheme.current.separator }
 }
