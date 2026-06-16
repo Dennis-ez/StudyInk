@@ -594,6 +594,27 @@ struct LibraryView: View {
         // Rightmost: New Note. To its left: the ⋯ menu with view toggle,
         // Select Notes, and a Sort By submenu showing the current choice.
         ToolbarItemGroup(placement: .primaryAction) {
+            if selection != .deleted {
+                // Ask AI — a prominent accent pill that starts a new note.
+                Button(action: addNote) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "sparkles")
+                        Text("ai.ask")
+                    }
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(.white)
+                    .frame(height: 38)
+                    .padding(.horizontal, 15)
+                    .background(Color.accentColor, in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text("ai.ask"))
+
+                circleIconButton("square.and.arrow.down", label: "media.importPDF") {
+                    importingPDF = true
+                }
+            }
+
             Menu {
                 Button {
                     gridLayout.toggle()
@@ -606,11 +627,6 @@ struct LibraryView: View {
                 Button {
                     selectingNotes = true
                 } label: { Label("library.selectNotes", systemImage: "checkmark.circle") }
-                if selection != .deleted {
-                    Button {
-                        importingPDF = true
-                    } label: { Label("media.importPDF", systemImage: "doc.badge.plus") }
-                }
                 Menu {
                     Picker("library.sort", selection: $sortRaw) {
                         ForEach(LibrarySort.allCases, id: \.rawValue) { sort in
@@ -622,39 +638,40 @@ struct LibraryView: View {
                     Text((LibrarySort(rawValue: sortRaw) ?? .dateModified).labelKey)
                 }
             } label: {
-                Image(systemName: "ellipsis")
-                    .frame(width: 32, height: 32)
-                    .background(themePaper, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.black.opacity(0.1)))
+                circleIconLabel("ellipsis")
             }
             .accessibilityLabel(Text("library.sort"))
 
             if selection != .deleted {
-                // Ask AI — a prominent pill that starts a new note (the AI lives
-                // in the editor). Matches the Paper & Ink header.
-                Button(action: addNote) {
-                    HStack(spacing: 5) {
-                        Image(systemName: "sparkles")
-                        Text("ai.ask")
-                    }
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 13).padding(.vertical, 7)
-                    .background(Color.accentColor, in: Capsule())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(Text("ai.ask"))
-
+                // New note — accent-filled circle.
                 Button(action: addNote) {
                     Image(systemName: "square.and.pencil")
-                        .frame(width: 32, height: 32)
-                        .background(themePaper, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.black.opacity(0.1)))
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(.white)
+                        .frame(width: 38, height: 38)
+                        .background(Color.accentColor, in: Circle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(Text("library.newNote"))
             }
         }
+    }
+
+    /// A 38pt circular icon button on paper with a hairline — the library's
+    /// secondary action chrome (import, more).
+    private func circleIconLabel(_ systemName: String) -> some View {
+        Image(systemName: systemName)
+            .font(.system(size: 16, weight: .medium))
+            .foregroundStyle(.primary)
+            .frame(width: 38, height: 38)
+            .background(themePaper, in: Circle())
+            .overlay(Circle().strokeBorder(SemanticColor.separator))
+    }
+
+    private func circleIconButton(_ systemName: String, label: LocalizedStringKey, action: @escaping () -> Void) -> some View {
+        Button(action: action) { circleIconLabel(systemName) }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text(label))
     }
 
     // MARK: - Actions
