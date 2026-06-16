@@ -36,7 +36,7 @@ struct AIBubbleView: View {
 
     var body: some View {
         let screenPos = transform.toScreen(CGPoint(x: bubble.x, y: bubble.y))
-        let cardWidth = max(bubble.width, 200)
+        let cardWidth = max(bubble.width, 300)
 
         Group {
             if bubble.isCollapsed {

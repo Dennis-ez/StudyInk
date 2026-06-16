@@ -176,6 +176,18 @@ struct FloatingToolbar: View {
 
         layout {
             grip
+            // Undo / redo live on the bar (spec: grip · undo · redo │ tools …).
+            Button(action: controller.undo) {
+                Image(systemName: "arrow.uturn.backward")
+            }
+            .disabled(!controller.canUndo)
+            .accessibilityLabel(Text("action.undo"))
+            Button(action: controller.redo) {
+                Image(systemName: "arrow.uturn.forward")
+            }
+            .disabled(!controller.canRedo)
+            .accessibilityLabel(Text("action.redo"))
+            Divider().frame(maxHeight: 22).frame(maxWidth: 22)
             toolsSection
             if !enabledAccessories.isEmpty {
                 Divider().frame(maxHeight: 22).frame(maxWidth: 22)

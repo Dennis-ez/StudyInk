@@ -155,38 +155,7 @@ struct NoteEditorView: View {
                     }
             }
 
-            // Note title + creation date, anchored ABOVE the first page (in
-            // the desk gap, riding along with scroll/zoom) — never over ink.
-            if !distractionFree, let pageOrigin = canvasController.pageScreenOrigins.first {
-                Button {
-                    // Start empty when it's still the default "Untitled" name,
-                    // so the user types over nothing (commit keeps it if blank).
-                    let untitled = String(localized: "library.untitledNote")
-                    renameText = (note.title == untitled) ? "" : (note.title ?? "")
-                    showRenameAlert = true
-                } label: {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(verbatim: note.title ?? "")
-                            .font(.fraunces(18, weight: .semibold, relativeTo: .title3))
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
-                        Text(note.createdAt ?? .now, format: .dateTime.day().month().year().hour().minute())
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: 360, alignment: .leading)
-                    .fixedSize(horizontal: true, vertical: false)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(Text("library.renameNote"))
-                // Sits in the gutter just above the page, below the toolbar row.
-                .offset(x: pageOrigin.x + 4, y: pageOrigin.y - 52)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            }
-
             if !distractionFree {
-                actionBar
-
                 FloatingToolbar(
                     controller: canvasController,
                     onInsertTextBox: insertTextBox,
@@ -503,8 +472,13 @@ struct NoteEditorView: View {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+        // Fixed Foolscap header bar pinned above the canvas (insets the scroll
+        // area so the page starts below it). Hidden in distraction-free mode.
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if !distractionFree { editorHeader }
+        }
         // No system navigation bar — the canvas owns the full screen; actions
-        // live in the floating glass action bar (top-trailing).
+        // live in the fixed header + floating toolbar.
         .toolbar(.hidden, for: .navigationBar)
         .navigationBarBackButtonHidden(true)
         // Kill BOTH system "drag back to the library" gestures at the UIKit
@@ -1066,61 +1040,81 @@ extension NoteEditorView {
     }
 
     /// Floating glass action bar (top-trailing) — replaces the navigation bar.
-    private var actionBar: some View {
-        VStack {
-            HStack(alignment: .top) {
-                Button(action: { dismiss() }) {
-                    Image(systemName: "chevron.left")
-                        .frame(width: 34, height: 34)
-                }
-                .font(.system(size: 16, weight: .medium))
-                .padding(6)
-                .studyGlass(cornerRadius: 16)
-                .accessibilityLabel(Text("action.back"))
-                .padding(.leading, 12)
-
-                Spacer()
-
-                // Top-right, outermost to innermost: pages strip toggle,
-                // overflow menu, AI menu, recorder, redo, undo.
-                HStack(spacing: 2) {
-                    Button(action: canvasController.undo) {
-                        Image(systemName: "arrow.uturn.backward")
-                            .frame(width: 34, height: 34)
-                    }
-                    .disabled(!canvasController.canUndo)
-                    .accessibilityLabel(Text("action.undo"))
-
-                    Button(action: canvasController.redo) {
-                        Image(systemName: "arrow.uturn.forward")
-                            .frame(width: 34, height: 34)
-                    }
-                    .disabled(!canvasController.canRedo)
-                    .accessibilityLabel(Text("action.redo"))
-
-                    recorderMenu
-
-                    aiMenu
-
-                    overflowMenu
-
-                    Button {
-                        withAnimation { showPageStrip.toggle() }
-                    } label: {
-                        Image(systemName: "doc.on.doc")
-                            .frame(width: 34, height: 34)
-                    }
-                    .accessibilityLabel(Text("page.toggleStrip"))
-                }
-                .font(.system(size: 16, weight: .medium))
-                .padding(6)
-                .studyGlass(cornerRadius: 16)
-                .padding(.trailing, 12)
+    /// Fixed Foolscap header bar (58pt): back · title/subtitle · recorder ·
+    /// more · pages · Tutor pill. Undo/redo now live on the floating toolbar.
+    private var editorHeader: some View {
+        HStack(spacing: 10) {
+            Button(action: { dismiss() }) {
+                headerSquare("chevron.left")
             }
-            .padding(.top, 8)
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text("action.back"))
 
-            Spacer()
+            Button(action: startRename) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(verbatim: note.title ?? "")
+                        .font(.fraunces(18, weight: .semibold, relativeTo: .title3))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    headerSubtitle
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                .fixedSize(horizontal: true, vertical: false)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text("library.renameNote"))
+
+            Spacer(minLength: 8)
+
+            recorderMenu
+                .background(themeDesk, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            overflowMenu
+                .background(themeDesk, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            Button {
+                withAnimation { showPageStrip.toggle() }
+            } label: {
+                headerSquare("doc.on.doc")
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text("page.toggleStrip"))
+            // The Tutor pill (AI menu) — the study partner's ochre.
+            aiMenu
         }
+        .font(.system(size: 16, weight: .medium))
+        .padding(.horizontal, 14)
+        .frame(height: 58)
+        .frame(maxWidth: .infinity)
+        .background(themePaper.ignoresSafeArea(edges: .top))
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(SemanticColor.separator).frame(height: 1)
+        }
+    }
+
+    /// A 34pt rounded-square header button face on the theme desk.
+    private func headerSquare(_ systemName: String) -> some View {
+        Image(systemName: systemName)
+            .font(.system(size: 16, weight: .medium))
+            .foregroundStyle(.primary)
+            .frame(width: 34, height: 34)
+            .background(themeDesk, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    /// "<subject> · <relative edited>" under the note title.
+    private var headerSubtitle: Text {
+        let edited = Text(note.modifiedAt ?? .now, format: .relative(presentation: .named))
+        if let subject = note.subject?.name, !subject.isEmpty {
+            return Text(verbatim: subject + " · ") + edited
+        }
+        return edited
+    }
+
+    private func startRename() {
+        // Start empty when it's still the default "Untitled" name.
+        let untitled = String(localized: "library.untitledNote")
+        renameText = (note.title == untitled) ? "" : (note.title ?? "")
+        showRenameAlert = true
     }
 
     /// Record/stop plus the note's saved recordings — a popover list so
@@ -1166,9 +1160,15 @@ extension NoteEditorView {
                 Label("ai.guidedMode", systemImage: "lightbulb")
             }
         } label: {
-            Image(systemName: "sparkles")
-                .foregroundStyle(aiAccent)
-                .frame(width: 34, height: 34)
+            HStack(spacing: 5) {
+                Image(systemName: "sparkles")
+                Text("ai.tutorName")
+            }
+            .font(.callout.weight(.semibold))
+            .foregroundStyle(.white)
+            .frame(height: 34)
+            .padding(.horizontal, 12)
+            .background(aiAccent, in: Capsule())
         }
         .accessibilityLabel(Text("ai.menu"))
     }
@@ -1215,7 +1215,7 @@ extension NoteEditorView {
                 Label("page.settings", systemImage: "doc.badge.gearshape")
             }
         } label: {
-            Image(systemName: "ellipsis.circle")
+            Image(systemName: "ellipsis")
                 .frame(width: 34, height: 34)
         }
         .accessibilityLabel(Text("editor.more"))
