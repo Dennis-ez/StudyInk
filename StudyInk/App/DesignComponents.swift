@@ -71,22 +71,19 @@ struct InkSpinner: View {
     }
 }
 
-/// Launch splash: the app-icon mark (cream drop on the accent) on warm paper,
-/// the drop's fill rising once, the wordmark fading in. Adapts to light/dark so
-/// it flows seamlessly from the launch screen into the app — no dark flash.
+/// Launch splash: the brand mark (theme-accent square + gold dot) on warm
+/// paper with the serif wordmark, a single spring entrance. No spinner.
+/// Follows the active skin so it flows into the app with no flash.
 struct SplashView: View {
     @State private var appeared = false
 
     var body: some View {
         ZStack {
             SemanticColor.paperBackground.ignoresSafeArea()
-            VStack(spacing: 18) {
-                Image("LaunchLogo")
-                    .resizable()
-                    .interpolation(.high)
-                    .frame(width: 104, height: 104)
-                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                    .scaleEffect(appeared ? 1 : 0.82)
+            VStack(spacing: 20) {
+                BrandMark(size: 96)
+                    .elevation(.e2)
+                    .scaleEffect(appeared ? 1 : 0.84)
                     .opacity(appeared ? 1 : 0)
                 Text(verbatim: "StudyInk")
                     .font(.fraunces(30, weight: .bold, relativeTo: .title))
@@ -96,7 +93,7 @@ struct SplashView: View {
             }
         }
         .onAppear {
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) { appeared = true }
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.72)) { appeared = true }
         }
     }
 }

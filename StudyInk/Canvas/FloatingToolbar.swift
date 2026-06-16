@@ -357,21 +357,22 @@ struct FloatingToolbar: View {
         } label: {
             let ink = controller.inkColor(for: kind)
             ZStack(alignment: .bottom) {
-                Lucide(kind.lucideName, size: 18)
-                    // Ink tools wear their own color; others use the accent when active.
-                    .foregroundStyle(ink ?? (isActive ? Color.accentColor : Color.primary))
-                    .background(
-                        RoundedRectangle(cornerRadius: 9, style: .continuous)
-                            .fill(isActive ? (ink ?? Color.accentColor).opacity(0.18) : .clear)
-                            .frame(width: 30, height: 30)
-                    )
+                ZStack {
+                    // Active = filled primary circle + radiant (white) glyph
+                    // (spec §3.2). The ink colour reads from the dot below.
+                    if isActive {
+                        Circle().fill(Color.accentColor).frame(width: 31, height: 31)
+                    }
+                    Lucide(kind.lucideName, size: 18)
+                        .foregroundStyle(isActive ? Color.white : (ink ?? Color.primary))
+                }
                 // Current-color indicator dot, centered under the tool.
                 if let ink {
                     Circle()
                         .fill(ink)
                         .frame(width: 6, height: 6)
-                        .overlay(Circle().strokeBorder(Color(.systemBackground), lineWidth: 1))
-                        .offset(y: 5)
+                        .overlay(Circle().strokeBorder(SemanticColor.surface, lineWidth: 1))
+                        .offset(y: 8)
                 }
             }
         }
