@@ -183,8 +183,7 @@ struct AIBubbleView: View {
             .fill(aiAccent)
             .frame(width: 22, height: 22)
             .overlay(
-                Image(systemName: "sparkles")
-                    .font(.system(size: 11, weight: .semibold))
+                Lucide("sparkles", size: 12)
                     .foregroundStyle(.white)
             )
     }

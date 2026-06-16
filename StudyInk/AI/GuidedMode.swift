@@ -222,8 +222,7 @@ struct GuidedSuggestionCard: View {
                 .multilineTextAlignment(isRTL ? .trailing : .leading)
             Spacer(minLength: 6)
             Button(action: onDismiss) {
-                Image(systemName: "xmark")
-                    .font(.caption.weight(.semibold))
+                Lucide("x", size: 13)
                     .foregroundStyle(.secondary)
             }
             .accessibilityLabel(Text("ai.dismiss"))

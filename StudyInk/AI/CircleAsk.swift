@@ -109,7 +109,7 @@ struct CircleAskSheet: View {
                 // The prompt field, styled as a prominent rounded capsule with
                 // a sparkles cue and inline send.
                 HStack(alignment: .bottom, spacing: 10) {
-                    Image(systemName: "sparkles")
+                    Lucide("sparkles", size: 18)
                         .foregroundStyle(aiAccent)
                         .padding(.bottom, 7)
                     TextField("ai.askPlaceholder", text: $question, axis: .vertical)

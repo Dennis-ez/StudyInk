@@ -77,7 +77,7 @@ struct AIPanelView: View {
                 Button {
                     tutor.panelBubbleID = nil
                 } label: {
-                    Image(systemName: "chevron.backward")
+                    Lucide("chevron-left", size: 18)
                 }
                 .accessibilityLabel(Text("action.back"))
             }
@@ -89,7 +89,7 @@ struct AIPanelView: View {
                     tutor.panelOpen = false
                 }
             } label: {
-                Image(systemName: "xmark")
+                Lucide("x", size: 18)
             }
             .accessibilityLabel(Text("action.close"))
         }
