@@ -57,7 +57,8 @@ struct LibraryView: View {
     @State private var selection: LibrarySection = .all
     /// Subjects whose children are hidden in the sidebar.
     @State private var collapsedSubjects: Set<NSManagedObjectID> = []
-    @State private var columnVisibility = NavigationSplitViewVisibility.all
+    /// Collapses the sidebar column so the editor takes the whole screen.
+    @State private var sidebarCollapsed = false
     @State private var searchText = ""
     @AppStorage("library.layout.grid") private var gridLayout = true
     @AppStorage("library.sort") private var sortRaw = LibrarySort.dateModified.rawValue
@@ -73,12 +74,21 @@ struct LibraryView: View {
     @State private var selectingNotes = false
 
     var body: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
-            sidebar
-        } detail: {
-            // Explicit stack: navigationDestination/push inside a split view's
-            // detail column needs one, or it targets a non-existent next column
-            // (console was full of "navigationDestination is misplaced").
+        // A real grid shell (non-negotiable #1): the sidebar is a fixed,
+        // full-bleed column flush at the leading edge — NOT NavigationSplitView's
+        // iOS 26 Liquid-Glass floating column. It collapses to give the editor
+        // the whole screen.
+        HStack(spacing: 0) {
+            if !sidebarCollapsed {
+                sidebar
+                    .frame(width: 264)
+                    .transition(.move(edge: .leading))
+                Rectangle()
+                    .fill(SemanticColor.separator)
+                    .frame(width: 1)
+                    .ignoresSafeArea()
+            }
+            // The content column owns navigation (grid → editor push).
             NavigationStack {
                 NoteGridView(
                     section: selection,
@@ -87,13 +97,11 @@ struct LibraryView: View {
                     sortRaw: $sortRaw,
                     selecting: $selectingNotes,
                     onNoteOpened: {
-                        // The canvas deserves the whole screen.
-                        withAnimation { columnVisibility = .detailOnly }
+                        // The canvas takes the whole screen — collapse the spine.
+                        withAnimation(.easeInOut(duration: 0.28)) { sidebarCollapsed = true }
                     },
                     onNoteClosed: {
-                        // Instant — animating left the sidebar missing for a
-                        // beat after returning from the editor.
-                        columnVisibility = .all
+                        sidebarCollapsed = false
                     },
                     onNewNote: addNote,
                     onImportPDF: { importingPDF = true }
@@ -114,14 +122,14 @@ struct LibraryView: View {
                 )) {
                     if let note = autoOpenNote {
                         NoteEditorContainer(note: note)
-                            .onAppear { withAnimation { columnVisibility = .detailOnly } }
-                            .onDisappear { columnVisibility = .all }
+                            .onAppear { withAnimation(.easeInOut(duration: 0.28)) { sidebarCollapsed = true } }
+                            .onDisappear { sidebarCollapsed = false }
                     }
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        // Fixed side-by-side columns (not an overlaying/floating sidebar).
-        .navigationSplitViewStyle(.balanced)
+        .background(themePaper.ignoresSafeArea())
         .sheet(isPresented: $showSettings) { SettingsView() }
         .onAppear(perform: purgeExpiredNotes)
         .alert(Text("library.deleteSubject.confirm"), isPresented: Binding(
@@ -280,12 +288,6 @@ struct LibraryView: View {
                 .buttonStyle(.plain)
             }
         }
-        // The sidebar is the library's spine — it can't be hidden from the
-        // main screen (the editor still takes the full screen when a note opens).
-        .hideSidebarToggle()
-        // Single fixed width = the user can't drag-resize the sidebar.
-        .navigationSplitViewColumnWidth(260)
-        .toolbar(.hidden, for: .navigationBar)
     }
 
     private func sectionRow(_ section: LibrarySection, systemName: String, count: Int) -> some View {
