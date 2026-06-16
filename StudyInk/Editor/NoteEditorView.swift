@@ -1048,7 +1048,7 @@ extension NoteEditorView {
     private var editorHeader: some View {
         HStack(spacing: 10) {
             Button(action: { dismiss() }) {
-                headerSquare("chevron.left")
+                headerSquare("chevron-left")
             }
             .buttonStyle(.plain)
             .accessibilityLabel(Text("action.back"))
@@ -1080,7 +1080,7 @@ extension NoteEditorView {
             Button {
                 withAnimation { showPageStrip.toggle() }
             } label: {
-                headerSquare("doc.on.doc")
+                headerSquare("copy")
             }
             .buttonStyle(.plain)
             .accessibilityLabel(Text("page.toggleStrip"))
@@ -1096,10 +1096,9 @@ extension NoteEditorView {
     }
 
     /// A 34pt rounded-square header button face — light paper so it reads on the
-    /// transparent (desk) header.
-    private func headerSquare(_ systemName: String) -> some View {
-        Image(systemName: systemName)
-            .font(.system(size: 16, weight: .medium))
+    /// transparent (desk) header. Glyph is a bundled Lucide icon.
+    private func headerSquare(_ lucide: String) -> some View {
+        Lucide(lucide, size: 18)
             .foregroundStyle(.primary)
             .frame(width: 34, height: 34)
             .background(themePaper, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -1166,7 +1165,7 @@ extension NoteEditorView {
             }
         } label: {
             HStack(spacing: 5) {
-                Image(systemName: "sparkles")
+                Lucide("wand-sparkles", size: 15)
                 Text("ai.tutorName")
             }
             .font(.callout.weight(.semibold))
