@@ -26,6 +26,18 @@ struct AIBubbleView: View {
         colorScheme == .dark ? .regularMaterial : .ultraThinMaterial
     }
 
+    /// The tone strip colour, per the v2 redline:
+    /// teaching → primary accent · correct → success · correction → aiCircle ·
+    /// error → destructive. Mapped from the model's existing tone cases.
+    private var toneColor: Color {
+        switch bubble.tone {
+        case .explanation:   return Color.accentColor
+        case .encouragement: return SemanticColor.success
+        case .correction:    return AppTheme.current.aiCircleColor
+        case .error:         return SemanticColor.destructive
+        }
+    }
+
     private var isRTL: Bool { bubble.latestAnswer.isMostlyRTL }
 
     /// Bubbles scale with the page (clamped for legibility) so they read as
@@ -36,7 +48,9 @@ struct AIBubbleView: View {
 
     var body: some View {
         let screenPos = transform.toScreen(CGPoint(x: bubble.x, y: bubble.y))
-        let cardWidth = max(bubble.width, 300)
+        // v2 redline: keep the bubble compact (~304). Honour a user resize but
+        // never balloon into a panel.
+        let cardWidth = min(max(bubble.width, 304), 320)
 
         Group {
             if bubble.isCollapsed {
@@ -67,12 +81,16 @@ struct AIBubbleView: View {
                 Text(String(bubble.latestAnswer.prefix(20)))
                     .font(.caption2)
                     .lineLimit(1)
+                Lucide("chevron-down", size: 14)
+                    .foregroundStyle(SemanticColor.textMutedColor)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .studyGlassCapsule()
         }
         .buttonStyle(.plain)
+        // Draggable while pinned/collapsed — re-anchors like the full card.
+        .simultaneousGesture(dragGesture)
     }
 
     // MARK: - Card
@@ -86,20 +104,24 @@ struct AIBubbleView: View {
             askMoreField
             footer
         }
-        // Foolscap card styling: a frosted material over the live canvas with a
-        // hairline in the AI accent and a soft lift off the page; the tone shows
-        // as a colored shoulder along the leading edge.
-        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(cardMaterial))
-        .overlay(
+        // v2 redline: frosted `surface` material over the live canvas, r18 with a
+        // 1px `separator` hairline and an e3 lift. A 4px full-height tone strip
+        // sits flush against the leading edge; the body padding (inline-start 18)
+        // clears it.
+        .background(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(aiAccent.opacity(0.22), lineWidth: 1)
+                .fill(SemanticColor.surface.opacity(colorScheme == .dark ? 0.94 : 0.88))
+                .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(cardMaterial))
         )
         .overlay(alignment: .leading) {
-            Capsule()
-                .fill(Color(bubble.tone.colorToken))
+            Rectangle()
+                .fill(toneColor)
                 .frame(width: 4)
-                .padding(.vertical, 10)
         }
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(SemanticColor.separator, lineWidth: 1)
+        )
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(alignment: .bottomTrailing) { resizeHandle }
         .elevation(.e3)
@@ -136,34 +158,42 @@ struct AIBubbleView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 7) {
+        HStack(spacing: 8) {
             avatar
             Text("ai.tutorName")
-                .font(.fraunces(13, weight: .semibold, relativeTo: .footnote))
-                .foregroundStyle(aiAccent)
+                .font(.fraunces(13, weight: .medium, relativeTo: .footnote))
+                .foregroundStyle(SemanticColor.textMutedColor)
             Spacer(minLength: 4)
+            // Pin keeps an SF Symbol — there is no bundled Lucide pin glyph.
             headerButton(bubble.isPinned ? "pin.fill" : "pin", label: "ai.pin") {
                 Haptics.tap()
                 tutor.pin(bubbleID: bubble.id)
             }
-            headerButton("xmark", label: "ai.dismiss") {
+            Button {
                 Haptics.tap()
                 withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
                     tutor.dismiss(bubbleID: bubble.id)
                 }
+            } label: {
+                Lucide("x", size: 16)
+                    .foregroundStyle(SemanticColor.textMutedColor)
+                    .frame(width: 24, height: 24)
+                    .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text("ai.dismiss"))
         }
-        .padding(.leading, 11)
-        .padding(.trailing, 7)
-        .padding(.top, 8)
-        .padding(.bottom, 3)
+        .padding(.leading, 18)
+        .padding(.trailing, 15)
+        .padding(.top, 13)
+        .padding(.bottom, 5)
         .contentShape(Rectangle())
         // The header is the drag handle — the scrollable thread below would
         // otherwise swallow drags.
         .highPriorityGesture(dragGesture)
     }
 
-    /// Soft circular header control — pin / dismiss.
+    /// Soft circular header control — pin.
     private func headerButton(_ symbol: String, label: LocalizedStringKey, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
@@ -178,8 +208,9 @@ struct AIBubbleView: View {
         .accessibilityLabel(Text(label))
     }
 
+    /// 22pt AI-accent circle with a radiant white sparkles glyph.
     private var avatar: some View {
-        RoundedRectangle(cornerRadius: 7, style: .continuous)
+        Circle()
             .fill(aiAccent)
             .frame(width: 22, height: 22)
             .overlay(
@@ -202,6 +233,7 @@ struct AIBubbleView: View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(bubble.thread) { exchange in
                 if let question = exchange.question, !question.isEmpty {
+                    // Q → right-aligned accent chip.
                     Text(question)
                         .font(.footnote)
                         .padding(.horizontal, 10)
@@ -210,11 +242,15 @@ struct AIBubbleView: View {
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 }
                 if !exchange.answer.isEmpty {
+                    // A → left-aligned body (AIRichText owns its own typography
+                    // and inline KaTeX; kept as-is per spec).
                     AIRichText(content: exchange.answer)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
         }
-        .padding(.horizontal, 12)
+        .padding(.leading, 18)
+        .padding(.trailing, 15)
         .padding(.vertical, 4)
     }
 
@@ -228,7 +264,8 @@ struct AIBubbleView: View {
                 thinkingDots
             }
         }
-        .padding(.horizontal, 14)
+        .padding(.leading, 18)
+        .padding(.trailing, 15)
         .padding(.vertical, 8)
         .accessibilityLabel(Text("ai.thinking"))
     }
@@ -247,7 +284,7 @@ struct AIBubbleView: View {
         HStack(spacing: 4) {
             ForEach(0..<3, id: \.self) { i in
                 Circle()
-                    .fill(Color(bubble.tone.colorToken))
+                    .fill(toneColor)
                     .frame(width: 5, height: 5)
                     .opacity(shimmerPhase ? 0.3 : 1)
                     .animation(
@@ -270,72 +307,92 @@ struct AIBubbleView: View {
                         Haptics.tap()
                         sendFollowUp(chip)
                     } label: {
+                        // chip/13/medium · surface fill · 1px separator · pill ·
+                        // AI-accent text.
                         Text(chip)
-                            .font(.caption)
+                            .font(.system(size: 13, weight: .medium))
                             .lineLimit(1)
                             .foregroundStyle(aiAccent)
-                            .padding(.horizontal, 11)
-                            .padding(.vertical, 6)
-                            .background(.thinMaterial, in: Capsule())
-                            .overlay(Capsule().strokeBorder(aiAccent.opacity(0.35), lineWidth: 0.8))
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 4)
+                            .background(SemanticColor.surface, in: Capsule())
+                            .overlay(Capsule().strokeBorder(SemanticColor.separator, lineWidth: 1))
                     }
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 14)
+            .padding(.leading, 18)
+            .padding(.trailing, 15)
         }
         .padding(.vertical, 4)
     }
 
     private var askMoreField: some View {
-        HStack(spacing: 8) {
+        let canSend = !followUpText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isLoading
+        return HStack(spacing: 8) {
             TextField("ai.askMore", text: $followUpText, axis: .vertical)
-                .font(.caption)
+                .font(.system(size: 13))
                 .textFieldStyle(.plain)
                 .focused($followUpFocused)
                 .lineLimit(1...3)
                 .onSubmit { sendFollowUp(followUpText) }
+            // Trailing circular send in the AI accent.
             Button {
                 sendFollowUp(followUpText)
             } label: {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.title3)
-                    .foregroundStyle(followUpText.isEmpty ? Color.secondary : aiAccent)
+                Lucide("arrow-up", size: 14)
+                    .foregroundStyle(.white)
+                    .frame(width: 23, height: 23)
+                    .background(Circle().fill(canSend ? aiAccent : Color.secondary.opacity(0.4)))
             }
-            .disabled(followUpText.isEmpty || isLoading)
+            .disabled(!canSend)
             .accessibilityLabel(Text("ai.send"))
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
-        .background(.thinMaterial, in: Capsule())
-        .overlay(Capsule().strokeBorder(SemanticColor.aiBubbleBorder.opacity(0.6), lineWidth: 0.5))
-        .padding(.horizontal, 12)
+        .padding(.leading, 12)
+        .padding(.trailing, 5)
+        .padding(.vertical, 4)
+        .background(SemanticColor.surface, in: Capsule())
+        .overlay(Capsule().strokeBorder(SemanticColor.separator, lineWidth: 1))
+        .padding(.leading, 18)
+        .padding(.trailing, 15)
         .padding(.vertical, 6)
     }
 
     private var footer: some View {
         HStack {
+            // Insert into note → AI accent.
             Button {
                 if let box = tutor.insertAnswerIntoNote(bubbleID: bubble.id) {
                     onInsertTextBox(box)
                 }
             } label: {
-                Label("ai.insertIntoNote", systemImage: "text.badge.plus")
-                    .font(.caption2)
+                Text("ai.insertIntoNote")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(aiAccent)
             }
+            .buttonStyle(.plain)
             .disabled(bubble.latestAnswer.isEmpty)
             Spacer()
+            // Open in panel → primary accent.
             Button {
                 tutor.panelBubbleID = bubble.id
                 tutor.panelOpen = true
             } label: {
-                Label("ai.openInPanel", systemImage: "sidebar.trailing")
-                    .font(.caption2)
+                HStack(spacing: 3) {
+                    Text("ai.openInPanel")
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 10, weight: .semibold))
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.accentColor)
             }
+            .buttonStyle(.plain)
             .accessibilityLabel(Text("ai.openInPanel"))
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.leading, 18)
+        .padding(.trailing, 15)
+        .padding(.top, 6)
+        .padding(.bottom, 13)
     }
 
     // MARK: - Actions

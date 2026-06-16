@@ -93,6 +93,48 @@ struct NoteEditorView: View {
         return SnapMetrics.metrics(for: page.template, spacing: page.effectiveTemplateSpacing)
     }
 
+    /// Scroll proxy for the auto-hide header (first page rises as you scroll
+    /// down). Extracted to keep the body's type-check tractable.
+    private var firstPageOriginY: CGFloat { canvasController.pageScreenOrigins.first?.y ?? 0 }
+
+    /// AI annotations + floating bubbles for every page, anchored through each
+    /// page transform. Extracted to keep the body's type-check tractable.
+    @ViewBuilder private var aiOverlays: some View {
+        ForEach(tutor.bubbles) { bubble in
+            AnnotationOverlay(
+                annotations: bubble.annotations,
+                bubbleOrigin: CGPoint(x: bubble.x, y: bubble.y + 60),
+                transform: canvasController.transform(forPage: bubble.pageIndex)
+            )
+        }
+        ForEach(tutor.bubbles.filter { $0.isPanelOnly != true }) { bubble in
+            AIBubbleView(
+                bubble: bubble,
+                isLoading: tutor.loadingBubbleIDs.contains(bubble.id),
+                transform: canvasController.transform(forPage: bubble.pageIndex),
+                tutor: tutor,
+                onInsertTextBox: { textBoxes.append($0) }
+            )
+        }
+    }
+
+    @ViewBuilder private var floatingHeader: some View {
+        if !distractionFree {
+            editorHeader
+                .offset(y: headerHidden ? -96 : 0)
+                .opacity(headerHidden ? 0 : 1)
+        }
+    }
+
+    private func handleHeaderScroll(from oldY: CGFloat, to newY: CGFloat) {
+        let delta = newY - oldY
+        guard abs(delta) > 3 else { return }
+        withAnimation(.easeOut(duration: 0.2)) {
+            if delta < -4 { headerHidden = true }       // scrolling down → hide
+            else if delta > 4 { headerHidden = false }  // scrolling up → reveal
+        }
+    }
+
     var body: some View {
         ZStack {
             themeDesk.ignoresSafeArea()
@@ -126,25 +168,7 @@ struct NoteEditorView: View {
             MediaLayer(items: $mediaItems, transform: transform, selectedItemID: $selectedMediaID, snap: snapMetrics)
             TextBoxLayer(boxes: $textBoxes, transform: transform, editingBoxID: $editingBoxID, snap: snapMetrics)
 
-            // AI annotations + bubbles for every page, each anchored through
-            // its own page transform so they ride along while scrolling.
-            ForEach(tutor.bubbles) { bubble in
-                AnnotationOverlay(
-                    annotations: bubble.annotations,
-                    bubbleOrigin: CGPoint(x: bubble.x, y: bubble.y + 60),
-                    transform: canvasController.transform(forPage: bubble.pageIndex)
-                )
-            }
-            // Panel-only conversations never float on the canvas.
-            ForEach(tutor.bubbles.filter { $0.isPanelOnly != true }) { bubble in
-                AIBubbleView(
-                    bubble: bubble,
-                    isLoading: tutor.loadingBubbleIDs.contains(bubble.id),
-                    transform: canvasController.transform(forPage: bubble.pageIndex),
-                    tutor: tutor,
-                    onInsertTextBox: { textBoxes.append($0) }
-                )
-            }
+            aiOverlays
 
             // Audio playback tap-to-seek: tap any written mark to jump the recording
             // to the moment it was written.
@@ -481,22 +505,9 @@ struct NoteEditorView: View {
         // Transparent header floating over the canvas — it does NOT reserve
         // space, so the page uses the full screen and scrolls under it. It
         // auto-hides while scrolling down, reveals on scroll-up.
-        .overlay(alignment: .top) {
-            if !distractionFree {
-                editorHeader
-                    .offset(y: headerHidden ? -96 : 0)
-                    .opacity(headerHidden ? 0 : 1)
-            }
-        }
-        // Drive auto-hide off the published page origin (moves up as you scroll
-        // down). No canvas-engine changes — purely observed in SwiftUI.
-        .onChange(of: canvasController.pageScreenOrigins.first?.y ?? 0) { oldY, newY in
-            let delta = newY - oldY
-            guard abs(delta) > 3 else { return }
-            withAnimation(.easeOut(duration: 0.2)) {
-                if delta < -4 { headerHidden = true }        // content rising = scrolling down → hide
-                else if delta > 4 { headerHidden = false }   // scrolling up → reveal
-            }
+        .overlay(alignment: .top) { floatingHeader }
+        .onChange(of: firstPageOriginY) { oldY, newY in
+            handleHeaderScroll(from: oldY, to: newY)
         }
         // No system navigation bar — the canvas owns the full screen; actions
         // live in the fixed header + floating toolbar.
