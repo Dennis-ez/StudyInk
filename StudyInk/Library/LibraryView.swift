@@ -314,9 +314,9 @@ struct LibraryView: View {
             roundedRowBackground(selected ? SemanticColor.fillSelected : .clear)
                 .overlay(alignment: .leading) {
                     if selected {
-                        Capsule().fill(Color.accentColor)
-                            .frame(width: 3, height: 20)
-                            .padding(.leading, 6)
+                        // Flush at the sidebar's leading edge (per the design).
+                        Rectangle().fill(Color.accentColor)
+                            .frame(width: 3)
                     }
                 }
         )
