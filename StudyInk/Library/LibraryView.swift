@@ -83,8 +83,8 @@ struct LibraryView: View {
                 NoteGridView(
                     section: selection,
                     searchText: searchText,
-                    gridLayout: gridLayout,
-                    sort: LibrarySort(rawValue: sortRaw) ?? .dateModified,
+                    gridLayout: $gridLayout,
+                    sortRaw: $sortRaw,
                     selecting: $selectingNotes,
                     onNoteOpened: {
                         // The canvas deserves the whole screen.
@@ -94,14 +94,16 @@ struct LibraryView: View {
                         // Instant — animating left the sidebar missing for a
                         // beat after returning from the editor.
                         columnVisibility = .all
-                    }
+                    },
+                    onNewNote: addNote,
+                    onImportPDF: { importingPDF = true }
                 )
-                // The big title lives in the content (serif); keep the bar for
-                // the action buttons only, transparent over the warm paper.
+                // The title AND the action cluster live in the content header
+                // now; the nav bar only appears to host the multi-select tools.
                 .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbarBackground(.hidden, for: .navigationBar)
-                .toolbar { detailToolbar }
+                .toolbar(selectingNotes ? .visible : .hidden, for: .navigationBar)
                 .fileImporter(isPresented: $importingPDF, allowedContentTypes: [.pdf]) { result in
                     if case .success(let url) = result { importPDFAsNote(from: url) }
                 }
@@ -118,6 +120,8 @@ struct LibraryView: View {
                 }
             }
         }
+        // Fixed side-by-side columns (not an overlaying/floating sidebar).
+        .navigationSplitViewStyle(.balanced)
         .sheet(isPresented: $showSettings) { SettingsView() }
         .onAppear(perform: purgeExpiredNotes)
         .alert(Text("library.deleteSubject.confirm"), isPresented: Binding(
@@ -164,9 +168,13 @@ struct LibraryView: View {
     // MARK: - Sidebar
 
     private var sidebar: some View {
-        // Explicit selection buttons: List(selection:) silently stopped
-        // selecting once rows became custom HStacks.
-        List {
+        // Opaque warm spine behind the rows — covers the iOS 26 Liquid Glass
+        // sidebar material so it reads as a solid, full-height panel.
+        ZStack {
+            themeSidebar.ignoresSafeArea()
+            // Explicit selection buttons: List(selection:) silently stopped
+            // selecting once rows became custom HStacks.
+            List {
             // Wordmark: the brand mark (accent square + gold dot) + serif name.
             HStack(spacing: 10) {
                 BrandMark(size: 26)
@@ -252,28 +260,25 @@ struct LibraryView: View {
                 sectionRow(.deleted, systemName: "trash", count: deletedCount)
             }
         }
-        .scrollContentBackground(.hidden)
-        // Plain (not .sidebar) = edge-to-edge rows with no grouped inset, so the
-        // warm panel reads as a full-bleed spine.
-        .listStyle(.plain)
-        .environment(\.defaultMinListRowHeight, 44)
-        // Full-bleed, full-height warm sidebar (no floating-panel inset).
-        .background(themeSidebar.ignoresSafeArea())
-        // Settings pinned to the very bottom of the sidebar (Paper & Ink).
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            Button { showSettings = true } label: {
-                HStack(spacing: 11) {
-                    Image(systemName: "gearshape").font(.system(size: 16)).frame(width: 22)
-                    Text("settings.title").font(.subheadline.weight(.medium))
-                    Spacer()
+            .scrollContentBackground(.hidden)
+            // Plain (not .sidebar) = edge-to-edge rows, no grouped inset.
+            .listStyle(.plain)
+            .environment(\.defaultMinListRowHeight, 44)
+            // Settings pinned to the very bottom of the sidebar.
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                Button { showSettings = true } label: {
+                    HStack(spacing: 11) {
+                        Image(systemName: "gearshape").font(.system(size: 16)).frame(width: 22)
+                        Text("settings.title").font(.subheadline.weight(.medium))
+                        Spacer()
+                    }
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 14)
+                    .contentShape(Rectangle())
                 }
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 14)
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
-            .background(themeSidebar.ignoresSafeArea())
         }
         // The sidebar is the library's spine — it can't be hidden from the
         // main screen (the editor still takes the full screen when a note opens).
@@ -587,91 +592,6 @@ struct LibraryView: View {
         for note in subject.notes ?? [] { note.deletedAt = Date() }
         for child in subject.children ?? [] { softDelete(child) }
         context.delete(subject)
-    }
-
-    @ToolbarContentBuilder
-    private var detailToolbar: some ToolbarContent {
-        // Rightmost: New Note. To its left: the ⋯ menu with view toggle,
-        // Select Notes, and a Sort By submenu showing the current choice.
-        ToolbarItemGroup(placement: .primaryAction) {
-            if selection != .deleted {
-                // Ask AI — a prominent accent pill that starts a new note.
-                Button(action: addNote) {
-                    HStack(spacing: 5) {
-                        Image(systemName: "sparkles")
-                        Text("ai.ask")
-                    }
-                    .font(.callout.weight(.medium))
-                    .foregroundStyle(.white)
-                    .frame(height: 38)
-                    .padding(.horizontal, 15)
-                    .background(Color.accentColor, in: Capsule())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(Text("ai.ask"))
-
-                circleIconButton("square.and.arrow.down", label: "media.importPDF") {
-                    importingPDF = true
-                }
-            }
-
-            Menu {
-                Button {
-                    gridLayout.toggle()
-                } label: {
-                    Label(
-                        gridLayout ? "library.layout.list" : "library.layout.grid",
-                        systemImage: gridLayout ? "list.bullet" : "square.grid.2x2"
-                    )
-                }
-                Button {
-                    selectingNotes = true
-                } label: { Label("library.selectNotes", systemImage: "checkmark.circle") }
-                Menu {
-                    Picker("library.sort", selection: $sortRaw) {
-                        ForEach(LibrarySort.allCases, id: \.rawValue) { sort in
-                            Text(sort.labelKey).tag(sort.rawValue)
-                        }
-                    }
-                } label: {
-                    Label("library.sort", systemImage: "arrow.up.arrow.down")
-                    Text((LibrarySort(rawValue: sortRaw) ?? .dateModified).labelKey)
-                }
-            } label: {
-                circleIconLabel("ellipsis")
-            }
-            .accessibilityLabel(Text("library.sort"))
-
-            if selection != .deleted {
-                // New note — accent-filled circle.
-                Button(action: addNote) {
-                    Image(systemName: "square.and.pencil")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundStyle(.white)
-                        .frame(width: 38, height: 38)
-                        .background(Color.accentColor, in: Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(Text("library.newNote"))
-            }
-        }
-    }
-
-    /// A 38pt circular icon button on paper with a hairline — the library's
-    /// secondary action chrome (import, more).
-    private func circleIconLabel(_ systemName: String) -> some View {
-        Image(systemName: systemName)
-            .font(.system(size: 16, weight: .medium))
-            .foregroundStyle(.primary)
-            .frame(width: 38, height: 38)
-            .background(themePaper, in: Circle())
-            .overlay(Circle().strokeBorder(SemanticColor.separator))
-    }
-
-    private func circleIconButton(_ systemName: String, label: LocalizedStringKey, action: @escaping () -> Void) -> some View {
-        Button(action: action) { circleIconLabel(systemName) }
-            .buttonStyle(.plain)
-            .accessibilityLabel(Text(label))
     }
 
     // MARK: - Actions

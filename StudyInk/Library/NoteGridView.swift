@@ -6,13 +6,17 @@ import CoreData
 struct NoteGridView: View {
     let section: LibrarySection
     let searchText: String
-    let gridLayout: Bool
-    let sort: LibrarySort
+    @Binding var gridLayout: Bool
+    @Binding var sortRaw: String
     /// Multi-select mode — owned by the library (entered via its ⋯ menu).
     @Binding var selecting: Bool
     var onNoteOpened: () -> Void = {}
     /// Fired when the editor pops — the library restores its sidebar.
     var onNoteClosed: () -> Void = {}
+    var onNewNote: () -> Void = {}
+    var onImportPDF: () -> Void = {}
+
+    private var sort: LibrarySort { LibrarySort(rawValue: sortRaw) ?? .dateModified }
 
     @Environment(\.managedObjectContext) private var context
     @Environment(\.themePaper) private var themePaper
@@ -109,14 +113,15 @@ struct NoteGridView: View {
     var body: some View {
         VStack(spacing: 0) {
             // Big serif title (Paper & Ink), in the content not the nav bar.
-            HStack {
+            HStack(spacing: 10) {
                 Group {
                     if case .subject(let s) = section { Text(verbatim: s.name ?? "") }
                     else { Text(section.titleKey) }
                 }
                 .font(.fraunces(30, weight: .semibold, relativeTo: .largeTitle))
                 .foregroundStyle(.primary)
-                Spacer()
+                Spacer(minLength: 12)
+                if !selecting { headerActions }
             }
             .padding(.horizontal, 28)
             .padding(.top, 24)
@@ -152,6 +157,79 @@ struct NoteGridView: View {
             content
         }
         .background(themePaper.ignoresSafeArea())
+    }
+
+    /// Top-right action cluster on the title row (design layout): Ask AI pill ·
+    /// Import · More · New note.
+    @ViewBuilder
+    private var headerActions: some View {
+        if !inTrash {
+            Button(action: onNewNote) {
+                HStack(spacing: 5) {
+                    Image(systemName: "sparkles")
+                    Text("ai.ask")
+                }
+                .font(.callout.weight(.medium))
+                .foregroundStyle(.white)
+                .frame(height: 38)
+                .padding(.horizontal, 15)
+                .background(Color.accentColor, in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text("ai.ask"))
+
+            gridCircleButton("square.and.arrow.down", label: "media.importPDF", action: onImportPDF)
+        }
+
+        Menu {
+            Button { gridLayout.toggle() } label: {
+                Label(
+                    gridLayout ? "library.layout.list" : "library.layout.grid",
+                    systemImage: gridLayout ? "list.bullet" : "square.grid.2x2"
+                )
+            }
+            Button { selecting = true } label: { Label("library.selectNotes", systemImage: "checkmark.circle") }
+            Menu {
+                Picker("library.sort", selection: $sortRaw) {
+                    ForEach(LibrarySort.allCases, id: \.rawValue) { s in
+                        Text(s.labelKey).tag(s.rawValue)
+                    }
+                }
+            } label: {
+                Label("library.sort", systemImage: "arrow.up.arrow.down")
+                Text(sort.labelKey)
+            }
+        } label: {
+            gridCircleLabel("ellipsis")
+        }
+        .accessibilityLabel(Text("library.sort"))
+
+        if !inTrash {
+            Button(action: onNewNote) {
+                Image(systemName: "square.and.pencil")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(.white)
+                    .frame(width: 38, height: 38)
+                    .background(Color.accentColor, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text("library.newNote"))
+        }
+    }
+
+    private func gridCircleLabel(_ systemName: String) -> some View {
+        Image(systemName: systemName)
+            .font(.system(size: 16, weight: .medium))
+            .foregroundStyle(.primary)
+            .frame(width: 38, height: 38)
+            .background(themePaper, in: Circle())
+            .overlay(Circle().strokeBorder(SemanticColor.separator))
+    }
+
+    private func gridCircleButton(_ systemName: String, label: LocalizedStringKey, action: @escaping () -> Void) -> some View {
+        Button(action: action) { gridCircleLabel(systemName) }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text(label))
     }
 
     @ViewBuilder

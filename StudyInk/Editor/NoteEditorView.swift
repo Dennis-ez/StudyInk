@@ -1070,9 +1070,11 @@ extension NoteEditorView {
             Spacer(minLength: 8)
 
             recorderMenu
-                .background(themeDesk, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .background(themePaper, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(SemanticColor.separator))
             overflowMenu
-                .background(themeDesk, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .background(themePaper, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(SemanticColor.separator))
             Button {
                 withAnimation { showPageStrip.toggle() }
             } label: {
@@ -1087,19 +1089,18 @@ extension NoteEditorView {
         .padding(.horizontal, 14)
         .frame(height: 58)
         .frame(maxWidth: .infinity)
-        .background(themePaper.ignoresSafeArea(edges: .top))
-        .overlay(alignment: .bottom) {
-            Rectangle().fill(SemanticColor.separator).frame(height: 1)
-        }
+        // Transparent header — it floats over the desk, no solid bar / divider.
     }
 
-    /// A 34pt rounded-square header button face on the theme desk.
+    /// A 34pt rounded-square header button face — light paper so it reads on the
+    /// transparent (desk) header.
     private func headerSquare(_ systemName: String) -> some View {
         Image(systemName: systemName)
             .font(.system(size: 16, weight: .medium))
             .foregroundStyle(.primary)
             .frame(width: 34, height: 34)
-            .background(themeDesk, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .background(themePaper, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(SemanticColor.separator))
     }
 
     /// "<subject> · <relative edited>" under the note title.
