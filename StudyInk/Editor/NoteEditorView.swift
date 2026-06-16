@@ -16,6 +16,9 @@ struct NoteEditorView: View {
     @State private var editingBoxID: UUID?
     @State private var selectedMediaID: UUID?
     @State private var distractionFree = false
+    /// The transparent header slides away while scrolling down, reveals on
+    /// scroll-up (spec §1.2B auto-hide).
+    @State private var headerHidden = false
     @State private var showPageStrip = true
     /// 0 = closed, 1 = notes pane, 2 = notes pane + subjects sidebar.
     @State private var drawerStage = 0
@@ -476,9 +479,24 @@ struct NoteEditorView: View {
             }
         }
         // Transparent header floating over the canvas — it does NOT reserve
-        // space, so the page uses the full screen and scrolls under it.
+        // space, so the page uses the full screen and scrolls under it. It
+        // auto-hides while scrolling down, reveals on scroll-up.
         .overlay(alignment: .top) {
-            if !distractionFree { editorHeader }
+            if !distractionFree {
+                editorHeader
+                    .offset(y: headerHidden ? -96 : 0)
+                    .opacity(headerHidden ? 0 : 1)
+            }
+        }
+        // Drive auto-hide off the published page origin (moves up as you scroll
+        // down). No canvas-engine changes — purely observed in SwiftUI.
+        .onChange(of: canvasController.pageScreenOrigins.first?.y ?? 0) { oldY, newY in
+            let delta = newY - oldY
+            guard abs(delta) > 3 else { return }
+            withAnimation(.easeOut(duration: 0.2)) {
+                if delta < -4 { headerHidden = true }        // content rising = scrolling down → hide
+                else if delta > 4 { headerHidden = false }   // scrolling up → reveal
+            }
         }
         // No system navigation bar — the canvas owns the full screen; actions
         // live in the fixed header + floating toolbar.
