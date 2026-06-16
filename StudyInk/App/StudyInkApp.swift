@@ -19,10 +19,10 @@ struct StudyInkApp: App {
                 // Color.accentColor call site on-theme.
                 .tint(theme.accent)
                 .accentColor(theme.accent)
-                // AI surfaces use the theme's accent (not a separate colour),
-                // flowing down reactively so they update the instant the theme
-                // changes.
-                .environment(\.aiAccent, theme.accent)
+                // AI surfaces use the theme's dedicated AI accent (the tutor's
+                // colour), flowing down reactively so they update the instant
+                // the theme changes.
+                .environment(\.aiAccent, theme.aiAccent)
                 .environment(\.themePaper, theme.paper)
                 .environment(\.themeSidebar, theme.sidebar)
                 .environment(\.themeDesk, theme.desk)
@@ -51,38 +51,62 @@ struct StudyInkApp: App {
     }
 }
 
-/// App-wide design themes, picked in Settings. Each pairs a "you" accent (the
-/// UI tint + your ink) with an "AI" accent (only ever marks the study partner),
-/// and swaps the app icon. The base look (warm Paper & Ink) is shared; themes
-/// change the two accents. `paperInk` (indigo · teal) is the default.
+/// App-wide design themes (the "Foolscap" system), picked in Settings. Each
+/// pairs a "you" accent (UI tint + your ink) with an "AI" accent (the tutor's
+/// colour) and tints the chrome — content background, sidebar, editor desk.
+/// The writing page and thumbnails are never themed. Dark chrome is shared
+/// (warm charcoal); only the accents shift in dark. `paperInk` (Foolscap —
+/// slate-blue · ochre) is the default.
+///
+/// `rawValue`s are stable storage ids kept from the previous theme set; the
+/// display names are the Foolscap palette (Foolscap, Botanica, Plum, Marine,
+/// Slate, Ember).
 enum AppTheme: String, CaseIterable, Identifiable {
     case paperInk, bright, editorial, grounded, minimal, notebook
 
     var id: String { rawValue }
 
-    /// The "you" accent — UI tint, your ink, selection.
-    var accent: Color {
+    /// Per-theme hex palette: light/dark accents + the three light chrome tints.
+    private var hex: (youL: String, youD: String, aiL: String, aiD: String,
+                      chrome: String, sidebar: String, desk: String) {
         switch self {
-        case .paperInk:  return Color(red: 0.357, green: 0.341, blue: 0.910)  // ink indigo
-        case .bright:    return Color(red: 0.176, green: 0.357, blue: 1.000)  // cobalt
-        case .editorial: return Color(red: 0.420, green: 0.247, blue: 0.627)  // plum
-        case .grounded:  return Color(red: 0.184, green: 0.490, blue: 0.329)  // forest
-        case .minimal:   return Color(red: 0.200, green: 0.216, blue: 0.239)  // graphite
-        case .notebook:  return Color(red: 0.698, green: 0.227, blue: 0.282)  // crimson
+        case .paperInk:  return ("#2E4057", "#7FB0E8", "#B5762A", "#D9A24E", "#F6F0E4", "#EFE7D7", "#E7DECB") // Foolscap
+        case .bright:    return ("#2F6048", "#7CC79E", "#C2683D", "#E08A5E", "#F1F4ED", "#E7EEE2", "#DCE6D6") // Botanica
+        case .editorial: return ("#5B3A6B", "#C79BD6", "#B08328", "#D9A94E", "#F4EFF3", "#ECE3EC", "#E4D6E2") // Plum
+        case .grounded:  return ("#1F5E63", "#6FC2C7", "#C45B45", "#E0846B", "#ECF3F2", "#E2EDEC", "#D5E6E4") // Marine
+        case .minimal:   return ("#3C4149", "#9AA0AA", "#9A7B45", "#C5A36A", "#F1F1F2", "#E8E8EA", "#DEDEE1") // Slate
+        case .notebook:  return ("#8A3B33", "#E08077", "#B5762A", "#D9A24E", "#F7EFEA", "#F1E4DD", "#ECD9CF") // Ember
         }
     }
 
-    /// The "AI" accent — the study partner's colour.
-    var aiAccent: Color {
-        switch self {
-        case .paperInk:  return Color(red: 0.094, green: 0.722, blue: 0.651)  // teal
-        case .bright:    return Color(red: 1.000, green: 0.435, blue: 0.380)  // coral
-        case .editorial: return Color(red: 0.851, green: 0.643, blue: 0.255)  // gold
-        case .grounded:  return Color(red: 0.824, green: 0.451, blue: 0.290)  // clay
-        case .minimal:   return Color(red: 0.169, green: 0.659, blue: 0.871)  // sky
-        case .notebook:  return Color(red: 0.518, green: 0.663, blue: 0.549)  // sage
-        }
+    // Shared dark chrome (Foolscap dark set) for every theme.
+    private static let darkChrome  = "#232019"
+    private static let darkSidebar = "#1E1B15"
+    private static let darkDesk    = "#15130F"
+
+    private static func dynamicUI(_ light: String, _ dark: String) -> UIColor {
+        UIColor { $0.userInterfaceStyle == .dark
+            ? (UIColor(hex: dark) ?? .black)
+            : (UIColor(hex: light) ?? .white) }
     }
+    private static func dynamic(_ light: String, _ dark: String) -> Color {
+        Color(uiColor: dynamicUI(light, dark))
+    }
+
+    /// The "you" accent — UI tint, your ink, selection.
+    var accent: Color { Self.dynamic(hex.youL, hex.youD) }
+    /// The "AI" accent — the tutor's colour.
+    var aiAccent: Color { Self.dynamic(hex.aiL, hex.aiD) }
+    /// Library/editor content background (chromePaper).
+    var paper: Color { Self.dynamic(hex.chrome, Self.darkChrome) }
+    /// The sidebar — a half-step into the theme.
+    var sidebar: Color { Self.dynamic(hex.sidebar, Self.darkSidebar) }
+    /// The editor "desk" behind the page / under floating panels. Exposed as
+    /// UIColor too for the UIKit scroll view that draws the canvas backdrop.
+    var deskUIColor: UIColor { Self.dynamicUI(hex.desk, Self.darkDesk) }
+    var desk: Color { Color(uiColor: deskUIColor) }
+    /// Hairlines / borders.
+    var separator: Color { Self.dynamic("#DED3BE", "#34302A") }
 
     var labelKey: LocalizedStringKey {
         switch self {
@@ -95,68 +119,13 @@ enum AppTheme: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Each theme tints the paper toward its own mood so switching themes is
-    /// clearly visible — warm/cool/grey hue shifts, not six near-identical
-    /// creams. Backed by a dynamic UIColor so it auto-adapts to dark mode.
-    private var lightPaper: (CGFloat, CGFloat, CGFloat) {
-        switch self {
-        case .paperInk:  return (0.980, 0.968, 0.940)  // warm ivory
-        case .bright:    return (0.940, 0.955, 0.980)  // cool blue-white
-        case .editorial: return (0.980, 0.950, 0.952)  // plum blush
-        case .grounded:  return (0.944, 0.962, 0.940)  // sage paper
-        case .minimal:   return (0.940, 0.945, 0.952)  // cool grey
-        case .notebook:  return (0.984, 0.948, 0.942)  // rosy cream
-        }
-    }
+    /// Alternate app-icon name for this theme. Per-theme icons are regenerated
+    /// in a later phase of the Foolscap redesign; until then every theme uses
+    /// the primary icon.
+    var iconName: String? { nil }
 
-    /// Dark mode tints a warm charcoal toward the same mood so themes read in
-    /// both appearances.
-    private var darkPaper: (CGFloat, CGFloat, CGFloat) {
-        switch self {
-        case .paperInk:  return (0.094, 0.086, 0.072)  // warm
-        case .bright:    return (0.070, 0.078, 0.098)  // cool blue
-        case .editorial: return (0.098, 0.078, 0.090)  // plum
-        case .grounded:  return (0.072, 0.090, 0.076)  // forest
-        case .minimal:   return (0.082, 0.086, 0.094)  // neutral
-        case .notebook:  return (0.100, 0.078, 0.078)  // warm red
-        }
-    }
-
-    /// The page/library background for this theme.
-    var paper: Color {
-        let (lr, lg, lb) = lightPaper
-        let (dr, dg, db) = darkPaper
-        return Color(UIColor { $0.userInterfaceStyle == .dark
-            ? UIColor(red: dr, green: dg, blue: db, alpha: 1)
-            : UIColor(red: lr, green: lg, blue: lb, alpha: 1) })
-    }
-
-    /// The sidebar — a half-step darker than the paper.
-    var sidebar: Color {
-        let (lr, lg, lb) = lightPaper
-        let (dr, dg, db) = darkPaper
-        return Color(UIColor { $0.userInterfaceStyle == .dark
-            ? UIColor(red: dr * 1.22, green: dg * 1.22, blue: db * 1.22, alpha: 1)
-            : UIColor(red: lr * 0.955, green: lg * 0.952, blue: lb * 0.948, alpha: 1) })
-    }
-
-    /// The editor "desk" behind the page — deeper than the paper (and tinted
-    /// per theme) so the white page still pops against it. Exposed as UIColor
-    /// too for the UIKit scroll view that draws the canvas backdrop.
-    var deskUIColor: UIColor {
-        let (lr, lg, lb) = lightPaper
-        let (dr, dg, db) = darkPaper
-        return UIColor { $0.userInterfaceStyle == .dark
-            ? UIColor(red: dr, green: dg, blue: db, alpha: 1)
-            : UIColor(red: lr * 0.90, green: lg * 0.90, blue: lb * 0.90, alpha: 1) }
-    }
-    var desk: Color { Color(deskUIColor) }
-
-    /// Alternate app-icon name for this theme; nil = the primary (default) icon.
-    var iconName: String? { self == .paperInk ? nil : "AppIcon-\(rawValue)" }
-
-    /// Current theme from storage — for non-SwiftUI / static read sites (the
-    /// AI accent). SwiftUI views should prefer @AppStorage for reactivity.
+    /// Current theme from storage — for non-SwiftUI / static read sites.
+    /// SwiftUI views should prefer @AppStorage / the environment for reactivity.
     static var current: AppTheme {
         AppTheme(rawValue: UserDefaults.standard.string(forKey: "settings.theme") ?? "") ?? .paperInk
     }
@@ -225,6 +194,9 @@ enum SemanticColor {
     static var aiMessageBubble: Color { AppTheme.current.paper }
     /// Your message — the theme accent (used at low opacity at call sites).
     static var userMessageBubble: Color { AppTheme.current.accent }
-    static var toolbarBorder: Color { AppTheme.current.accent.opacity(0.18) }
-    static var aiBubbleBorder: Color { AppTheme.current.accent.opacity(0.18) }
+    /// Warm hairlines / borders (Foolscap `separator`).
+    static var separator: Color { AppTheme.current.separator }
+    static var cardEdge: Color { AppTheme.current.separator }
+    static var toolbarBorder: Color { AppTheme.current.separator }
+    static var aiBubbleBorder: Color { AppTheme.current.separator }
 }
