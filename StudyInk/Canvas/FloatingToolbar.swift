@@ -47,6 +47,8 @@ struct FloatingToolbar: View {
     /// Extra trailing inset so a trailing-docked bar isn't covered by the
     /// page-navigator strip.
     var trailingInset: CGFloat = 0
+    /// Extra top inset so a top-docked bar clears the floating editor header.
+    var topInset: CGFloat = 0
 
     private var dock: ToolbarDock { ToolbarDock(rawValue: dockRaw) ?? .top }
     private var enabledTools: [ToolKind] {
@@ -84,6 +86,8 @@ struct FloatingToolbar: View {
                     .padding(12)
                     // Step aside when the pages strip shares the trailing edge.
                     .padding(.trailing, dock == .trailing ? trailingInset : 0)
+                    // Clear the floating editor header when docked at the top.
+                    .padding(.top, dock == .top ? topInset : 0)
                     .animation(.spring(response: 0.3, dampingFraction: 0.8), value: dockRaw)
                     .animation(.spring(response: 0.3, dampingFraction: 0.8), value: trailingInset)
             }

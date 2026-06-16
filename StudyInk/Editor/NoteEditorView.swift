@@ -165,7 +165,9 @@ struct NoteEditorView: View {
                     },
                     extraItems: toolbarExtras,
                     // Pages strip occupies the trailing edge — slide aside.
-                    trailingInset: showPageStrip ? 96 : 0
+                    trailingInset: showPageStrip ? 96 : 0,
+                    // Clear the floating 44pt header when the bar docks at the top.
+                    topInset: 54
                 )
 
                 // The recorder lives in the top bar; the bar only surfaces
@@ -473,9 +475,9 @@ struct NoteEditorView: View {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        // Fixed Foolscap header bar pinned above the canvas (insets the scroll
-        // area so the page starts below it). Hidden in distraction-free mode.
-        .safeAreaInset(edge: .top, spacing: 0) {
+        // Transparent header floating over the canvas — it does NOT reserve
+        // space, so the page uses the full screen and scrolls under it.
+        .overlay(alignment: .top) {
             if !distractionFree { editorHeader }
         }
         // No system navigation bar — the canvas owns the full screen; actions
@@ -1087,9 +1089,10 @@ extension NoteEditorView {
         }
         .font(.system(size: 16, weight: .medium))
         .padding(.horizontal, 14)
-        .frame(height: 58)
+        .frame(height: 44)
         .frame(maxWidth: .infinity)
-        // Transparent header — it floats over the desk, no solid bar / divider.
+        // Transparent header — it floats over the canvas, no solid bar / divider
+        // and reserves no canvas height (spec: compact 44pt, non-eating).
     }
 
     /// A 34pt rounded-square header button face — light paper so it reads on the
