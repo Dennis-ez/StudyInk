@@ -197,7 +197,7 @@ struct LibraryView: View {
 
             // Search — a rounded paper field with a ⌘K hint chip.
             HStack(spacing: DS.Space.sm) {
-                Image(systemName: "magnifyingglass").font(.subheadline).foregroundStyle(.secondary)
+                Lucide("search", size: 16).foregroundStyle(.secondary)
                 TextField("library.searchPrompt", text: $searchText)
                     .textFieldStyle(.plain)
                     .font(.callout)
@@ -222,9 +222,9 @@ struct LibraryView: View {
             Section {
                 // One tint across the smart sections — the sidebar reads as a
                 // set, not a rainbow.
-                sectionRow(.all, systemName: "tray.full", count: activeNotes.count)
-                sectionRow(.recents, systemName: "clock", count: recentsCount)
-                sectionRow(.favorites, systemName: "star", count: favoritesCount)
+                sectionRow(.all, lucide: "layers", count: activeNotes.count)
+                sectionRow(.recents, lucide: "clock", count: recentsCount)
+                sectionRow(.favorites, lucide: "star", count: favoritesCount)
             }
             Section(header:
                 HStack {
@@ -239,8 +239,7 @@ struct LibraryView: View {
                         Button { addSubject(kind: "folder") } label: { Label("library.newSubject", systemImage: "folder.badge.plus") }
                         Button { addSubject(kind: "divider") } label: { Label("library.newDivider", systemImage: "minus") }
                     } label: {
-                        Image(systemName: "plus.circle")
-                            .font(.subheadline)
+                        Lucide("plus", size: 16)
                     }
                     .accessibilityLabel(Text("library.newSubject"))
                 }
@@ -265,7 +264,7 @@ struct LibraryView: View {
                 }
             }
             Section {
-                sectionRow(.deleted, systemName: "trash", count: deletedCount)
+                sectionRow(.deleted, lucide: "trash", count: deletedCount)
             }
         }
             .scrollContentBackground(.hidden)
@@ -276,7 +275,7 @@ struct LibraryView: View {
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 Button { showSettings = true } label: {
                     HStack(spacing: 11) {
-                        Image(systemName: "gearshape").font(.system(size: 16)).frame(width: 22)
+                        Lucide("settings", size: 16).frame(width: 22)
                         Text("settings.title").font(.subheadline.weight(.medium))
                         Spacer()
                     }
@@ -290,14 +289,13 @@ struct LibraryView: View {
         }
     }
 
-    private func sectionRow(_ section: LibrarySection, systemName: String, count: Int) -> some View {
+    private func sectionRow(_ section: LibrarySection, lucide: String, count: Int) -> some View {
         let selected = selection == section
         return Button {
             selection = section
         } label: {
             HStack(spacing: 11) {
-                Image(systemName: systemName)
-                    .font(.system(size: 19))
+                Lucide(lucide, size: 19)
                     .foregroundStyle(selected ? Color.accentColor : .secondary)
                     .frame(width: 24)
                 Text(section.titleKey)
@@ -411,8 +409,7 @@ struct LibraryView: View {
                                 }
                             }
                         } label: {
-                            Image(systemName: "chevron.down")
-                                .font(.caption.weight(.semibold))
+                            Lucide("chevron-down", size: 14)
                                 .foregroundStyle(.secondary)
                                 .rotationEffect(.degrees(collapsedSubjects.contains(subject.objectID) ? -90 : 0))
                                 .frame(width: 24, height: 24)

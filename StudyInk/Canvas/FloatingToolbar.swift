@@ -182,12 +182,12 @@ struct FloatingToolbar: View {
             grip
             // Undo / redo live on the bar (spec: grip · undo · redo │ tools …).
             Button(action: controller.undo) {
-                Image(systemName: "arrow.uturn.backward")
+                Lucide("undo-2", size: 18)
             }
             .disabled(!controller.canUndo)
             .accessibilityLabel(Text("action.undo"))
             Button(action: controller.redo) {
-                Image(systemName: "arrow.uturn.forward")
+                Lucide("redo-2", size: 18)
             }
             .disabled(!controller.canRedo)
             .accessibilityLabel(Text("action.redo"))
@@ -198,14 +198,14 @@ struct FloatingToolbar: View {
             }
             if enabledAccessories.contains("ruler") {
                 Button(action: { controller.isRulerActive.toggle() }) {
-                    Image(systemName: "ruler")
-                        .symbolVariant(controller.isRulerActive ? .fill : .none)
+                    Lucide("ruler", size: 18)
+                        .foregroundStyle(controller.isRulerActive ? Color.accentColor : Color.primary)
                 }
                 .accessibilityLabel(Text("tool.ruler"))
             }
             if enabledAccessories.contains("textbox") {
                 Button(action: onInsertTextBox) {
-                    Image(systemName: "textbox")
+                    Lucide("type", size: 18)
                 }
                 .accessibilityLabel(Text("tool.textbox"))
             }
@@ -239,7 +239,7 @@ struct FloatingToolbar: View {
                 Toggle(isOn: $controller.autoShapes) { Label("tool.autoShapes", systemImage: "square.on.circle") }
                 Toggle(isOn: $controller.snapToGrid) { Label("tool.snapToGrid", systemImage: "grid") }
             } label: {
-                Image(systemName: "ellipsis.circle")
+                Lucide("more-horizontal", size: 18)
             }
         }
         .buttonStyle(ToolbarButtonStyle())
@@ -295,7 +295,7 @@ struct FloatingToolbar: View {
     }
 
     private var grip: some View {
-        Image(systemName: "line.3.horizontal")
+        Lucide("grip-vertical", size: 18)
             .foregroundStyle(.tertiary)
             // Full button-sized hit target — the bare glyph was ~16pt and
             // nearly impossible to grab.
@@ -357,8 +357,7 @@ struct FloatingToolbar: View {
         } label: {
             let ink = controller.inkColor(for: kind)
             ZStack(alignment: .bottom) {
-                Image(systemName: kind.symbolName)
-                    .symbolVariant(isActive ? .fill : .none)
+                Lucide(kind.lucideName, size: 18)
                     // Ink tools wear their own color; others use the accent when active.
                     .foregroundStyle(ink ?? (isActive ? Color.accentColor : Color.primary))
                     .background(

@@ -166,7 +166,7 @@ struct NoteGridView: View {
         if !inTrash {
             Button(action: onNewNote) {
                 HStack(spacing: 5) {
-                    Image(systemName: "sparkles")
+                    Lucide("sparkles", size: 16)
                     Text("ai.ask")
                 }
                 .font(.callout.weight(.medium))
@@ -178,7 +178,7 @@ struct NoteGridView: View {
             .buttonStyle(.plain)
             .accessibilityLabel(Text("ai.ask"))
 
-            gridCircleButton("square.and.arrow.down", label: "media.importPDF", action: onImportPDF)
+            gridCircleButton("file-up", label: "media.importPDF", action: onImportPDF)
         }
 
         Menu {
@@ -200,14 +200,13 @@ struct NoteGridView: View {
                 Text(sort.labelKey)
             }
         } label: {
-            gridCircleLabel("ellipsis")
+            gridCircleLabel("more-horizontal")
         }
         .accessibilityLabel(Text("library.sort"))
 
         if !inTrash {
             Button(action: onNewNote) {
-                Image(systemName: "square.and.pencil")
-                    .font(.system(size: 16, weight: .medium))
+                Lucide("square-pen", size: 16)
                     .foregroundStyle(.white)
                     .frame(width: 38, height: 38)
                     .background(Color.accentColor, in: Circle())
@@ -217,17 +216,16 @@ struct NoteGridView: View {
         }
     }
 
-    private func gridCircleLabel(_ systemName: String) -> some View {
-        Image(systemName: systemName)
-            .font(.system(size: 16, weight: .medium))
+    private func gridCircleLabel(_ lucide: String) -> some View {
+        Lucide(lucide, size: 16)
             .foregroundStyle(.primary)
             .frame(width: 38, height: 38)
             .background(themePaper, in: Circle())
             .overlay(Circle().strokeBorder(SemanticColor.separator))
     }
 
-    private func gridCircleButton(_ systemName: String, label: LocalizedStringKey, action: @escaping () -> Void) -> some View {
-        Button(action: action) { gridCircleLabel(systemName) }
+    private func gridCircleButton(_ lucide: String, label: LocalizedStringKey, action: @escaping () -> Void) -> some View {
+        Button(action: action) { gridCircleLabel(lucide) }
             .buttonStyle(.plain)
             .accessibilityLabel(Text(label))
     }

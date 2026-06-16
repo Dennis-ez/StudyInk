@@ -23,6 +23,22 @@ enum ToolKind: String, CaseIterable, Codable, Identifiable {
         }
     }
 
+    /// Bundled Lucide glyph name (v2 redesign). Rendered via `Lucide(name:)`
+    /// in the floating toolbar; `symbolName` stays the SF Symbol fallback used
+    /// by the customize sheet and any non-Lucide surface.
+    var lucideName: String {
+        switch self {
+        case .ballpoint: return "pen"
+        case .fountain: return "pen-tool"
+        case .monoline: return "pen-line"
+        case .highlighter: return "highlighter"
+        case .pencil: return "pencil"
+        case .eraserPixel, .eraserObject: return "eraser"
+        case .lasso: return "lasso"
+        case .hand: return "hand"
+        }
+    }
+
     var labelKey: LocalizedStringKey {
         switch self {
         case .ballpoint: return "tool.ballpoint"

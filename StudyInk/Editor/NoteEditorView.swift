@@ -1127,9 +1127,8 @@ extension NoteEditorView {
         Button {
             showRecorderPopover = true
         } label: {
-            Image(systemName: "mic")
-                .symbolVariant(audio.isRecording ? .fill : .none)
-                .symbolEffect(.pulse, isActive: audio.isRecording)
+            Lucide("mic", size: 18)
+                .foregroundStyle(audio.isRecording ? Color.accentColor : Color.primary)
                 .frame(width: 34, height: 34)
         }
         .tint(Color.accentColor)
@@ -1219,7 +1218,8 @@ extension NoteEditorView {
                 Label("page.settings", systemImage: "doc.badge.gearshape")
             }
         } label: {
-            Image(systemName: "ellipsis")
+            Lucide("more-horizontal", size: 18)
+                .foregroundStyle(.primary)
                 .frame(width: 34, height: 34)
         }
         .accessibilityLabel(Text("editor.more"))
