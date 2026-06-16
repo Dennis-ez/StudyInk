@@ -121,10 +121,9 @@ enum AppTheme: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Alternate app-icon name for this theme. Per-theme icons are regenerated
-    /// in a later phase of the Foolscap redesign; until then every theme uses
-    /// the primary icon.
-    var iconName: String? { nil }
+    /// Alternate app-icon name for this theme; nil = the primary (Foolscap)
+    /// icon. Each theme ships a Foolscap-styled icon in its own palette.
+    var iconName: String? { self == .paperInk ? nil : "AppIcon-\(rawValue)" }
 
     /// Current theme from storage — for non-SwiftUI / static read sites.
     /// SwiftUI views should prefer @AppStorage / the environment for reactivity.
