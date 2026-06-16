@@ -56,6 +56,7 @@ struct NoteEditorView: View {
     @Environment(\.managedObjectContext) private var context
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.themePaper) private var themePaper
     @Environment(\.themeDesk) private var themeDesk
     @Environment(\.aiAccent) private var aiAccent
 
