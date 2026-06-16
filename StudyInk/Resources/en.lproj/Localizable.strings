@@ -185,12 +185,10 @@
 "settings.appearance.light" = "Light";
 "settings.appearance.dark" = "Dark";
 "settings.theme" = "Theme";
-"theme.paperInk" = "Foolscap";
-"theme.bright" = "Botanica";
-"theme.editorial" = "Plum";
-"theme.grounded" = "Marine";
-"theme.minimal" = "Slate";
-"theme.notebook" = "Ember";
+"theme.foolscap" = "Foolscap";
+"theme.neon" = "Neon";
+"theme.daylight" = "Daylight";
+"theme.graphite" = "Graphite";
 "settings.backup" = "Backup & Sync";
 "settings.notes" = "Notes";
 "settings.defaultTemplate" = "Default Page Template";

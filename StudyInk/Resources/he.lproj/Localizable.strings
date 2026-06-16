@@ -185,12 +185,10 @@
 "settings.appearance.light" = "בהיר";
 "settings.appearance.dark" = "כהה";
 "settings.theme" = "ערכת נושא";
-"theme.paperInk" = "פולסקאפ";
-"theme.bright" = "בוטניקה";
-"theme.editorial" = "שזיף";
-"theme.grounded" = "ימי";
-"theme.minimal" = "צפחה";
-"theme.notebook" = "גחלת";
+"theme.foolscap" = "פולסקאפ";
+"theme.neon" = "ניאון";
+"theme.daylight" = "אור יום";
+"theme.graphite" = "גרפיט";
 "settings.backup" = "גיבוי וסנכרון";
 "settings.notes" = "מחברות";
 "settings.defaultTemplate" = "תבנית עמוד ברירת מחדל";

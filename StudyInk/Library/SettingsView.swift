@@ -13,7 +13,7 @@ struct SettingsView: View {
     @Environment(\.themeSidebar) private var themeSidebar
     @Environment(\.themeDesk) private var themeDesk
     @AppStorage("settings.appearance") private var appearance = "system"
-    @AppStorage("settings.theme") private var themeRaw = AppTheme.paperInk.rawValue
+    @AppStorage("settings.theme") private var themeRaw = AppTheme.foolscap.rawValue
     @AppStorage("settings.autoBackup") private var autoBackup = true
     @AppStorage("settings.iCloudSync") private var iCloudSync = false
     @AppStorage("settings.ai.provider") private var providerRaw = AIProvider.claude.rawValue
@@ -262,7 +262,7 @@ struct SettingsView: View {
     /// The currently selected theme, resolved from storage so chips and tints
     /// react the moment a new theme is picked.
     private var activeTheme: AppTheme {
-        AppTheme(rawValue: themeRaw) ?? .paperInk
+        AppTheme(rawValue: themeRaw) ?? .foolscap
     }
 
     /// MODE — segmented Light / Dark / System sitting on the theme "desk" track.
