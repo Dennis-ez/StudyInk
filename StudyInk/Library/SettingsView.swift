@@ -4,6 +4,7 @@ import SwiftUI
 /// API keys (pasted in-app, stored in the Keychain), and model.
 struct SettingsView: View {
     @Environment(\.themePaper) private var themePaper
+    @Environment(\.themeDesk) private var themeDesk
     @AppStorage("settings.appearance") private var appearance = "system"
     @AppStorage("settings.theme") private var themeRaw = AppTheme.paperInk.rawValue
     @AppStorage("settings.autoBackup") private var autoBackup = true
@@ -39,58 +40,16 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section(header: Label("settings.appearance", systemImage: "circle.lefthalf.filled")) {
-                    Picker("settings.appearance", selection: $appearance) {
-                        Text("settings.appearance.system").tag("system")
-                        Text("settings.appearance.light").tag("light")
-                        Text("settings.appearance.dark").tag("dark")
-                    }
-                    .pickerStyle(.segmented)
+                Section {
+                    appearanceModeRow
+                } header: {
+                    sectionHeader("settings.appearance")
+                }
 
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("settings.theme")
-                        // Each theme: the "you" accent + the "AI" accent, plus
-                        // its name. Picking one also swaps the app icon.
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], spacing: 12) {
-                            ForEach(AppTheme.allCases) { theme in
-                                let selected = themeRaw == theme.rawValue
-                                Button {
-                                    themeRaw = theme.rawValue
-                                } label: {
-                                    HStack(spacing: 10) {
-                                        ZStack {
-                                            Circle().fill(theme.accent).frame(width: 26, height: 26)
-                                            Circle().fill(theme.aiAccent).frame(width: 26, height: 26)
-                                                .mask(Rectangle().offset(x: 13))
-                                            Circle().strokeBorder(.white.opacity(0.6), lineWidth: 1).frame(width: 26, height: 26)
-                                        }
-                                        Text(theme.labelKey)
-                                            .font(.subheadline)
-                                            .foregroundStyle(.primary)
-                                        Spacer(minLength: 0)
-                                        if selected {
-                                            Image(systemName: "checkmark.circle.fill")
-                                                .foregroundStyle(theme.accent)
-                                        }
-                                    }
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 10)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                            .fill(selected ? theme.accent.opacity(0.12) : Color(.secondarySystemBackground))
-                                    )
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                            .strokeBorder(selected ? theme.accent : .clear, lineWidth: 1.5)
-                                    )
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel(Text(theme.labelKey))
-                                .accessibilityAddTraits(selected ? .isSelected : [])
-                            }
-                        }
-                    }
-                    .padding(.vertical, 4)
+                Section {
+                    themePickerCard
+                } header: {
+                    sectionHeader("settings.theme")
                 }
                 Section(header: Label("settings.backup", systemImage: "icloud")) {
                     Toggle("settings.autoBackup", isOn: $autoBackup)
@@ -99,7 +58,7 @@ struct SettingsView: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
-                Section(header: Label("settings.notes", systemImage: "book.closed")) {
+                Section {
                     Text("settings.defaultTemplate")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -108,8 +67,8 @@ struct SettingsView: View {
                             templatePreview(template)
                         }
                     }
-                    .padding(.vertical, 4)
-                    VStack(alignment: .leading, spacing: 6) {
+                    .padding(.vertical, DS.Space.xs)
+                    VStack(alignment: .leading, spacing: DS.Space.sm) {
                         HStack {
                             Text("page.spacing").font(.subheadline)
                             Spacer()
@@ -117,8 +76,12 @@ struct SettingsView: View {
                                 .font(.caption.monospacedDigit())
                                 .foregroundStyle(.secondary)
                         }
+                        // Slider painted in the active "you" accent per spec.
                         Slider(value: $defaultSpacing, in: 0.6...1.8)
+                            .tint(activeTheme.accent)
                     }
+                } header: {
+                    sectionHeader("settings.notes")
                 }
                 aiKeySection
                 aiModelSection
@@ -126,7 +89,14 @@ struct SettingsView: View {
             .scrollContentBackground(.hidden)
             .background(themePaper.ignoresSafeArea())
             .navigationTitle(Text("settings.title"))
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                // H1 in the brand serif (the spec's Fraunces title voice).
+                ToolbarItem(placement: .principal) {
+                    Text("settings.title")
+                        .font(.fraunces(20, weight: .semibold, relativeTo: .headline))
+                        .foregroundStyle(.primary)
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("action.done") { dismiss() }
                 }
@@ -134,6 +104,126 @@ struct SettingsView: View {
             .onChange(of: providerRaw) { refreshProviderState() }
             .onAppear { refreshProviderState() }
         }
+    }
+
+    // MARK: - Appearance & theme
+
+    /// The currently selected theme, resolved from storage so chips and tints
+    /// react the moment a new theme is picked.
+    private var activeTheme: AppTheme {
+        AppTheme(rawValue: themeRaw) ?? .paperInk
+    }
+
+    /// A section header rendered in the brand serif (the spec's Fraunces voice)
+    /// rather than the default uppercase Form caption.
+    private func sectionHeader(_ key: LocalizedStringKey) -> some View {
+        Text(key)
+            .font(.fraunces(20, weight: .semibold, relativeTo: .title3))
+            .foregroundStyle(.primary)
+            .textCase(nil)
+            .padding(.bottom, DS.Space.xs)
+    }
+
+    /// MODE — segmented Light / Dark / System sitting on the theme "desk" track,
+    /// per the spec's `editorDesk` track styling.
+    private var appearanceModeRow: some View {
+        Picker("settings.appearance", selection: $appearance) {
+            Text("settings.appearance.light").tag("light")
+            Text("settings.appearance.dark").tag("dark")
+            Text("settings.appearance.system").tag("system")
+        }
+        .pickerStyle(.segmented)
+        .padding(DS.Space.xs)
+        .background(
+            RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
+                .fill(themeDesk)
+        )
+        .tint(activeTheme.accent)
+        .padding(.vertical, DS.Space.xs)
+    }
+
+    /// THEME — caption + a wrapping grid of theme chips. Each chip paints its
+    /// OWN theme's accents (not the active tint) so the palette is legible.
+    private var themePickerCard: some View {
+        VStack(alignment: .leading, spacing: DS.Space.md) {
+            // Spec caption. Kept verbatim because no localization key exists yet
+            // and this file is the only one in scope to edit.
+            Text(verbatim: "pairs your ink with your tutor's color")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 104), spacing: DS.Space.md)],
+                spacing: DS.Space.md
+            ) {
+                ForEach(AppTheme.allCases) { theme in
+                    themeChip(theme)
+                }
+            }
+        }
+        .padding(.vertical, DS.Space.xs)
+    }
+
+    /// One ~104pt theme cell: a 60pt app-mark preview tinted to the theme's
+    /// "you" accent, the theme name (13.5/600), and two 13pt dots (you, ai).
+    /// Selected = light paper card, 2pt accent border, check badge top-right.
+    private func themeChip(_ theme: AppTheme) -> some View {
+        let selected = themeRaw == theme.rawValue
+        return Button {
+            themeRaw = theme.rawValue
+        } label: {
+            VStack(spacing: DS.Space.sm) {
+                // 60pt preview — an inline BrandMark in the theme's own accent
+                // (BrandMark itself only reads Color.accentColor, so we draw it
+                // here to force each chip into its own theme colours).
+                RoundedRectangle(cornerRadius: 60 * 0.36, style: .continuous)
+                    .fill(theme.accent)
+                    .frame(width: 60, height: 60)
+                    .overlay(
+                        Circle()
+                            .fill(Color(red: 1.0, green: 0.839, blue: 0.039)) // #FFD60A gold dot
+                            .frame(width: 60 * 0.46, height: 60 * 0.46)
+                    )
+
+                Text(theme.labelKey)
+                    .font(.system(size: 13.5, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+
+                HStack(spacing: DS.Space.sm) {
+                    Circle().fill(theme.accent).frame(width: 13, height: 13)
+                    Circle().fill(theme.aiAccent).frame(width: 13, height: 13)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, DS.Space.sm)
+            .padding(.vertical, DS.Space.md)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(selected ? SemanticColor.paperBackground : Color.clear)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(
+                        selected ? theme.accent : SemanticColor.cardEdge,
+                        lineWidth: selected ? DS.Stroke.regular : DS.Stroke.hairline
+                    )
+            )
+            .overlay(alignment: .topTrailing) {
+                if selected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 18))
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(.white, theme.accent)
+                        .padding(DS.Space.sm)
+                }
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .animation(DS.Motion.selection, value: selected)
+        .accessibilityLabel(Text(theme.labelKey))
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     /// Selectable live template preview — paints the actual template at the

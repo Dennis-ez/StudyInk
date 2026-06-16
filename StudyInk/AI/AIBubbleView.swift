@@ -15,8 +15,16 @@ struct AIBubbleView: View {
     @State private var resizeStartWidth: Double?
     @State private var resizeStartHeight: Double?
     @State private var appeared = false
+    @State private var shimmerPhase = false
     @FocusState private var followUpFocused: Bool
     @Environment(\.aiAccent) private var aiAccent
+    @Environment(\.colorScheme) private var colorScheme
+
+    /// Frosted card fill over the live canvas: lighter in light mode, denser in
+    /// dark so text stays legible against the page.
+    private var cardMaterial: Material {
+        colorScheme == .dark ? .regularMaterial : .ultraThinMaterial
+    }
 
     private var isRTL: Bool { bubble.latestAnswer.isMostlyRTL }
 
@@ -78,23 +86,23 @@ struct AIBubbleView: View {
             askMoreField
             footer
         }
-        // Paper-card styling: a clean rounded card with a hairline in the AI
-        // accent and a soft lift off the page; the tone shows as a colored
-        // shoulder along the leading edge.
-        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color("canvasBackground")))
+        // Foolscap card styling: a frosted material over the live canvas with a
+        // hairline in the AI accent and a soft lift off the page; the tone shows
+        // as a colored shoulder along the leading edge.
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(cardMaterial))
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(aiAccent.opacity(0.22), lineWidth: 1)
         )
         .overlay(alignment: .leading) {
             Capsule()
                 .fill(Color(bubble.tone.colorToken))
-                .frame(width: 3)
+                .frame(width: 4)
                 .padding(.vertical, 10)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(alignment: .bottomTrailing) { resizeHandle }
-        .shadow(color: .black.opacity(0.10), radius: 8, y: 3)
+        .elevation(.e3)
         .environment(\.layoutDirection, isRTL ? .rightToLeft : .leftToRight)
     }
 
@@ -211,15 +219,47 @@ struct AIBubbleView: View {
         .padding(.vertical, 4)
     }
 
+    /// Thinking state (spec): two shimmer placeholder bars + three tone-colored
+    /// pulsing dots, in place of the answer body.
     private var loadingRow: some View {
-        HStack(spacing: 8) {
-            ProgressView().controlSize(.small)
-            Text("ai.thinking")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 8) {
+            shimmerBar(widthFraction: 1.0)
+            HStack(spacing: 8) {
+                shimmerBar(widthFraction: 0.55)
+                thinkingDots
+            }
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 6)
+        .padding(.vertical, 8)
+        .accessibilityLabel(Text("ai.thinking"))
+    }
+
+    private func shimmerBar(widthFraction: CGFloat) -> some View {
+        RoundedRectangle(cornerRadius: 5, style: .continuous)
+            .fill(aiAccent.opacity(0.12))
+            .frame(height: 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .scaleEffect(x: widthFraction, anchor: .leading)
+            .opacity(shimmerPhase ? 0.5 : 1)
+            .animation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true), value: shimmerPhase)
+    }
+
+    private var thinkingDots: some View {
+        HStack(spacing: 4) {
+            ForEach(0..<3, id: \.self) { i in
+                Circle()
+                    .fill(Color(bubble.tone.colorToken))
+                    .frame(width: 5, height: 5)
+                    .opacity(shimmerPhase ? 0.3 : 1)
+                    .animation(
+                        .easeInOut(duration: 0.6)
+                            .repeatForever(autoreverses: true)
+                            .delay(Double(i) * 0.18),
+                        value: shimmerPhase
+                    )
+            }
+        }
+        .onAppear { shimmerPhase = true }
     }
 
     /// Quick-reply chips Claude suggested; horizontal scroll when they overflow.
