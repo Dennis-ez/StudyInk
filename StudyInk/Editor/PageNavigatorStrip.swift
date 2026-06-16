@@ -40,13 +40,7 @@ struct PageNavigatorStrip: View {
                             end: commitReorder
                         ))
                 }
-                Button(action: { addPage() }) {
-                    Image(systemName: "plus")
-                        .font(.title3)
-                        .frame(width: 54, height: 72)
-                        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
-                }
-                .accessibilityLabel(Text("page.add"))
+                addPageButton
             }
             .padding(10)
             // Thumbnails slide into place on reorder/insert/delete instead of
@@ -101,6 +95,24 @@ struct PageNavigatorStrip: View {
                 }
             }
             .accessibilityLabel(Text("page.thumbnail \(index + 1)"))
+    }
+
+    /// Dashed "+ add page" affordance at the end of the strip (spec §3.2).
+    private var addPageButton: some View {
+        Button {
+            addPage()
+        } label: {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(SemanticColor.separator, style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                .frame(width: 54, height: 72)
+                .overlay {
+                    Image(systemName: "plus")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("page.addAfter"))
     }
 
     private func addPage(after index: Int? = nil) {
