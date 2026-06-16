@@ -506,7 +506,7 @@ struct NoteGridView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
         }
-        .background(SemanticColor.canvasBackground)
+        .background(SemanticColor.surface)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(SemanticColor.cardEdge))
         .elevation(.e1)

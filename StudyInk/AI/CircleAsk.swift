@@ -32,7 +32,8 @@ struct AskLassoOverlay: View {
                         .font(.footnote)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
-                        .background(.regularMaterial, in: Capsule())
+                        .background(SemanticColor.surface, in: Capsule())
+                        .overlay(Capsule().strokeBorder(SemanticColor.separator))
                         .padding(.top, 70)
                     Spacer()
                 }
