@@ -57,6 +57,7 @@ struct NoteEditorView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
     @Environment(\.themeDesk) private var themeDesk
+    @Environment(\.aiAccent) private var aiAccent
 
     private var currentPage: Page? {
         let pages = note.sortedPages
@@ -166,7 +167,7 @@ struct NoteEditorView: View {
                 } label: {
                     VStack(alignment: .leading, spacing: 1) {
                         Text(verbatim: note.title ?? "")
-                            .font(.fraunces(20, weight: .bold, relativeTo: .title3))
+                            .font(.fraunces(18, weight: .semibold, relativeTo: .title3))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                         Text(note.createdAt ?? .now, format: .dateTime.day().month().year().hour().minute())
@@ -1044,10 +1045,10 @@ extension NoteEditorView {
         [
             // The AI pen: arm Circle & Ask straight from the toolbar — circle
             // anything on the page and ask about it.
-            ToolbarExtraItem(id: "ask-ai", symbolName: "lasso.badge.sparkles", labelKey: "ai.circleAsk.title") {
+            ToolbarExtraItem(id: "ask-ai", symbolName: "wand.and.stars", labelKey: "ai.circleAsk.title") {
                 withAnimation { askLassoActive = true }
             },
-            ToolbarExtraItem(id: "ai-history", symbolName: "bubble.left.and.text.bubble.right", labelKey: "ai.history") {
+            ToolbarExtraItem(id: "ai-history", symbolName: "clock.arrow.circlepath", labelKey: "ai.history") {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                     tutor.panelBubbleID = nil
                     tutor.panelOpen.toggle()
@@ -1106,7 +1107,7 @@ extension NoteEditorView {
                     Button {
                         withAnimation { showPageStrip.toggle() }
                     } label: {
-                        Image(systemName: "rectangle.trailingthird.inset.filled")
+                        Image(systemName: "doc.on.doc")
                             .frame(width: 34, height: 34)
                     }
                     .accessibilityLabel(Text("page.toggleStrip"))
@@ -1166,6 +1167,7 @@ extension NoteEditorView {
             }
         } label: {
             Image(systemName: "sparkles")
+                .foregroundStyle(aiAccent)
                 .frame(width: 34, height: 34)
         }
         .accessibilityLabel(Text("ai.menu"))

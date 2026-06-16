@@ -295,7 +295,7 @@ struct FloatingToolbar: View {
                         withAnimation(.easeOut(duration: 0.15)) { gripDragLocation = nil }
                         // One animated transaction: the bar glides from its
                         // dragged position into the new dock.
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        withAnimation(DS.Motion.toolbarDock) {
                             dragOffset = .zero
                             dockRaw = nearestDock(for: value.location).rawValue
                         }

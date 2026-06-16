@@ -12,7 +12,7 @@ enum ToolKind: String, CaseIterable, Codable, Identifiable {
     var symbolName: String {
         switch self {
         case .ballpoint: return "pencil.tip"
-        case .fountain: return "paintbrush.pointed"
+        case .fountain: return "pencil.and.outline"
         case .monoline: return "pencil.line"
         case .highlighter: return "highlighter"
         case .pencil: return "pencil"

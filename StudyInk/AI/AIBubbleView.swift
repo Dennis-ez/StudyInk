@@ -41,7 +41,7 @@ struct AIBubbleView: View {
         .position(x: screenPos.x + cardWidth * pageZoom / 2, y: screenPos.y + 90 * pageZoom)
         .opacity(appeared ? 1 : 0)
         .onAppear {
-            withAnimation(.spring(response: 0.2, dampingFraction: 0.7)) { appeared = true }
+            withAnimation(DS.Motion.bubbleAppear) { appeared = true }
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text("ai.bubble.accessibility"))
