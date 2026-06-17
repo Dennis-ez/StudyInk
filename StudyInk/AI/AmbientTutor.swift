@@ -60,6 +60,15 @@ struct MarginItem: Identifiable {
     var passive: Bool { glyph == .correct }
 }
 
+/// The tutor's predicted next step, shown as faint amber ghost text ahead of
+/// the pen. Flick/tap to accept → it's written as real ink.
+struct GhostSuggestion {
+    var pageIndex: Int
+    /// Page-space top-left where the ghost text begins.
+    var anchor: CGPoint
+    var text: String
+}
+
 enum AmbientSensitivity: String, CaseIterable, Identifiable {
     case off, subtle, helpful
     var id: String { rawValue }
@@ -77,6 +86,10 @@ final class AmbientTutorController: ObservableObject {
     @Published var items: [MarginItem] = []
     @Published var openItemID: UUID?
     @Published var isChecking = false
+    /// The next-step ghost suggestion, if any.
+    @Published var ghost: GhostSuggestion?
+    /// Guards the idle auto-trigger so we only suggest once per writing burst.
+    private var lastGhostSourceLine: String?
     @AppStorage("ambient.sensitivity") private var sensitivityRaw = AmbientSensitivity.helpful.rawValue
 
     var sensitivity: AmbientSensitivity {
@@ -165,6 +178,52 @@ final class AmbientTutorController: ObservableObject {
                 Haptics.selection()
             }
         }
+    }
+
+    // MARK: - Ghost next-step
+
+    func dismissGhost() {
+        withAnimation(.easeOut(duration: 0.2)) { ghost = nil }
+    }
+
+    /// Called when the student writes again — the ghost is stale; clear it and
+    /// re-arm so a fresh suggestion can come for the new line.
+    func invalidateGhost() {
+        if ghost != nil { ghost = nil }
+        lastGhostSourceLine = nil
+    }
+
+    /// Predict the single next line the student is about to write and show it as
+    /// ghost text below the last line. Gated to Helpful sensitivity.
+    func suggestNext(note: Note, pageIndex: Int, darkMode: Bool) async {
+        guard ghost == nil else { return }
+        let pages = note.sortedPages
+        guard pages.indices.contains(pageIndex) else { return }
+        let page = pages[pageIndex]
+        let lines = await NoteContextBuilder.ocrLines(for: page)
+        guard let last = lines.last, !last.text.trimmingCharacters(in: .whitespaces).isEmpty,
+              last.text != lastGhostSourceLine else { return }
+
+        do {
+            let context = await NoteContextBuilder.build(note: note, currentPageIndex: pageIndex, darkMode: darkMode)
+            var blocks = context.blocks
+            blocks.append(.text("Predict the SINGLE next line this student is about to write to continue. Reply with ONLY that expression in plain math — no words, no label. If there's no clear next step, reply with nothing."))
+            let raw = try await AIService.send(system: Self.ghostSystem, messages: [.user(blocks)], maxTokens: 80)
+            let text = Self.cleanGhost(raw)
+            guard !text.isEmpty, text.count < 60 else { return }
+            lastGhostSourceLine = last.text
+            let anchor = CGPoint(x: last.rect.minX, y: last.rect.maxY + 12)
+            withAnimation(.easeIn(duration: 0.25)) {
+                ghost = GhostSuggestion(pageIndex: pageIndex, anchor: anchor, text: text)
+            }
+        } catch { }
+    }
+
+    private static let ghostSystem = "You quietly predict the next line a student is about to write to continue their math/study work. Output ONLY that single line as plain text — no explanation, no label, no markdown. If unsure, output nothing."
+
+    private static func cleanGhost(_ raw: String) -> String {
+        guard let first = raw.split(separator: "\n").first else { return "" }
+        return String(first).trimmingCharacters(in: CharacterSet(charactersIn: " `'\"*"))
     }
 
     // MARK: - AI plumbing

@@ -225,6 +225,9 @@
 "ai.tutorRole" = "Study partner";
 "ambient.check" = "Check my work";
 "ambient.fixIt" = "Fix it for me";
+"ambient.flickAccept" = "flick to accept";
+"ambient.suggest" = "Suggest next step";
+"ambient.sensitivity" = "Ambient tutor";
 "ambient.showWhy" = "Show why";
 "ambient.glyph.correct" = "Looks right";
 "ambient.glyph.attend" = "Correction — double-tap to view";

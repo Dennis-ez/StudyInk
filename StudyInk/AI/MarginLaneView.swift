@@ -9,6 +9,7 @@ struct MarginLaneView: View {
     let transform: CanvasTransform
     var onFixIt: (MarginItem) -> Void = { _ in }
     var onShowWhy: (MarginItem) -> Void = { _ in }
+    var onAcceptGhost: (GhostSuggestion) -> Void = { _ in }
 
     /// Page-space x of the margin gutter (where the red rule lives).
     private let marginPageX: CGFloat = 34
@@ -57,8 +58,64 @@ struct MarginLaneView: View {
                     )
                     .transition(.scale(scale: 0.92, anchor: .topTrailing).combined(with: .opacity))
                 }
+
+                // Ghost next-step suggestion, faint amber ahead of the pen.
+                if let g = ambient.ghost, g.pageIndex == pageIndex {
+                    GhostInkLayer(
+                        ghost: g,
+                        transform: transform,
+                        onAccept: { onAcceptGhost(g) },
+                        onDismiss: { ambient.dismissGhost() }
+                    )
+                }
             }
         }
+    }
+}
+
+/// The predicted next step, rendered as faint pulsing amber text below the last
+/// line with a flick/tap-to-accept chip. It's a text layer (cheap) until
+/// accepted, when the editor writes it as real ink.
+struct GhostInkLayer: View {
+    let ghost: GhostSuggestion
+    let transform: CanvasTransform
+    var onAccept: () -> Void
+    var onDismiss: () -> Void
+    @State private var pulse = false
+
+    var body: some View {
+        let p = transform.toScreen(ghost.anchor)
+        HStack(spacing: 8) {
+            Text(verbatim: ghost.text)
+                .font(.fraunces(19, weight: .medium, relativeTo: .title3).italic())
+                .foregroundStyle(AppTheme.current.aiAccent.opacity(pulse ? 0.62 : 0.36))
+            Button(action: onAccept) {
+                HStack(spacing: 5) {
+                    Circle().fill(AppTheme.current.aiAccent)
+                        .frame(width: 15, height: 15)
+                        .overlay(Lucide("sparkles", size: 8).foregroundStyle(.white))
+                    Text("ambient.flickAccept")
+                        .font(.system(size: 11))
+                        .foregroundStyle(SemanticColor.textMutedColor)
+                }
+                .padding(.horizontal, 8).padding(.vertical, 3)
+                .background(SemanticColor.surface, in: Capsule())
+                .overlay(Capsule().strokeBorder(SemanticColor.separator))
+            }
+            .buttonStyle(.plain)
+        }
+        .fixedSize()
+        .position(x: p.x + 80, y: p.y)
+        .transition(.opacity)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) { pulse = true }
+        }
+        // Flick right to accept; long-press to dismiss.
+        .highPriorityGesture(
+            DragGesture(minimumDistance: 28).onEnded { v in
+                if v.translation.width > 24 { onAccept() } else if v.translation.width < -24 { onDismiss() }
+            }
+        )
     }
 }
 

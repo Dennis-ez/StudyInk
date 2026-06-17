@@ -17,6 +17,8 @@ struct NoteEditorView: View {
     @State private var selectedMediaID: UUID?
     @State private var distractionFree = false
     @State private var showPageStrip = true
+    /// Debounce for the ambient ghost suggestion (fires when the pen goes idle).
+    @State private var ghostIdleTask: Task<Void, Never>?
     /// 0 = closed, 1 = notes pane, 2 = notes pane + subjects sidebar.
     @State private var drawerStage = 0
     /// Subject chosen in the drawer's subjects pane (.some(nil) = All Notes).
@@ -176,6 +178,18 @@ struct NoteEditorView: View {
                 onShowWhy: { item in
                     ambient.dismiss()
                     Task { await tutor.ask(question: "Explain why: \(item.body)", anchor: askAnchor) }
+                },
+                onAcceptGhost: { g in
+                    ambient.dismissGhost()
+                    Task {
+                        await tutor.answerInInk(
+                            request: "Write only: \(g.text)",
+                            on: canvasController.canvasView,
+                            colorHex: canvasController.toolState.colorHex,
+                            penWidth: canvasController.toolState.width
+                        )
+                        ambient.invalidateGhost()
+                    }
                 }
             )
 
@@ -534,6 +548,12 @@ struct NoteEditorView: View {
         // reserves no canvas height; the title/time sit in the gutter above
         // the page instead.
         .overlay(alignment: .top) { floatingHeader }
+        // Ambient: each new stroke invalidates the ghost and re-arms the idle
+        // timer; when the pen rests, the tutor suggests the next step.
+        .onChange(of: canvasController.drawingGestureBeganToken) { _, _ in
+            ambient.invalidateGhost()
+            scheduleGhostSuggestion()
+        }
         // No system navigation bar — the canvas owns the full screen; actions
         // live in the fixed header + floating toolbar.
         .toolbar(.hidden, for: .navigationBar)
@@ -1150,6 +1170,19 @@ extension NoteEditorView {
         showRenameAlert = true
     }
 
+    /// Debounced: when the pen rests ~2.5s after writing, the ambient tutor
+    /// suggests the next step (Helpful sensitivity only).
+    private func scheduleGhostSuggestion() {
+        ghostIdleTask?.cancel()
+        guard ambient.sensitivity == .helpful, !distractionFree else { return }
+        ghostIdleTask = Task {
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            guard !Task.isCancelled else { return }
+            canvasController.commitPendingInk()
+            await ambient.suggestNext(note: note, pageIndex: pageIndex, darkMode: colorScheme == .dark)
+        }
+    }
+
     /// Record/stop plus the note's saved recordings — a popover list so
     /// recordings can be swiped away (menus can't swipe).
     private var recorderMenu: some View {
@@ -1176,6 +1209,17 @@ extension NoteEditorView {
             Button {
                 Task { await ambient.checkWork(note: note, pageIndex: pageIndex, darkMode: colorScheme == .dark) }
             } label: { Label("ambient.check", systemImage: "sparkles.rectangle.stack") }
+            Button {
+                ambient.invalidateGhost()
+                Task {
+                    canvasController.commitPendingInk()
+                    await ambient.suggestNext(note: note, pageIndex: pageIndex, darkMode: colorScheme == .dark)
+                }
+            } label: { Label("ambient.suggest", systemImage: "wand.and.rays") }
+            Picker(selection: Binding(get: { ambient.sensitivity }, set: { ambient.sensitivity = $0 })) {
+                ForEach(AmbientSensitivity.allCases) { s in Text(s.labelKey).tag(s) }
+            } label: { Label("ambient.sensitivity", systemImage: "dial.medium") }
+            Divider()
             Button {
                 withAnimation { askLassoActive = true }
             } label: { Label("ai.circleAsk.title", systemImage: "lasso.badge.sparkles") }
