@@ -223,6 +223,14 @@
 /* מורה AI */
 "ai.tutorName" = "מורה AI";
 "ai.tutorRole" = "שותף ללמידה";
+"ambient.check" = "בדוק את העבודה שלי";
+"ambient.fixIt" = "תקן בשבילי";
+"ambient.showWhy" = "הראה למה";
+"ambient.glyph.correct" = "נראה נכון";
+"ambient.glyph.attend" = "תיקון — הקש פעמיים לצפייה";
+"ambient.off" = "כבוי";
+"ambient.subtle" = "עדין";
+"ambient.helpful" = "מועיל";
 "ai.menu" = "תפריט מורה AI";
 "ai.ask" = "שאלו את ה-AI";
 "ai.pen" = "עט AI";

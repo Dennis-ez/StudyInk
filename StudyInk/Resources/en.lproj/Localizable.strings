@@ -223,6 +223,14 @@
 /* AI tutor */
 "ai.tutorName" = "AI Tutor";
 "ai.tutorRole" = "Study partner";
+"ambient.check" = "Check my work";
+"ambient.fixIt" = "Fix it for me";
+"ambient.showWhy" = "Show why";
+"ambient.glyph.correct" = "Looks right";
+"ambient.glyph.attend" = "Correction — double-tap to view";
+"ambient.off" = "Off";
+"ambient.subtle" = "Subtle";
+"ambient.helpful" = "Helpful";
 "ai.menu" = "AI Tutor Menu";
 "ai.ask" = "Ask AI";
 "ai.pen" = "AI pen";

@@ -38,6 +38,8 @@ struct NoteEditorView: View {
     @StateObject private var tutor = AITutorController()
     @StateObject private var guidedMode = GuidedModeController()
     @StateObject private var quiz = QuizController()
+    /// Ambient Tutor — the margin lane + glyphs (Marginalia design).
+    @StateObject private var ambient = AmbientTutorController()
     @StateObject private var audio = AudioSyncController()
     @State private var showAskField = false
     @State private var askText = ""
@@ -149,6 +151,33 @@ struct NoteEditorView: View {
             TextBoxLayer(boxes: $textBoxes, transform: transform, editingBoxID: $editingBoxID, snap: snapMetrics)
 
             aiOverlays
+
+            // The Ambient Tutor's margin lane: glyphs anchored to the lines of
+            // work, and the note that unfolds from a tapped glyph.
+            MarginLaneView(
+                ambient: ambient,
+                pageIndex: pageIndex,
+                transform: transform,
+                onFixIt: { item in
+                    // The "your-style amber ink" write-on is the deferred deep
+                    // feature; for now answer it in ink with the correction.
+                    ambient.dismiss()
+                    if let result = item.result {
+                        Task {
+                            await tutor.answerInInk(
+                                request: "Write only: = \(result)",
+                                on: canvasController.canvasView,
+                                colorHex: canvasController.toolState.colorHex,
+                                penWidth: canvasController.toolState.width
+                            )
+                        }
+                    }
+                },
+                onShowWhy: { item in
+                    ambient.dismiss()
+                    Task { await tutor.ask(question: "Explain why: \(item.body)", anchor: askAnchor) }
+                }
+            )
 
             // Note title + creation time in the desk gutter above the first
             // page (scrolls/zooms with the page) — never over ink.
@@ -1142,6 +1171,11 @@ extension NoteEditorView {
     /// AI tools, top-level in the action bar.
     private var aiMenu: some View {
         Menu {
+            // Ambient Tutor — check the page line-by-line; glyphs settle in the
+            // margin lane.
+            Button {
+                Task { await ambient.checkWork(note: note, pageIndex: pageIndex, darkMode: colorScheme == .dark) }
+            } label: { Label("ambient.check", systemImage: "sparkles.rectangle.stack") }
             Button {
                 withAnimation { askLassoActive = true }
             } label: { Label("ai.circleAsk.title", systemImage: "lasso.badge.sparkles") }
