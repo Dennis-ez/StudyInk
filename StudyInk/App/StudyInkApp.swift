@@ -264,6 +264,7 @@ enum SemanticColor {
     /// Card / panel surface (lighter than chrome).
     static var surface: Color { AppTheme.current.surface }
     static var surface2: Color { AppTheme.current.surface2 }
+    static var textPrimary: Color { AppTheme.current.textPrimary }
     static var textMutedColor: Color { AppTheme.current.textMuted }
     static var success: Color { AppTheme.current.successColor }
     static var destructive: Color { AppTheme.current.destructiveColor }

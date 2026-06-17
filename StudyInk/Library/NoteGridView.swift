@@ -204,7 +204,7 @@ struct NoteGridView: View {
 
     private func gridCircleLabel(_ lucide: String) -> some View {
         Lucide(lucide, size: 16)
-            .foregroundStyle(.primary)
+            .foregroundStyle(SemanticColor.textPrimary)
             .frame(width: 38, height: 38)
             .background(themePaper, in: Circle())
             .overlay(Circle().strokeBorder(SemanticColor.separator))

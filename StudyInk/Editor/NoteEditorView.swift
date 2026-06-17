@@ -16,9 +16,6 @@ struct NoteEditorView: View {
     @State private var editingBoxID: UUID?
     @State private var selectedMediaID: UUID?
     @State private var distractionFree = false
-    /// The transparent header slides away while scrolling down, reveals on
-    /// scroll-up (spec §1.2B auto-hide).
-    @State private var headerHidden = false
     @State private var showPageStrip = true
     /// 0 = closed, 1 = notes pane, 2 = notes pane + subjects sidebar.
     @State private var drawerStage = 0
@@ -93,10 +90,6 @@ struct NoteEditorView: View {
         return SnapMetrics.metrics(for: page.template, spacing: page.effectiveTemplateSpacing)
     }
 
-    /// Scroll proxy for the auto-hide header (first page rises as you scroll
-    /// down). Extracted to keep the body's type-check tractable.
-    private var firstPageOriginY: CGFloat { canvasController.pageScreenOrigins.first?.y ?? 0 }
-
     /// AI annotations + floating bubbles for every page, anchored through each
     /// page transform. Extracted to keep the body's type-check tractable.
     @ViewBuilder private var aiOverlays: some View {
@@ -119,20 +112,7 @@ struct NoteEditorView: View {
     }
 
     @ViewBuilder private var floatingHeader: some View {
-        if !distractionFree {
-            editorHeader
-                .offset(y: headerHidden ? -96 : 0)
-                .opacity(headerHidden ? 0 : 1)
-        }
-    }
-
-    private func handleHeaderScroll(from oldY: CGFloat, to newY: CGFloat) {
-        let delta = newY - oldY
-        guard abs(delta) > 3 else { return }
-        withAnimation(.easeOut(duration: 0.2)) {
-            if delta < -4 { headerHidden = true }       // scrolling down → hide
-            else if delta > 4 { headerHidden = false }  // scrolling up → reveal
-        }
+        if !distractionFree { editorHeader }
     }
 
     var body: some View {
@@ -170,6 +150,27 @@ struct NoteEditorView: View {
 
             aiOverlays
 
+            // Note title + creation time in the desk gutter above the first
+            // page (scrolls/zooms with the page) — never over ink.
+            if !distractionFree, let pageOrigin = canvasController.pageScreenOrigins.first {
+                Button(action: startRename) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(verbatim: note.title ?? "")
+                            .font(.fraunces(20, weight: .semibold, relativeTo: .title3))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                        Text(note.createdAt ?? .now, format: .dateTime.day().month().year().hour().minute())
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: 360, alignment: .leading)
+                    .fixedSize(horizontal: true, vertical: false)
+                }
+                .buttonStyle(.plain)
+                .offset(x: pageOrigin.x + 4, y: pageOrigin.y - 52)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
+
             // Audio playback tap-to-seek: tap any written mark to jump the recording
             // to the moment it was written.
             if audio.isPlaying, let recording = audio.activeRecording {
@@ -192,9 +193,7 @@ struct NoteEditorView: View {
                     },
                     extraItems: toolbarExtras,
                     // Pages strip occupies the trailing edge — slide aside.
-                    trailingInset: showPageStrip ? 96 : 0,
-                    // Clear the floating 44pt header when the bar docks at the top.
-                    topInset: 54
+                    trailingInset: showPageStrip ? 96 : 0
                 )
 
                 // The recorder lives in the top bar; the bar only surfaces
@@ -502,13 +501,10 @@ struct NoteEditorView: View {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        // Transparent header floating over the canvas — it does NOT reserve
-        // space, so the page uses the full screen and scrolls under it. It
-        // auto-hides while scrolling down, reveals on scroll-up.
+        // Transparent header floating over the canvas (always visible) — it
+        // reserves no canvas height; the title/time sit in the gutter above
+        // the page instead.
         .overlay(alignment: .top) { floatingHeader }
-        .onChange(of: firstPageOriginY) { oldY, newY in
-            handleHeaderScroll(from: oldY, to: newY)
-        }
         // No system navigation bar — the canvas owns the full screen; actions
         // live in the fixed header + floating toolbar.
         .toolbar(.hidden, for: .navigationBar)
@@ -1082,22 +1078,6 @@ extension NoteEditorView {
             .buttonStyle(.plain)
             .accessibilityLabel(Text("action.back"))
 
-            Button(action: startRename) {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(verbatim: note.title ?? "")
-                        .font(.fraunces(18, weight: .semibold, relativeTo: .title3))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    headerSubtitle
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                .fixedSize(horizontal: true, vertical: false)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(Text("library.renameNote"))
-
             Spacer(minLength: 8)
 
             recorderMenu
@@ -1128,19 +1108,10 @@ extension NoteEditorView {
     /// transparent (desk) header. Glyph is a bundled Lucide icon.
     private func headerSquare(_ lucide: String) -> some View {
         Lucide(lucide, size: 18)
-            .foregroundStyle(.primary)
+            .foregroundStyle(SemanticColor.textPrimary)
             .frame(width: 34, height: 34)
             .background(themePaper, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(SemanticColor.separator))
-    }
-
-    /// "<subject> · <relative edited>" under the note title.
-    private var headerSubtitle: Text {
-        let edited = Text(note.modifiedAt ?? .now, format: .relative(presentation: .named))
-        if let subject = note.subject?.name, !subject.isEmpty {
-            return Text(verbatim: subject + " · ") + edited
-        }
-        return edited
     }
 
     private func startRename() {
@@ -1157,7 +1128,7 @@ extension NoteEditorView {
             showRecorderPopover = true
         } label: {
             Lucide("mic", size: 18)
-                .foregroundStyle(audio.isRecording ? Color.accentColor : Color.primary)
+                .foregroundStyle(audio.isRecording ? Color.accentColor : SemanticColor.textPrimary)
                 .frame(width: 34, height: 34)
         }
         .tint(Color.accentColor)
@@ -1248,7 +1219,7 @@ extension NoteEditorView {
             }
         } label: {
             Lucide("more-horizontal", size: 18)
-                .foregroundStyle(.primary)
+                .foregroundStyle(SemanticColor.textPrimary)
                 .frame(width: 34, height: 34)
         }
         .accessibilityLabel(Text("editor.more"))
