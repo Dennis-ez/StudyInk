@@ -100,7 +100,10 @@ struct NotesPane: View {
                 }
             }
             .padding(.horizontal, DS.Space.sm)
-            .padding(.vertical, DS.Space.md)
+            // Clear the status bar + breathing room (the drawer ignores the
+            // top safe area, so the content sat too high).
+            .padding(.top, 56)
+            .padding(.bottom, DS.Space.md)
         }
         .frame(width: 236)
         .frame(maxHeight: .infinity)

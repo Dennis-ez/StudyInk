@@ -82,7 +82,6 @@ struct LibraryView: View {
             if !sidebarCollapsed {
                 sidebar
                     .frame(width: 264)
-                    .transition(.move(edge: .leading))
                 Rectangle()
                     .fill(SemanticColor.separator)
                     .frame(width: 1)
@@ -97,8 +96,9 @@ struct LibraryView: View {
                     sortRaw: $sortRaw,
                     selecting: $selectingNotes,
                     onNoteOpened: {
-                        // The canvas takes the whole screen — collapse the spine.
-                        withAnimation(.easeInOut(duration: 0.28)) { sidebarCollapsed = true }
+                        // The canvas takes the whole screen — collapse the spine
+                        // instantly so it's back the moment you return.
+                        sidebarCollapsed = true
                     },
                     onNoteClosed: {
                         sidebarCollapsed = false
@@ -122,7 +122,7 @@ struct LibraryView: View {
                 )) {
                     if let note = autoOpenNote {
                         NoteEditorContainer(note: note)
-                            .onAppear { withAnimation(.easeInOut(duration: 0.28)) { sidebarCollapsed = true } }
+                            .onAppear { sidebarCollapsed = true }
                             .onDisappear { sidebarCollapsed = false }
                     }
                 }
@@ -130,7 +130,7 @@ struct LibraryView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(themePaper.ignoresSafeArea())
-        .sheet(isPresented: $showSettings) { SettingsView() }
+        .fullScreenCover(isPresented: $showSettings) { SettingsView() }
         .onAppear(perform: purgeExpiredNotes)
         .alert(Text("library.deleteSubject.confirm"), isPresented: Binding(
             get: { subjectPendingDelete != nil },
@@ -183,17 +183,6 @@ struct LibraryView: View {
             // Explicit selection buttons: List(selection:) silently stopped
             // selecting once rows became custom HStacks.
             List {
-            // Wordmark: the brand mark (accent square + gold dot) + serif name.
-            HStack(spacing: 10) {
-                BrandMark(size: 26)
-                Text(verbatim: "StudyInk")
-                    .font(.fraunces(20, weight: .semibold, relativeTo: .title2))
-                    .foregroundStyle(.primary)
-                Spacer()
-            }
-            .padding(.bottom, DS.Space.xs)
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
 
             // Search — a rounded paper field with a ⌘K hint chip.
             HStack(spacing: DS.Space.sm) {

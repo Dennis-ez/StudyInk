@@ -81,7 +81,8 @@ struct SplashView: View {
         ZStack {
             SemanticColor.paperBackground.ignoresSafeArea()
             VStack(spacing: 20) {
-                BrandMark(size: 96)
+                SplashMark()
+                    .frame(width: 104, height: 104)
                     .elevation(.e2)
                     .scaleEffect(appeared ? 1 : 0.84)
                     .opacity(appeared ? 1 : 0)
@@ -95,6 +96,45 @@ struct SplashView: View {
         .onAppear {
             withAnimation(.spring(response: 0.5, dampingFraction: 0.72)) { appeared = true }
         }
+    }
+}
+
+/// The launch mark — the app-icon motif in SwiftUI: a theme-accent rounded
+/// square holding a cream ruled page (tilted) with a gold study dot.
+struct SplashMark: View {
+    var body: some View {
+        GeometryReader { geo in
+            let s = min(geo.size.width, geo.size.height)
+            RoundedRectangle(cornerRadius: s * 0.24, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [Color.accentColor.opacity(0.88), Color.accentColor],
+                        startPoint: .top, endPoint: .bottom
+                    )
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: s * 0.08, style: .continuous)
+                        .fill(Color(red: 0.988, green: 0.980, blue: 0.961))
+                        .frame(width: s * 0.56, height: s * 0.62)
+                        .overlay {
+                            VStack(spacing: s * 0.065) {
+                                ForEach(0..<4, id: \.self) { _ in
+                                    Capsule().fill(.black.opacity(0.08)).frame(height: s * 0.018)
+                                }
+                            }
+                            .padding(.horizontal, s * 0.10)
+                        }
+                        .rotationEffect(.degrees(-6))
+                        .shadow(color: .black.opacity(0.12), radius: s * 0.03, y: s * 0.02)
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    Circle()
+                        .fill(Color(red: 1.0, green: 0.839, blue: 0.039))
+                        .frame(width: s * 0.30, height: s * 0.30)
+                        .padding(s * 0.06)
+                }
+        }
+        .accessibilityHidden(true)
     }
 }
 

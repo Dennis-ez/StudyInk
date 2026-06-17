@@ -164,20 +164,6 @@ struct NoteGridView: View {
     @ViewBuilder
     private var headerActions: some View {
         if !inTrash {
-            Button(action: onNewNote) {
-                HStack(spacing: 5) {
-                    Lucide("sparkles", size: 16)
-                    Text("ai.ask")
-                }
-                .font(.callout.weight(.medium))
-                .foregroundStyle(.white)
-                .frame(height: 38)
-                .padding(.horizontal, 15)
-                .background(Color.accentColor, in: Capsule())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(Text("ai.ask"))
-
             gridCircleButton("file-up", label: "media.importPDF", action: onImportPDF)
         }
 
