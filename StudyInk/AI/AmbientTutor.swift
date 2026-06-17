@@ -219,7 +219,7 @@ final class AmbientTutorController: ObservableObject {
         } catch { }
     }
 
-    private static let ghostSystem = "You quietly predict the next line a student is about to write to continue their math/study work. Output ONLY that single line as plain text — no explanation, no label, no markdown. If unsure, output nothing."
+    private static let ghostSystem = "You quietly predict the next line a student is about to write to continue their math/study work. READ their handwriting from the attached page image (the OCR text often misreads notation like lim/∫/fractions — trust the image). Output ONLY that single next line as plain math text — no explanation, no label, no markdown. If unsure, output nothing."
 
     private static func cleanGhost(_ raw: String) -> String {
         guard let first = raw.split(separator: "\n").first else { return "" }
@@ -231,9 +231,12 @@ final class AmbientTutorController: ObservableObject {
     private struct Verdict { var line: Int; var ok: Bool; var note: String; var fix: String?; var label: String; var confidence: Double }
 
     private static let checkSystem = """
-    You are an attentive math/study tutor reviewing a student's handwritten work, \
-    line by line. For EACH numbered line you are given, decide if it is correct. \
-    Respond with ONLY a JSON object of the form:
+    You are an attentive math/study tutor reviewing a student's HANDWRITTEN work, \
+    line by line. The page IMAGE is attached — READ the actual handwriting from it. \
+    The OCR text you are given is often WRONG for math notation (limits "lim x→0", \
+    integrals, fractions, subscripts, exponents) — trust the image, use the line \
+    numbers only to anchor your verdicts to positions. For each line decide if it \
+    is mathematically correct. Respond with ONLY a JSON object of the form:
     {"lines":[{"i":0,"ok":true},{"i":1,"ok":false,"label":"Almost —","note":"<one short sentence on the mistake>","fix":"<the corrected expression>","conf":0.9}]}
     Keep "note" to one sentence. "fix" is the corrected line in plain math. Omit \
     fields you are unsure of. No prose outside the JSON.
@@ -243,7 +246,12 @@ final class AmbientTutorController: ObservableObject {
         let numbered = lines.enumerated()
             .map { "\($0.offset): \($0.element.text)" }
             .joined(separator: "\n")
-        return "Check these lines of my work and return the JSON verdict:\n\(numbered)"
+        return """
+        Read my handwriting from the page image and check each line. These rough OCR \
+        guesses are ONLY for line numbering (they misread notation like lim/∫/fractions):
+        \(numbered)
+        Return the JSON verdict.
+        """
     }
 
     private static func parseVerdicts(_ raw: String) -> [Verdict] {

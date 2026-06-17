@@ -156,14 +156,17 @@ extension AITutorController {
             topLeft.x = max(topLeft.x, margin)
             topLeft.y = max(margin, min(topLeft.y, pageSize.height - margin - InkWriter.lineHeight(fontSize: fontSize) * 4))
 
-            // The student's current pen color, slightly thinner than their pen.
-            let ink = PKInk(.pen, color: UIColor(hex: colorHex) ?? .label)
+            // Adapt the colour the same way the pen does (iOS 26 renders ink
+            // colours literally, so the AI ink must already be the DISPLAY
+            // colour or it renders faint/wrong on the pinned-light canvas).
+            let base = InkColorAdapter.displayColor(UIColor(hex: colorHex) ?? .label, darkMode: isDarkMode)
+            let ink = PKInk(.pen, color: base)
             let strokes = InkWriter.strokes(
                 for: answer,
                 topLeft: topLeft,
                 fontSize: fontSize,
                 ink: ink,
-                strokeWidth: max(1.2, CGFloat(penWidth) * 0.45)
+                strokeWidth: max(1.8, CGFloat(penWidth) * 0.6)
             )
             guard !strokes.isEmpty else {
                 errorMessage = String(localized: "ai.draw.failed")

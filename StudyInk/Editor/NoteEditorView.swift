@@ -169,7 +169,7 @@ struct NoteEditorView: View {
                             await tutor.answerInInk(
                                 request: "Write only: = \(result)",
                                 on: canvasController.canvasView,
-                                colorHex: canvasController.toolState.colorHex,
+                                colorHex: ambientInkHex,
                                 penWidth: canvasController.toolState.width
                             )
                         }
@@ -185,7 +185,7 @@ struct NoteEditorView: View {
                         await tutor.answerInInk(
                             request: "Write only: \(g.text)",
                             on: canvasController.canvasView,
-                            colorHex: canvasController.toolState.colorHex,
+                            colorHex: ambientInkHex,
                             penWidth: canvasController.toolState.width
                         )
                         ambient.invalidateGhost()
@@ -1169,6 +1169,9 @@ extension NoteEditorView {
         renameText = (note.title == untitled) ? "" : (note.title ?? "")
         showRenameAlert = true
     }
+
+    /// The tutor's amber ink colour — the design tags AI-written ink amber.
+    private var ambientInkHex: String { UIColor(AppTheme.current.aiAccent).hexString }
 
     /// Debounced: when the pen rests ~2.5s after writing, the ambient tutor
     /// suggests the next step (Helpful sensitivity only).
