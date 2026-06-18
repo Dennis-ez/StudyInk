@@ -211,6 +211,17 @@ struct NoteEditorView: View {
             // so the tap never looks like it did nothing.
             ambientStatusHUD
 
+            // Any other AI work (Circle & Ask, Explain, Answer in Ink, …) shows
+            // a breathing sparkle in the top corner so "the AI is thinking".
+            if tutor.isThinking {
+                AIThinkingBadge()
+                    .padding(.top, 84)
+                    .padding(.trailing, showPageStrip ? 120 : 22)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    .allowsHitTesting(false)
+                    .animation(.spring(response: 0.35, dampingFraction: 0.85), value: tutor.isThinking)
+            }
+
             // Note title + creation time in the desk gutter above the first
             // page (scrolls/zooms with the page) — never over ink.
             if !distractionFree, let pageOrigin = canvasController.pageScreenOrigins.first {

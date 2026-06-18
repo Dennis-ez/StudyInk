@@ -248,3 +248,34 @@ struct MarginNoteView: View {
             .shadow(color: AppTheme.current.aiAccent.opacity(0.4), radius: 8)
     }
 }
+
+/// A small breathing sparkle pill shown in a corner while the AI tutor is
+/// working (Circle & Ask, Explain, Answer in Ink, …) — the same amber-breathe
+/// language as the check-my-work flow, so any AI activity reads the same.
+struct AIThinkingBadge: View {
+    @State private var breathe = false
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Circle()
+                .fill(AppTheme.current.aiAccent)
+                .frame(width: 18, height: 18)
+                .overlay(Lucide("sparkles", size: 10).foregroundStyle(.white))
+                .scaleEffect(breathe ? 1.0 : 0.84)
+                .shadow(color: AppTheme.current.aiAccent.opacity(breathe ? 0.6 : 0.22),
+                        radius: breathe ? 13 : 6)
+            Text("ai.thinking")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(SemanticColor.textPrimary)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 9)
+        .background(.regularMaterial, in: Capsule())
+        .overlay(Capsule().strokeBorder(SemanticColor.separator))
+        .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) { breathe = true }
+        }
+        .transition(.scale(scale: 0.8).combined(with: .opacity))
+        .accessibilityLabel(Text("ai.thinking"))
+    }
+}

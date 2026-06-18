@@ -9,7 +9,16 @@ final class AITutorController: ObservableObject {
     @Published var bubbles: [AIBubbleModel] = []
     @Published var history: [AIBubbleModel] = []
     @Published var loadingBubbleIDs: Set<UUID> = []
+    /// In-flight non-bubble AI work (Answer in Ink, Draw on Canvas, …) so the
+    /// editor can show one "thinking" indicator for any AI activity.
+    @Published private(set) var pendingTasks = 0
     @Published var errorMessage: String?
+
+    /// True whenever the tutor is working on anything (a bubble or an ink task).
+    var isThinking: Bool { pendingTasks > 0 || !loadingBubbleIDs.isEmpty }
+
+    func beginTask() { pendingTasks += 1 }
+    func endTask() { pendingTasks = max(0, pendingTasks - 1) }
     @Published var panelOpen = false
     @Published var panelBubbleID: UUID?
 

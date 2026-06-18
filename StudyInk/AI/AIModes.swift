@@ -27,6 +27,7 @@ extension AITutorController {
     func drawSketch(request: String, on canvas: PKCanvasView?) async {
         guard let page = currentPage, let canvas else { return }
         let pageSize = page.canvasSize
+        beginTask(); defer { endTask() }
 
         do {
             let prompt = """
@@ -99,6 +100,7 @@ extension AITutorController {
     func answerInInk(request: String, on canvas: PKCanvasView?, colorHex: String, penWidth: Double) async {
         guard let note, let page = currentPage, let canvas else { return }
         let pageSize = page.canvasSize
+        beginTask(); defer { endTask() }
 
         do {
             let context = await NoteContextBuilder.build(note: note, currentPageIndex: currentPageIndex, darkMode: isDarkMode)
