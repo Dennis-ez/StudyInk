@@ -197,6 +197,9 @@ final class AmbientTutorController: ObservableObject {
         for v in verdicts.sorted(by: { $0.line < $1.line }) {
             guard lines.indices.contains(v.line) else { continue }
             let rect = lines[v.line].rect
+            // An unfinished line (ends with =, an operator, or a bare question)
+            // isn't right OR wrong yet — never stamp it ✓ / ~.
+            if Self.isOpenLine(lines[v.line].text) { continue }
             if v.ok {
                 if sensitivity == .subtle { continue } // Subtle: errors only
                 withAnimation(.easeOut(duration: 0.3)) {
@@ -240,17 +243,18 @@ final class AmbientTutorController: ObservableObject {
         guard pages.indices.contains(pageIndex) else { return }
         let page = pages[pageIndex]
         let lines = await NoteContextBuilder.ocrLines(for: page)
-        // Vision's order is arbitrary — the ghost goes below the visually LOWEST
-        // line of work, not whatever happens to be last in the array.
-        guard let last = lines.max(by: { $0.rect.maxY < $1.rect.maxY }),
+        // An UNFINISHED line (ends with =, an operator, →) is the real target:
+        // the student is waiting to fill in its right-hand side, so complete it
+        // inline — even if some later scribble sits lower on the page. Only when
+        // nothing is open do we predict a brand-new line below the lowest work.
+        let openLine = lines
+            .filter { Self.isOpenLine($0.text) }
+            .max(by: { $0.rect.maxY < $1.rect.maxY })
+        let lowest = lines.max(by: { $0.rect.maxY < $1.rect.maxY })
+        guard let last = openLine ?? lowest,
               !last.text.trimmingCharacters(in: .whitespaces).isEmpty,
               last.text != lastGhostSourceLine else { return }
-
-        // A line ending in an operator (= + − × ÷ → …) is unfinished: the next
-        // thing the student writes continues it ON THE SAME LINE, so the ghost
-        // belongs to the RIGHT of it, not on a new line below.
-        let trimmed = last.text.trimmingCharacters(in: .whitespaces)
-        let isOpen = "=+-−×÷*/·→≤≥<>".contains(where: { trimmed.hasSuffix(String($0)) })
+        let isOpen = openLine != nil
 
         do {
             let context = await NoteContextBuilder.build(note: note, currentPageIndex: pageIndex, darkMode: darkMode)
@@ -279,6 +283,14 @@ final class AmbientTutorController: ObservableObject {
         return String(first).trimmingCharacters(in: CharacterSet(charactersIn: " `'\"*"))
     }
 
+    /// True when a line is unfinished — it ends with `=` or an operator (so its
+    /// right-hand side is still to come). OCR misreads notation, but trailing
+    /// `=`/operators survive recognition well enough to drive completion.
+    static func isOpenLine(_ text: String) -> Bool {
+        guard let last = text.trimmingCharacters(in: .whitespaces).last else { return false }
+        return "=+-−×÷*/·→≤≥<>".contains(last)
+    }
+
     // MARK: - AI plumbing
 
     private struct Verdict { var line: Int; var ok: Bool; var note: String; var fix: String?; var label: String; var confidence: Double }
@@ -288,10 +300,13 @@ final class AmbientTutorController: ObservableObject {
     line by line. The page IMAGE is attached — READ the actual handwriting from it. \
     The OCR text you are given is often WRONG for math notation (limits "lim x→0", \
     integrals, fractions, subscripts, exponents) — trust the image, use the line \
-    numbers only to anchor your verdicts to positions. For each line decide if it \
-    is mathematically correct. Respond with ONLY a JSON object of the form:
+    numbers only to anchor your verdicts to positions. For each COMPLETED line \
+    decide if it is mathematically correct. If a line is UNFINISHED — it ends \
+    with '=' or an operator, or is a question with no answer written yet — OMIT \
+    it entirely (do not return a verdict for it; it is neither right nor wrong). \
+    Respond with ONLY a JSON object of the form:
     {"lines":[{"i":0,"ok":true},{"i":1,"ok":false,"label":"Almost —","note":"<one short sentence on the mistake>","fix":"<the corrected expression>","conf":0.9}]}
-    Keep "note" to one sentence. "fix" is the corrected line in plain math. Omit \
+    Keep "note" to one sentence. "fix" is the full corrected line in plain math. Omit \
     fields you are unsure of. No prose outside the JSON.
     """
 

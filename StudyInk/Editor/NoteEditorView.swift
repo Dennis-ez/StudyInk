@@ -169,9 +169,12 @@ struct NoteEditorView: View {
                     if let result = item.result {
                         let rect = item.anchorRect
                         let fontSize = max(16, min(34, rect.height * 0.95))
-                        let point = CGPoint(x: rect.maxX + 16, y: rect.midY - fontSize * 0.7)
+                        // Write the corrected line just BELOW the student's line
+                        // (writing to the right overlaps their work), verbatim —
+                        // `result` is already the full corrected expression.
+                        let point = CGPoint(x: rect.minX, y: rect.maxY + 6)
                         tutor.writeInk(
-                            text: "= \(result)",
+                            text: result,
                             at: point,
                             fontSize: fontSize,
                             colorHex: ambientInkHex,
