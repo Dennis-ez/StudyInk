@@ -32,12 +32,16 @@ struct MarginLaneView: View {
                 // Glyphs at each line's content-space y.
                 ForEach(pageItems) { item in
                     let p = transform.toScreen(CGPoint(x: marginPageX, y: item.anchorRect.midY))
+                    // IMPORTANT: gesture/contentShape BEFORE .position — applying
+                    // them after .position makes the tap target fill the whole
+                    // screen and blocks the canvas (can't draw).
                     AmbientGlyphView(glyph: item.glyph)
-                        .position(x: p.x, y: p.y)
+                        .frame(width: 44, height: 44)
                         .contentShape(Circle())
                         .onTapGesture { ambient.open(item.id) }
-                        .transition(.scale(scale: 0.4).combined(with: .opacity))
                         .accessibilityLabel(Text(item.glyph == .correct ? "ambient.glyph.correct" : "ambient.glyph.attend"))
+                        .transition(.scale(scale: 0.4).combined(with: .opacity))
+                        .position(x: p.x, y: p.y)
                 }
 
                 // The open note (max one at a time), parked on the trailing side
@@ -105,17 +109,18 @@ struct GhostInkLayer: View {
             .buttonStyle(.plain)
         }
         .fixedSize()
-        .position(x: p.x + 80, y: p.y)
-        .transition(.opacity)
-        .onAppear {
-            withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) { pulse = true }
-        }
-        // Flick right to accept; long-press to dismiss.
+        // Gesture BEFORE .position so the flick area is the ghost itself, not
+        // the whole screen (which would block drawing).
         .highPriorityGesture(
             DragGesture(minimumDistance: 28).onEnded { v in
                 if v.translation.width > 24 { onAccept() } else if v.translation.width < -24 { onDismiss() }
             }
         )
+        .onAppear {
+            withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) { pulse = true }
+        }
+        .position(x: p.x + 80, y: p.y)
+        .transition(.opacity)
     }
 }
 

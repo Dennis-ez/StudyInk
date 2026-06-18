@@ -79,14 +79,15 @@ struct LibraryView: View {
         // iOS 26 Liquid-Glass floating column. It collapses to give the editor
         // the whole screen.
         HStack(spacing: 0) {
-            if !sidebarCollapsed {
-                sidebar
-                    .frame(width: 264)
-                Rectangle()
-                    .fill(SemanticColor.separator)
-                    .frame(width: 1)
-                    .ignoresSafeArea()
-            }
+            // Always in the hierarchy (just width-collapsed when a note is open)
+            // so it's present the instant you return — no re-insertion delay.
+            sidebar
+                .frame(width: sidebarCollapsed ? 0 : 264)
+                .clipped()
+            Rectangle()
+                .fill(SemanticColor.separator)
+                .frame(width: sidebarCollapsed ? 0 : 1)
+                .ignoresSafeArea()
             // The content column owns navigation (grid → editor push).
             NavigationStack {
                 NoteGridView(

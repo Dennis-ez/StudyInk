@@ -7,6 +7,16 @@ struct StudyInkApp: App {
     @AppStorage("settings.appearance") private var appearance = "system"
     @AppStorage("settings.theme") private var themeRaw = AppTheme.foolscap.rawValue
 
+    init() {
+        // Register the defaults so non-SwiftUI readers (e.g. Note.create) see
+        // the same default a fresh @AppStorage would, before the user changes
+        // anything — otherwise new notes fell back to "blank".
+        UserDefaults.standard.register(defaults: [
+            "settings.defaultTemplate": "wideRuled",
+            "settings.defaultTemplateSpacing": 1.0,
+        ])
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()

@@ -61,7 +61,7 @@ final class Note: NSManagedObject {
         first.id = UUID()
         first.index = 0
         // Honor the user's default/favorite template choice (and its spacing).
-        first.templateID = UserDefaults.standard.string(forKey: "settings.defaultTemplate") ?? "blank"
+        first.templateID = UserDefaults.standard.string(forKey: "settings.defaultTemplate") ?? "wideRuled"
         let favoriteSpacing = UserDefaults.standard.double(forKey: "settings.defaultTemplateSpacing")
         if favoriteSpacing > 0 { first.templateSpacing = favoriteSpacing }
         first.note = n
