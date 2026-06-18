@@ -191,12 +191,15 @@ struct NoteEditorView: View {
                 },
                 onAcceptGhost: { g in
                     ambient.dismissGhost()
-                    // The ghost was shown at g.anchor — write it there exactly,
-                    // so the accepted ink lands where the preview was.
+                    // Write where the preview was. Inline completions centre on the
+                    // line (so a tall fraction straddles it); below-the-line ones
+                    // avoid existing work.
                     tutor.writeInk(
                         text: g.text,
                         at: g.anchor,
                         colorHex: ambientInkHex,
+                        avoid: g.inline ? [] : ambient.lastLineRects,
+                        center: g.inline,
                         on: canvasController.canvasView
                     )
                     ambient.invalidateGhost()

@@ -189,7 +189,7 @@ extension AITutorController {
     /// by the ambient tutor, where the caller already knows exactly where the
     /// ink goes (the glyph's line rect / the ghost's anchor) — so there's no AI
     /// round-trip and no OCR anchor-matching to land it in the wrong place.
-    func writeInk(text: String, at pagePoint: CGPoint, fontSize: CGFloat = 22, colorHex: String, avoid: [CGRect] = [], on canvas: PKCanvasView?) {
+    func writeInk(text: String, at pagePoint: CGPoint, fontSize: CGFloat = 22, colorHex: String, avoid: [CGRect] = [], center: Bool = false, on canvas: PKCanvasView?) {
         guard let canvas, let page = currentPage else { return }
         let pageSize = page.canvasSize
         let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -200,6 +200,13 @@ extension AITutorController {
         let blockH = lineH * CGFloat(cleaned.components(separatedBy: "\n").count)
         let margin: CGFloat = 24
         var topLeft = pagePoint
+        // Inline placement (after a '='): treat pagePoint.y as the line's MIDDLE
+        // and lift a tall result (a fraction) so it straddles the line instead of
+        // hanging below into the next one.
+        if center {
+            let m = InkWriter.firstLineMetrics(of: cleaned, fontSize: fontSize)
+            topLeft.y = pagePoint.y - (m.ascent + m.descent) / 2
+        }
         // Keep the whole block on the page.
         topLeft.x = min(topLeft.x, max(margin, pageSize.width - margin - textWidth))
         topLeft.x = max(topLeft.x, margin)

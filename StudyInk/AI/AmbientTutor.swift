@@ -64,9 +64,12 @@ struct MarginItem: Identifiable {
 /// the pen. Flick/tap to accept → it's written as real ink.
 struct GhostSuggestion {
     var pageIndex: Int
-    /// Page-space top-left where the ghost text begins.
+    /// Page-space anchor. For an inline completion it's the MIDDLE of the line
+    /// (so a tall fraction straddles it); for a new line below it's the top-left.
     var anchor: CGPoint
     var text: String
+    /// True when completing the current line (after '='), false for a new line.
+    var inline: Bool = false
 }
 
 enum AmbientSensitivity: String, CaseIterable, Identifiable {
@@ -285,7 +288,7 @@ final class AmbientTutorController: ObservableObject {
             let context = await NoteContextBuilder.build(note: note, currentPageIndex: pageIndex, darkMode: darkMode)
             var blocks = context.blocks
             let instruction = isOpen
-                ? "The student's current line ends with '=' (or an operator) and is UNFINISHED. DO THE ALGEBRA and give the FULLY SIMPLIFIED result that belongs after it — the actual worked-out value/expression, NOT a restatement of the left side and NOT a partial fragment. Write it as LaTeX: fractions as \\frac{num}{den} (NOT a/b), exponents x^{2}, subscripts x_{0}, roots \\sqrt{...}, · for multiply. Output ONLY that expression, no $ delimiters, no words, no label. If you genuinely can't, output nothing."
+                ? "The student's current line ends with '=' (or an operator) and is UNFINISHED. DO THE ALGEBRA on the WHOLE left-hand side and give its COMPLETE final simplified result — combine EVERY factor and term into ONE simplified expression (e.g. multiply out all the factors), never just simplify a single factor or sub-part, never restate the left side, never a partial fragment. Write it as LaTeX: fractions as \\frac{num}{den} (NOT a/b), exponents x^{2}, subscripts x_{0}, roots \\sqrt{...}, · for multiply. Output ONLY that final expression, no $ delimiters, no words, no label. If you genuinely can't, output nothing."
                 : "Predict the SINGLE next line this student should write to make real progress on the task. Write it as LaTeX (\\frac{num}{den} for fractions, x^{2}, \\sqrt{...}, · for multiply). Output ONLY the expression — no $ delimiters, no words. If there's no clear next step, output nothing."
             blocks.append(.text(instruction))
             let raw = try await AIService.send(system: Self.ghostSystem, messages: [.user(blocks)], maxTokens: 260)
@@ -293,10 +296,10 @@ final class AmbientTutorController: ObservableObject {
             guard !text.isEmpty, text.count < 140 else { return }
             lastGhostSourceLine = last.text
             let anchor = isOpen
-                ? CGPoint(x: last.rect.maxX + 14, y: last.rect.minY)   // inline, after the operator
-                : CGPoint(x: last.rect.minX, y: last.rect.maxY + 12)   // new line below
+                ? CGPoint(x: last.rect.maxX + 14, y: last.rect.midY)                    // inline, centred on the line
+                : CGPoint(x: last.rect.minX, y: last.rect.maxY + last.rect.height * 0.7) // new line below, clearing a fraction
             withAnimation(.easeIn(duration: 0.25)) {
-                ghost = GhostSuggestion(pageIndex: pageIndex, anchor: anchor, text: text)
+                ghost = GhostSuggestion(pageIndex: pageIndex, anchor: anchor, text: text, inline: isOpen)
             }
         } catch { }
     }

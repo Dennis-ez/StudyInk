@@ -26,6 +26,13 @@ enum InkWriter {
             .max() ?? 0
     }
 
+    /// First line's extents above/below the baseline — lets a caller vertically
+    /// centre a tall result (a fraction) on a line instead of hanging below it.
+    static func firstLineMetrics(of text: String, fontSize: CGFloat) -> (ascent: CGFloat, descent: CGFloat) {
+        let box = layout(parse(text.components(separatedBy: "\n").first ?? ""), fontSize: fontSize)
+        return (box.ascent, box.descent)
+    }
+
     /// Renders `text` (multi-line via \n) starting at `topLeft`, page space.
     /// `strokeWidth` traces the glyph outline and draws fraction/radical rules.
     static func strokes(for text: String, topLeft: CGPoint, fontSize: CGFloat, ink: PKInk, strokeWidth: CGFloat) -> [PKStroke] {
