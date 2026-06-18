@@ -181,12 +181,15 @@ final class AmbientTutorController: ObservableObject {
                 return
             }
             // Backfill: the model reliably flags WRONG answers but sometimes omits
-            // ones it considers fine. So every complete equation (an OCR region
-            // with '=') it didn't return gets a ✓ — keeps the check covering all
-            // of them, run after run.
+            // ones it considers fine, and it never explicitly 'skip'-ed them. So
+            // every uncovered region with real content (≥3 letters/digits — not a
+            // stray dot) that isn't unfinished gets a ✓, so the check covers all
+            // of them run after run. OCR drops handwritten '=', so we can't gate
+            // on it.
             let covered = Set(verdicts.map(\.line))
             for (i, line) in lines.enumerated() where !covered.contains(i)
-                && line.text.contains("=") && !Self.isOpenLine(line.text) {
+                && line.text.filter({ $0.isLetter || $0.isNumber }).count >= 3
+                && !Self.isOpenLine(line.text) {
                 verdicts.append(Verdict(line: i, ok: true, unfinished: false,
                                         note: "", fix: nil, label: "", confidence: 1))
             }
