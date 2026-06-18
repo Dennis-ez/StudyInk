@@ -198,11 +198,19 @@ final class AmbientTutorController: ObservableObject {
     /// suppress a valid correction).
     private func stream(verdicts: [Verdict], lines: [OCRLine], pageIndex: Int) async {
         let minConf = sensitivity == .subtle ? 0.90 : 0.0
+        var placed: [CGRect] = []
         for v in verdicts.sorted(by: { $0.line < $1.line }) {
             guard lines.indices.contains(v.line) else { continue }
             // The model marks a still-unfinished region as such — no glyph for it.
             if v.unfinished { continue }
             let rect = lines[v.line].rect
+            // Safety net: if a stacked equation still slipped through as two rows,
+            // don't drop a second glyph almost on top of the first. Requires
+            // horizontal overlap too, so two columns at the same height both show.
+            if placed.contains(where: {
+                abs($0.midY - rect.midY) < $0.height * 0.7 && $0.minX < rect.maxX && rect.minX < $0.maxX
+            }) { continue }
+            placed.append(rect)
             if v.ok {
                 if sensitivity == .subtle { continue } // Subtle: errors only
                 withAnimation(.easeOut(duration: 0.3)) {
@@ -300,23 +308,51 @@ final class AmbientTutorController: ObservableObject {
     /// rects unioned. Returns rows ordered top-to-bottom. Stacked notation (a
     /// lim's "x→0" under "lim") stays on its own row — little vertical overlap.
     static func mergeRows(_ lines: [OCRLine]) -> [OCRLine] {
+        // Pass 1 — same baseline: join fragments that vertically overlap into one
+        // row (e.g. "∫ x dx" + "=" + "1").
         let sorted = lines.sorted { $0.rect.minY < $1.rect.minY }
         var rows: [OCRLine] = []
         for line in sorted {
             guard let last = rows.last else { rows.append(line); continue }
             let overlap = min(last.rect.maxY, line.rect.maxY) - max(last.rect.minY, line.rect.minY)
             if overlap > 0.4 * min(last.rect.height, line.rect.height) {
-                let leftFirst = last.rect.minX <= line.rect.minX
-                rows[rows.count - 1] = OCRLine(
-                    text: leftFirst ? "\(last.text) \(line.text)" : "\(line.text) \(last.text)",
-                    rect: last.rect.union(line.rect),
-                    confidence: min(last.confidence, line.confidence)
-                )
+                rows[rows.count - 1] = join(last, line)
             } else {
                 rows.append(line)
             }
         }
-        return rows
+        guard rows.count > 2 else { return rows }
+
+        // Pass 2 — vertical stacks: a fraction's denominator or a limit's "x→0"
+        // sits MUCH closer than the page's normal line spacing and overlaps in x.
+        // Fold those into the row above so one equation = one region (one glyph,
+        // and the model sees a whole statement instead of "3 = 1" / "6  2").
+        let centers = rows.map(\.rect.midY)
+        let gaps = zip(centers.dropFirst(), centers).map(-).sorted()
+        let typical = gaps[gaps.count / 2]                 // median consecutive gap
+        var stacked: [OCRLine] = []
+        for row in rows {
+            if let last = stacked.last {
+                let dist = row.rect.midY - last.rect.midY
+                let xOverlap = min(last.rect.maxX, row.rect.maxX) - max(last.rect.minX, row.rect.minX)
+                if dist < typical * 0.62, xOverlap > 0.3 * min(last.rect.width, row.rect.width) {
+                    stacked[stacked.count - 1] = join(last, row)
+                    continue
+                }
+            }
+            stacked.append(row)
+        }
+        return stacked
+    }
+
+    /// Joins two OCR fragments into one, text ordered left-to-right, rects unioned.
+    private static func join(_ a: OCRLine, _ b: OCRLine) -> OCRLine {
+        let leftFirst = a.rect.minX <= b.rect.minX
+        return OCRLine(
+            text: leftFirst ? "\(a.text) \(b.text)" : "\(b.text) \(a.text)",
+            rect: a.rect.union(b.rect),
+            confidence: min(a.confidence, b.confidence)
+        )
     }
 
     // MARK: - AI plumbing
