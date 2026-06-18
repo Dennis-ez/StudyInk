@@ -7,6 +7,9 @@ struct MarginLaneView: View {
     @ObservedObject var ambient: AmbientTutorController
     let pageIndex: Int
     let transform: CanvasTransform
+    /// Width reserved on the trailing edge (the page navigator strip) so the
+    /// unfolded note card parks clear of it instead of hiding underneath.
+    var trailingInset: CGFloat = 0
     var onFixIt: (MarginItem) -> Void = { _ in }
     var onShowWhy: (MarginItem) -> Void = { _ in }
     var onAcceptGhost: (GhostSuggestion) -> Void = { _ in }
@@ -57,7 +60,7 @@ struct MarginLaneView: View {
                     )
                     .frame(width: 300)
                     .position(
-                        x: geo.size.width - 170,
+                        x: geo.size.width - 170 - trailingInset,
                         y: min(max(p.y, 120), geo.size.height - 170)
                     )
                     .transition(.scale(scale: 0.92, anchor: .topTrailing).combined(with: .opacity))

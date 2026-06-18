@@ -98,7 +98,7 @@ struct NoteEditorView: View {
     /// page transform. Extracted to keep the body's type-check tractable.
     @ViewBuilder private var aiOverlays: some View {
         ForEach(tutor.bubbles) { bubble in
-            AnnotationOverlay(
+            AnnotationOverlay( 
                 annotations: bubble.annotations,
                 bubbleOrigin: CGPoint(x: bubble.x, y: bubble.y + 60),
                 transform: canvasController.transform(forPage: bubble.pageIndex)
@@ -160,6 +160,8 @@ struct NoteEditorView: View {
                 ambient: ambient,
                 pageIndex: pageIndex,
                 transform: transform,
+                // Keep the unfolded note card clear of the page strip on the right.
+                trailingInset: showPageStrip ? 110 : 0,
                 onFixIt: { item in
                     // The "your-style amber ink" write-on is the deferred deep
                     // feature; for now write the correction in amber ink right

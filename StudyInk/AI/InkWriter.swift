@@ -2,14 +2,18 @@ import PencilKit
 import CoreText
 import UIKit
 
-/// Turns text into PencilKit strokes that read like handwriting: each glyph's
-/// outline (from a hand-style font) is flattened into polylines and inked as
-/// real strokes — erasable, lassoable, undoable, exported like the user's own
-/// ink. Used by "Answer in Ink" to write AI answers onto the page.
+/// Turns text into PencilKit strokes that read like handwriting. Each glyph's
+/// outline (from a hand-style font) is FILLED with closely-spaced pen strokes —
+/// not traced — so letters and symbols (+, =, √, ∫) render solid like real ink
+/// instead of hollow outlines. The result is erasable, lassoable, undoable,
+/// exported like the user's own ink. Used by "Answer in Ink" / the ambient tutor.
 enum InkWriter {
     /// Hand-style font with system fallback for math symbols (√, ∫, ², …).
+    /// Light weight reads like a natural pen once filled.
     private static func font(size: CGFloat) -> UIFont {
-        UIFont(name: "BradleyHandITCTT-Bold", size: size) ?? .italicSystemFont(ofSize: size)
+        UIFont(name: "Noteworthy-Light", size: size)
+            ?? UIFont(name: "BradleyHandITCTT-Bold", size: size)
+            ?? .italicSystemFont(ofSize: size)
     }
 
     static func lineHeight(fontSize: CGFloat) -> CGFloat { fontSize * 1.4 }
@@ -23,6 +27,7 @@ enum InkWriter {
     }
 
     /// Renders `text` (multi-line via \n) starting at `topLeft`, page space.
+    /// `strokeWidth` is the pen nib used to fill the glyphs.
     static func strokes(for text: String, topLeft: CGPoint, fontSize: CGFloat, ink: PKInk, strokeWidth: CGFloat) -> [PKStroke] {
         let font = font(size: fontSize)
         var result: [PKStroke] = []
@@ -32,12 +37,12 @@ enum InkWriter {
                 x: topLeft.x,
                 y: topLeft.y + font.ascender + CGFloat(index) * lineHeight(fontSize: fontSize)
             )
-            result += lineStrokes(lineText, baseline: baseline, font: font, ink: ink, strokeWidth: strokeWidth)
+            result += lineStrokes(lineText, baseline: baseline, font: font, ink: ink, nib: strokeWidth)
         }
         return result
     }
 
-    private static func lineStrokes(_ text: String, baseline: CGPoint, font: UIFont, ink: PKInk, strokeWidth: CGFloat) -> [PKStroke] {
+    private static func lineStrokes(_ text: String, baseline: CGPoint, font: UIFont, ink: PKInk, nib: CGFloat) -> [PKStroke] {
         guard !text.isEmpty else { return [] }
         let attributed = NSAttributedString(string: text, attributes: [.font: font])
         let line = CTLineCreateWithAttributedString(attributed)
@@ -58,20 +63,77 @@ enum InkWriter {
 
             for i in 0..<count {
                 guard let glyphPath = CTFontCreatePathForGlyph(runFont, glyphs[i], nil) else { continue }
-                for polyline in polylines(from: glyphPath) {
-                    // Glyph space is y-up around the baseline; page space is y-down.
-                    let points = polyline.map { point in
-                        CGPoint(
-                            x: baseline.x + positions[i].x + point.x,
-                            y: baseline.y - point.y
-                        )
-                    }
-                    guard points.count >= 2 else { continue }
-                    strokes.append(stroke(through: points, ink: ink, width: strokeWidth))
-                }
+                // Glyph space is y-up around the baseline; map to y-down page space.
+                var transform = CGAffineTransform(
+                    a: 1, b: 0, c: 0, d: -1,
+                    tx: baseline.x + positions[i].x, ty: baseline.y
+                )
+                guard let placed = glyphPath.copy(using: &transform) else { continue }
+                strokes += fillStrokes(for: placed, ink: ink, nib: nib)
             }
         }
         return strokes
+    }
+
+    // MARK: - Glyph fill
+
+    /// Scanline-fills a glyph outline: walks horizontal lines down the glyph,
+    /// intersects them with the outline, and inks a pen stroke between each
+    /// entering/leaving pair. Closely-spaced lines overlap into a solid letter.
+    private static func fillStrokes(for path: CGPath, ink: PKInk, nib: CGFloat) -> [PKStroke] {
+        let loops = polylines(from: path)
+        guard !loops.isEmpty else { return [] }
+
+        var minY = CGFloat.greatestFiniteMagnitude
+        var maxY = -CGFloat.greatestFiniteMagnitude
+        for loop in loops {
+            for p in loop { minY = min(minY, p.y); maxY = max(maxY, p.y) }
+        }
+        guard maxY > minY else { return [] }
+
+        let spacing = max(0.7, nib * 0.7)          // overlap so the fill reads solid
+        var strokes: [PKStroke] = []
+        var y = minY + spacing * 0.5
+        while y <= maxY {
+            // X crossings of this scanline with every outline segment.
+            var xs: [CGFloat] = []
+            for loop in loops {
+                let n = loop.count
+                guard n >= 2 else { continue }
+                for i in 0..<n {
+                    let a = loop[i], b = loop[(i + 1) % n]
+                    if a.y == b.y { continue }
+                    let lo = min(a.y, b.y), hi = max(a.y, b.y)
+                    if y >= lo && y < hi {
+                        xs.append(a.x + (y - a.y) / (b.y - a.y) * (b.x - a.x))
+                    }
+                }
+            }
+            xs.sort()
+            // Even-odd fill: ink between consecutive crossing pairs.
+            var k = 0
+            while k + 1 < xs.count {
+                strokes.append(scanlineStroke(x0: xs[k], x1: xs[k + 1], y: y, ink: ink, width: nib))
+                k += 2
+            }
+            y += spacing
+        }
+        return strokes
+    }
+
+    private static func scanlineStroke(x0: CGFloat, x1: CGFloat, y: CGFloat, ink: PKInk, width: CGFloat) -> PKStroke {
+        // Inset by half a nib so round caps don't bloat the glyph past its edges.
+        let inset = min(width * 0.5, (x1 - x0) * 0.5)
+        let points = [CGPoint(x: x0 + inset, y: y), CGPoint(x: x1 - inset, y: y)].enumerated().map { index, location in
+            PKStrokePoint(
+                location: location,
+                timeOffset: TimeInterval(index) * 0.002,
+                size: CGSize(width: width, height: width),
+                opacity: 1, force: 1,
+                azimuth: 0, altitude: .pi / 2
+            )
+        }
+        return PKStroke(ink: ink, path: PKStrokePath(controlPoints: points, creationDate: Date()))
     }
 
     // MARK: - Path flattening
@@ -110,7 +172,6 @@ enum InkWriter {
                 }
                 last = end
             case .closeSubpath:
-                if let first = current.first { current.append(first) }
                 if current.count >= 2 { result.append(current) }
                 current = []
             @unknown default:
@@ -123,18 +184,5 @@ enum InkWriter {
 
     private static func lerp(_ a: CGPoint, _ b: CGPoint, _ t: CGFloat) -> CGPoint {
         CGPoint(x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t)
-    }
-
-    private static func stroke(through points: [CGPoint], ink: PKInk, width: CGFloat) -> PKStroke {
-        let controlPoints = points.enumerated().map { index, location in
-            PKStrokePoint(
-                location: location,
-                timeOffset: TimeInterval(index) * 0.004,
-                size: CGSize(width: width, height: width),
-                opacity: 1, force: 1,
-                azimuth: 0, altitude: .pi / 2
-            )
-        }
-        return PKStroke(ink: ink, path: PKStrokePath(controlPoints: controlPoints, creationDate: Date()))
     }
 }

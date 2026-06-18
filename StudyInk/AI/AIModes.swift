@@ -169,7 +169,7 @@ extension AITutorController {
                 topLeft: topLeft,
                 fontSize: fontSize,
                 ink: ink,
-                strokeWidth: max(2.0, fontSize * 0.11)
+                strokeWidth: max(1.8, fontSize * 0.09)
             )
             guard !strokes.isEmpty else {
                 errorMessage = String(localized: "ai.draw.failed")
@@ -212,7 +212,7 @@ extension AITutorController {
             topLeft: topLeft,
             fontSize: fontSize,
             ink: ink,
-            strokeWidth: max(2.0, fontSize * 0.11)
+            strokeWidth: max(1.8, fontSize * 0.09)
         )
         guard !strokes.isEmpty else { return }
         canvas.drawing = canvas.drawing.appending(PKDrawing(strokes: strokes))
