@@ -234,6 +234,10 @@
 "ambient.off" = "Off";
 "ambient.subtle" = "Subtle";
 "ambient.helpful" = "Helpful";
+"ambient.checking" = "Checking your work…";
+"ambient.notice.empty" = "Nothing to check yet — write something first.";
+"ambient.notice.unreadable" = "Couldn't read this page clearly. Try again.";
+"ambient.notice.allGood" = "Looks all good ✓";
 "ai.menu" = "AI Tutor Menu";
 "ai.ask" = "Ask AI";
 "ai.pen" = "AI pen";

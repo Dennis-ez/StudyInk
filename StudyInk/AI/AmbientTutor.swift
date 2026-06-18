@@ -86,6 +86,8 @@ final class AmbientTutorController: ObservableObject {
     @Published var items: [MarginItem] = []
     @Published var openItemID: UUID?
     @Published var isChecking = false
+    /// Transient banner shown after a check (an error, or "nothing to check").
+    @Published var notice: String?
     /// The next-step ghost suggestion, if any.
     @Published var ghost: GhostSuggestion?
     /// Guards the idle auto-trigger so we only suggest once per writing burst.
@@ -100,6 +102,19 @@ final class AmbientTutorController: ObservableObject {
     var isOn: Bool { sensitivity != .off }
 
     func items(onPage index: Int) -> [MarginItem] { items.filter { $0.pageIndex == index } }
+
+    /// Shows a transient banner and auto-dismisses it after a few seconds.
+    func showNotice(_ message: String) {
+        withAnimation(.easeOut(duration: 0.2)) { notice = message }
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 3_200_000_000)
+            await MainActor.run {
+                withAnimation(.easeOut(duration: 0.3)) {
+                    if self?.notice == message { self?.notice = nil }
+                }
+            }
+        }
+    }
 
     func open(_ id: UUID) {
         guard let item = items.first(where: { $0.id == id }), !item.passive else { return }
@@ -130,6 +145,7 @@ final class AmbientTutorController: ObservableObject {
         guard pages.indices.contains(pageIndex) else { return }
         let page = pages[pageIndex]
 
+        notice = nil
         isChecking = true
         defer { isChecking = false }
         clear(pageIndex: pageIndex)
@@ -145,7 +161,10 @@ final class AmbientTutorController: ObservableObject {
                 }
                 return a.rect.minX < b.rect.minX
             }
-        guard !lines.isEmpty else { return }
+        guard !lines.isEmpty else {
+            showNotice(String(localized: "ambient.notice.empty"))
+            return
+        }
 
         do {
             let context = await NoteContextBuilder.build(
@@ -155,9 +174,19 @@ final class AmbientTutorController: ObservableObject {
             blocks.append(.text(Self.checkInstruction(lines: lines)))
             let raw = try await AIService.send(system: Self.checkSystem, messages: [.user(blocks)])
             let verdicts = Self.parseVerdicts(raw)
+            guard !verdicts.isEmpty else {
+                showNotice(String(localized: "ambient.notice.unreadable"))
+                return
+            }
             await stream(verdicts: verdicts, lines: lines, pageIndex: pageIndex)
+            // Nothing settled in the lane (e.g. Subtle with no errors): say so,
+            // instead of looking like the tap did nothing.
+            if items(onPage: pageIndex).isEmpty {
+                showNotice(String(localized: "ambient.notice.allGood"))
+            }
         } catch {
             Haptics.error()
+            showNotice(error.localizedDescription)
         }
     }
 
@@ -217,15 +246,26 @@ final class AmbientTutorController: ObservableObject {
               !last.text.trimmingCharacters(in: .whitespaces).isEmpty,
               last.text != lastGhostSourceLine else { return }
 
+        // A line ending in an operator (= + − × ÷ → …) is unfinished: the next
+        // thing the student writes continues it ON THE SAME LINE, so the ghost
+        // belongs to the RIGHT of it, not on a new line below.
+        let trimmed = last.text.trimmingCharacters(in: .whitespaces)
+        let isOpen = "=+-−×÷*/·→≤≥<>".contains(where: { trimmed.hasSuffix(String($0)) })
+
         do {
             let context = await NoteContextBuilder.build(note: note, currentPageIndex: pageIndex, darkMode: darkMode)
             var blocks = context.blocks
-            blocks.append(.text("Predict the SINGLE next line this student is about to write to continue. Reply with ONLY that expression in plain math — no words, no label. If there's no clear next step, reply with nothing."))
+            let instruction = isOpen
+                ? "The student's current line ends with an operator and is UNFINISHED — read the page and predict ONLY what comes right after it to complete THIS line (e.g. the value after '='). Reply with ONLY that, plain math, no words, no label. If unsure, reply with nothing."
+                : "Predict the SINGLE next line this student is about to write to continue. Reply with ONLY that expression in plain math — no words, no label. If there's no clear next step, reply with nothing."
+            blocks.append(.text(instruction))
             let raw = try await AIService.send(system: Self.ghostSystem, messages: [.user(blocks)], maxTokens: 80)
             let text = Self.cleanGhost(raw)
             guard !text.isEmpty, text.count < 60 else { return }
             lastGhostSourceLine = last.text
-            let anchor = CGPoint(x: last.rect.minX, y: last.rect.maxY + 12)
+            let anchor = isOpen
+                ? CGPoint(x: last.rect.maxX + 14, y: last.rect.minY)   // inline, after the operator
+                : CGPoint(x: last.rect.minX, y: last.rect.maxY + 12)   // new line below
             withAnimation(.easeIn(duration: 0.25)) {
                 ghost = GhostSuggestion(pageIndex: pageIndex, anchor: anchor, text: text)
             }

@@ -356,23 +356,17 @@ struct FloatingToolbar: View {
             }
         } label: {
             let ink = controller.inkColor(for: kind)
-            ZStack(alignment: .bottom) {
-                ZStack {
-                    // Selection = an accent highlight ring/wash.
-                    if isActive {
-                        Circle().fill(Color.accentColor.opacity(0.16)).frame(width: 31, height: 31)
-                    }
-                    Lucide(kind.lucideName, size: 18)
-                        .foregroundStyle(isActive ? Color.accentColor : SemanticColor.textPrimary)
+            ZStack {
+                // Selection = an accent highlight ring/wash behind the icon.
+                if isActive {
+                    Circle().fill(Color.accentColor.opacity(0.16)).frame(width: 31, height: 31)
                 }
-                // Current-colour dot, centered at the bottom of the tool.
-                if let ink {
-                    Circle()
-                        .fill(ink)
-                        .frame(width: 7, height: 7)
-                        .overlay(Circle().strokeBorder(SemanticColor.surface, lineWidth: 1))
-                        .offset(y: 9)
-                }
+                // The icon IS the colour indicator: a pen tool's glyph is tinted
+                // with its own ink colour (even when selected, so its colour is
+                // always visible). Tools with no ink (hand/eraser/lasso) go accent
+                // when active, neutral otherwise.
+                Lucide(kind.lucideName, size: 18)
+                    .foregroundStyle(ink ?? (isActive ? Color.accentColor : SemanticColor.textPrimary))
             }
         }
         .accessibilityLabel(Text(kind.labelKey))

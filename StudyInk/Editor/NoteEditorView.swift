@@ -197,6 +197,11 @@ struct NoteEditorView: View {
                 }
             )
 
+            // Ambient tutor status: a thinking pill while checking, then a
+            // transient banner (error / "nothing to check" / "looks all good")
+            // so the tap never looks like it did nothing.
+            ambientStatusHUD
+
             // Note title + creation time in the desk gutter above the first
             // page (scrolls/zooms with the page) — never over ink.
             if !distractionFree, let pageOrigin = canvasController.pageScreenOrigins.first {
@@ -1177,6 +1182,41 @@ extension NoteEditorView {
     /// The tutor's amber ink colour — the design tags AI-written ink amber.
     private var ambientInkHex: String { UIColor(AppTheme.current.aiAccent).hexString }
 
+    /// Top-center status pill for the ambient tutor: spins while checking, then
+    /// shows a brief banner so a check never silently does nothing.
+    @ViewBuilder
+    private var ambientStatusHUD: some View {
+        VStack {
+            if ambient.isChecking {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("ambient.checking")
+                        .font(.subheadline.weight(.medium))
+                }
+                .padding(.horizontal, 16).padding(.vertical, 10)
+                .background(.regularMaterial, in: Capsule())
+                .overlay(Capsule().strokeBorder(SemanticColor.separator))
+                .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            } else if let notice = ambient.notice {
+                Text(notice)
+                    .font(.subheadline.weight(.medium))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+                    .background(.regularMaterial, in: Capsule())
+                    .overlay(Capsule().strokeBorder(SemanticColor.separator))
+                    .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+            Spacer()
+        }
+        .padding(.top, 84)
+        .frame(maxWidth: .infinity, alignment: .center)
+        .allowsHitTesting(false)
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: ambient.isChecking)
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: ambient.notice)
+    }
+
     /// Debounced: when the pen rests ~2.5s after writing, the ambient tutor
     /// suggests the next step (Helpful sensitivity only).
     private func scheduleGhostSuggestion() {
@@ -1214,7 +1254,13 @@ extension NoteEditorView {
             // Ambient Tutor — check the page line-by-line; glyphs settle in the
             // margin lane.
             Button {
-                Task { await ambient.checkWork(note: note, pageIndex: pageIndex, darkMode: colorScheme == .dark) }
+                Task {
+                    // Flush the debounced ink save first, or the OCR renders the
+                    // PERSISTED page and misses everything just written — the
+                    // check would then find no lines and silently do nothing.
+                    canvasController.commitPendingInk()
+                    await ambient.checkWork(note: note, pageIndex: pageIndex, darkMode: colorScheme == .dark)
+                }
             } label: { Label("ambient.check", systemImage: "sparkles.rectangle.stack") }
             Button {
                 ambient.invalidateGhost()

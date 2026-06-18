@@ -234,6 +234,10 @@
 "ambient.off" = "כבוי";
 "ambient.subtle" = "עדין";
 "ambient.helpful" = "מועיל";
+"ambient.checking" = "בודק את העבודה שלך…";
+"ambient.notice.empty" = "אין מה לבדוק עדיין — כתוב משהו קודם.";
+"ambient.notice.unreadable" = "לא הצלחתי לקרוא את הדף. נסה שוב.";
+"ambient.notice.allGood" = "הכול נראה תקין ✓";
 "ai.menu" = "תפריט מורה AI";
 "ai.ask" = "שאלו את ה-AI";
 "ai.pen" = "עט AI";
