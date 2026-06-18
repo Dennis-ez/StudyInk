@@ -130,6 +130,15 @@ struct LibraryView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        // The sidebar's own fill is clipped to the safe area by the width-collapse
+        // .clipped(), leaving the top/bottom safe-area gaps showing themePaper.
+        // Paint the sidebar colour full-height behind the leading column so the
+        // whole spine is one uniform colour.
+        .background(alignment: .leading) {
+            themeSidebar
+                .frame(width: sidebarCollapsed ? 0 : 264)
+                .ignoresSafeArea()
+        }
         .background(themePaper.ignoresSafeArea())
         .fullScreenCover(isPresented: $showSettings) { SettingsView() }
         .onAppear(perform: purgeExpiredNotes)
