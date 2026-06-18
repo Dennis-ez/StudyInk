@@ -193,10 +193,13 @@ final class AmbientTutorController: ObservableObject {
             // every uncovered region with real content (≥3 letters/digits — not a
             // stray dot) that isn't unfinished gets a ✓, so the check covers all
             // of them run after run. OCR drops handwritten '=', so we can't gate
-            // on it.
+            // on it. Only backfill MATH regions (a digit or math symbol) — never a
+            // prose claim (e.g. Hebrew "no discontinuity points"), since we can't
+            // assume an unflagged textual statement is correct.
             let covered = Set(verdicts.map(\.line))
             for (i, line) in lines.enumerated() where !covered.contains(i)
-                && line.text.filter({ $0.isLetter || $0.isNumber }).count >= 3
+                && line.text.contains(where: { $0.isNumber || "+-=×÷*/^()√∫π".contains($0) })
+                && line.text.filter({ $0.isLetter || $0.isNumber }).count >= 2
                 && !Self.isOpenLine(line.text) {
                 verdicts.append(Verdict(line: i, ok: true, unfinished: false,
                                         note: "", fix: nil, label: "", confidence: 1))
@@ -381,11 +384,16 @@ final class AmbientTutorController: ObservableObject {
     Hebrew / right-to-left, e.g. "ת.ה:" = domain, "תחומי עליה/ירידה:" = increasing/\
     decreasing intervals) — "skip" those header lines, and grade the work beneath \
     each header against THAT sub-question. \
+    A line may also be a CONCLUSION IN WORDS (often Hebrew/RTL) — e.g. "אין נקודות \
+    אי רציפות" (no discontinuity points), "עולה בכל תחום ההגדרה" (increasing on the \
+    whole domain), an asymptote/limit/extremum claim. JUDGE those statements too \
+    against the actual function — if the claim is false (e.g. it says no \
+    discontinuity but the domain excludes a point), mark it "wrong". \
     For EVERY region index, look at that line in the image and classify it:
-    - "correct"   — the math is right
-    - "wrong"     — there is a mistake (add "note": one short sentence, "fix": the full corrected line as LaTeX (fractions \\frac{num}{den}, exponents x^{2}, roots \\sqrt{...}, · for multiply; no $ delimiters), and "conf": 0.0–1.0)
+    - "correct"   — the math OR the stated conclusion is right
+    - "wrong"     — a mistake or a false claim (add "note": one short sentence, "fix": the corrected statement/line — math as LaTeX (fractions \\frac{num}{den}, exponents x^{2}, roots \\sqrt{...}, · for multiply; no $ delimiters), and "conf": 0.0–1.0)
     - "unfinished"— it ends with '=' or an operator with nothing after, or is a question with no answer yet
-    - "skip"      — the region is not math (a heading, stray mark, label)
+    - "skip"      — the region is a HEADER/label/stray mark, not a statement to judge
     You MUST return one entry for EVERY region index given, in order. Do not skip a \
     region just because its OCR text looks garbled — read the image. \
     Respond with ONLY a JSON object:

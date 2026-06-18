@@ -214,17 +214,23 @@ extension AITutorController {
         topLeft.x = max(topLeft.x, margin)
         topLeft.y = max(margin, min(topLeft.y, pageSize.height - margin - blockH))
 
-        // Don't write over existing ink: if the block would overlap an occupied
-        // line, drop it just below that line. (Column-aware — `intersects` only
-        // trips when the x-ranges overlap too, so other columns don't push it.)
-        var guardCount = 0
-        while guardCount < 16 {
-            let block = CGRect(x: topLeft.x, y: topLeft.y, width: max(textWidth, 8), height: blockH)
-            guard let hit = avoid.first(where: { $0.intersects(block) }) else { break }
-            let next = hit.maxY + 6
-            if next + blockH > pageSize.height - margin { break } // no room; leave as is
-            topLeft.y = next
-            guardCount += 1
+        // Don't write over existing work. Avoid the ACTUAL ink on the canvas
+        // (every stroke's render bounds) — this captures a fraction's full height
+        // (numerator, rule, denominator), which OCR line rects miss, so the
+        // correction drops into a genuinely clear gap below. `intersects` is
+        // column-aware (needs x-overlap too). Inline completions (center) sit on
+        // their line on purpose, so they skip this.
+        if !center {
+            let occupied = avoid + canvas.drawing.strokes.map(\.renderBounds)
+            var guardCount = 0
+            while guardCount < 24 {
+                let block = CGRect(x: topLeft.x, y: topLeft.y, width: max(textWidth, 8), height: blockH)
+                guard let hit = occupied.filter({ $0.intersects(block) }).max(by: { $0.maxY < $1.maxY }) else { break }
+                let next = hit.maxY + fontSize * 0.35
+                if next + blockH > pageSize.height - margin { break } // no room; leave as is
+                topLeft.y = next
+                guardCount += 1
+            }
         }
 
         // Adapt the colour the way the pen does (iOS 26 renders ink colours
