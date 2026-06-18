@@ -292,7 +292,7 @@ final class AmbientTutorController: ObservableObject {
         } catch { }
     }
 
-    private static let ghostSystem = "You quietly predict the next line a student is about to write to continue their math/study work. READ their handwriting from the attached page image (the OCR text often misreads notation like lim/∫/fractions — trust the image). Output ONLY that single next line as plain math text — no explanation, no label, no markdown. If unsure, output nothing."
+    private static let ghostSystem = "You quietly predict the next line a student is about to write to continue their math/study work. READ their handwriting from the attached page image (the OCR text often misreads notation like lim/∫/fractions — trust the image). FIRST read any problem statement on the page — typed, printed, or a pasted screenshot/photo, possibly in another language (e.g. Hebrew) — that defines the function/task, and predict the next step toward solving THAT problem. Output ONLY that single next line as plain math text — no explanation, no label, no markdown. If unsure, output nothing."
 
     private static func cleanGhost(_ raw: String) -> String {
         guard let first = raw.split(separator: "\n").first else { return "" }
@@ -352,6 +352,11 @@ final class AmbientTutorController: ObservableObject {
     with rough OCR text (often WRONG on notation, so READ the handwriting from the \
     image: limits "lim x→0 sinx/x", integrals "∫x dx", fractions, subscripts, \
     exponents — these often span two rows, treat the stack as one equation). \
+    FIRST read any PROBLEM STATEMENT on the page — it may be typed, printed, or a \
+    pasted screenshot/photo, and may be in another language (e.g. Hebrew) and define \
+    the function/task the student is working on (e.g. "y = ((x+2)/(x+1))²"). Judge \
+    each handwritten line IN THE CONTEXT of that problem (right function, right \
+    sub-question, valid step), not just as isolated algebra. \
     For EVERY region index, look at that line in the image and classify it:
     - "correct"   — the math is right
     - "wrong"     — there is a mistake (add "note": one short sentence, and "fix": the full corrected line in plain math, no LaTeX, and "conf": 0.0–1.0)
