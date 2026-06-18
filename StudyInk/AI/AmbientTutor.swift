@@ -166,8 +166,15 @@ final class AmbientTutorController: ObservableObject {
         // printed text gets OCR'd too — never grade THAT (it's the problem, not
         // the student's work). Drop any region that sits inside a media frame.
         let mediaFrames = page.mediaItems.map(\.frame)
-        let lines = Self.mergeRows(await NoteContextBuilder.ocrLines(for: page))
-            .filter { line in !mediaFrames.contains { $0.intersects(line.rect) } }
+        let allOCR = await NoteContextBuilder.ocrLines(for: page)
+        let inMedia: (OCRLine) -> Bool = { line in mediaFrames.contains { $0.intersects(line.rect) } }
+        // The pasted question's printed text is OCR'd too. Pull it out as the
+        // explicit PROBLEM STATEMENT (so the model has the task + its sub-parts
+        // even if the small image is hard to read), and grade only the student's
+        // own work (everything outside the media).
+        let problem = allOCR.filter(inMedia).map(\.text).joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let lines = Self.mergeRows(allOCR.filter { !inMedia($0) })
         lastLineRects = lines.map(\.rect)
         guard !lines.isEmpty else {
             showNotice(String(localized: "ambient.notice.empty"))
@@ -179,7 +186,7 @@ final class AmbientTutorController: ObservableObject {
                 note: note, currentPageIndex: pageIndex, darkMode: darkMode
             )
             var blocks = context.blocks
-            blocks.append(.text(Self.checkInstruction(lines: lines, pageNumber: pageIndex + 1)))
+            blocks.append(.text(Self.checkInstruction(lines: lines, pageNumber: pageIndex + 1, problem: problem)))
             // Per-item y/anchor/note/fix is verbose; give it room so a multi-
             // equation page doesn't truncate mid-array.
             let raw = try await AIService.send(system: Self.checkSystem, messages: [.user(blocks)], maxTokens: 3000)
@@ -401,14 +408,24 @@ final class AmbientTutorController: ObservableObject {
     No prose outside the JSON.
     """
 
-    private static func checkInstruction(lines: [OCRLine], pageNumber: Int) -> String {
+    private static func checkInstruction(lines: [OCRLine], pageNumber: Int, problem: String) -> String {
         let numbered = lines.enumerated()
             .map { "\($0.offset): \($0.element.text)" }
             .joined(separator: "\n")
+        // The pasted question's own text (OCR), so the model knows the exact task
+        // and its required sub-parts — grade each region against THAT.
+        let problemBlock = problem.isEmpty ? "" : """
+
+        THE PROBLEM (from the pasted question on the page — grade every region \
+        against this task and its sub-parts; OCR may be rough/Hebrew, the image is \
+        authoritative):
+        \(problem)
+        """
         return """
         Grade ONLY the image labeled "Page \(pageNumber) image:" — other page images \
-        are background context. Here are the \(lines.count) regions on it (rough OCR, \
-        read the image for the real content):
+        are background context.\(problemBlock)
+        Here are the \(lines.count) student regions on it (rough OCR, read the image \
+        for the real content):
         \(numbered)
         Return a status for EVERY region index 0…\(lines.count - 1).
         """
