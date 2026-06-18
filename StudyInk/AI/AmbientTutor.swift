@@ -229,11 +229,25 @@ final class AmbientTutorController: ObservableObject {
     /// suppress a valid correction).
     private func stream(verdicts: [Verdict], lines: [OCRLine], pageIndex: Int) async {
         let minConf = sensitivity == .subtle ? 0.90 : 0.0
+        var placed: [CGRect] = []
         for v in verdicts.sorted(by: { $0.line < $1.line }) {
             guard lines.indices.contains(v.line) else { continue }
             // Unfinished (no answer yet) or non-math (skip) → no glyph.
             if v.unfinished || v.ignore { continue }
+            let text = lines[v.line].text.trimmingCharacters(in: .whitespaces)
+            // A header/label (ends with ':') is a section title, not work — no glyph.
+            if text.hasSuffix(":") || text.hasSuffix("：") { continue }
             let rect = lines[v.line].rect
+            // Dedup: a stacked equation (fraction numerator + denominator) can
+            // arrive as two rows with only a thin gap between them — don't stamp a
+            // second glyph almost on top of the first. Uses the vertical GAP (so a
+            // tight stack dedups but consecutive equations, a full line apart,
+            // don't), and needs horizontal overlap so separate columns both show.
+            if placed.contains(where: { p in
+                let gap = max(p.minY, rect.minY) - min(p.maxY, rect.maxY)
+                return gap < 0.8 * min(p.height, rect.height) && p.minX < rect.maxX && rect.minX < p.maxX
+            }) { continue }
+            placed.append(rect)
             if v.ok {
                 if sensitivity == .subtle { continue } // Subtle: errors only
                 withAnimation(.easeOut(duration: 0.3)) {
