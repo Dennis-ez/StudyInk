@@ -235,7 +235,7 @@ extension AITutorController {
             topLeft: topLeft,
             fontSize: fontSize,
             ink: ink,
-            strokeWidth: max(1.8, fontSize * 0.09)
+            strokeWidth: max(2.4, fontSize * 0.135)   // stem-width so glyphs fill solid, not hollow
         )
         guard !strokes.isEmpty else { return }
         appendInkUndoably(strokes, to: canvas)
