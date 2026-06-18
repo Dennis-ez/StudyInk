@@ -198,19 +198,11 @@ final class AmbientTutorController: ObservableObject {
     /// suppress a valid correction).
     private func stream(verdicts: [Verdict], lines: [OCRLine], pageIndex: Int) async {
         let minConf = sensitivity == .subtle ? 0.90 : 0.0
-        var placed: [CGRect] = []
         for v in verdicts.sorted(by: { $0.line < $1.line }) {
             guard lines.indices.contains(v.line) else { continue }
             // The model marks a still-unfinished region as such — no glyph for it.
             if v.unfinished { continue }
             let rect = lines[v.line].rect
-            // Safety net: if a stacked equation still slipped through as two rows,
-            // don't drop a second glyph almost on top of the first. Requires
-            // horizontal overlap too, so two columns at the same height both show.
-            if placed.contains(where: {
-                abs($0.midY - rect.midY) < $0.height * 0.7 && $0.minX < rect.maxX && rect.minX < $0.maxX
-            }) { continue }
-            placed.append(rect)
             if v.ok {
                 if sensitivity == .subtle { continue } // Subtle: errors only
                 withAnimation(.easeOut(duration: 0.3)) {
