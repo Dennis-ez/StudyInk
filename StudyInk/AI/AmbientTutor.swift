@@ -175,10 +175,20 @@ final class AmbientTutorController: ObservableObject {
             // Per-item y/anchor/note/fix is verbose; give it room so a multi-
             // equation page doesn't truncate mid-array.
             let raw = try await AIService.send(system: Self.checkSystem, messages: [.user(blocks)], maxTokens: 3000)
-            let verdicts = Self.parseVerdicts(raw)
+            var verdicts = Self.parseVerdicts(raw)
             guard !verdicts.isEmpty else {
                 showNotice(String(localized: "ambient.notice.unreadable"))
                 return
+            }
+            // Backfill: the model reliably flags WRONG answers but sometimes omits
+            // ones it considers fine. So every complete equation (an OCR region
+            // with '=') it didn't return gets a ✓ — keeps the check covering all
+            // of them, run after run.
+            let covered = Set(verdicts.map(\.line))
+            for (i, line) in lines.enumerated() where !covered.contains(i)
+                && line.text.contains("=") && !Self.isOpenLine(line.text) {
+                verdicts.append(Verdict(line: i, ok: true, unfinished: false,
+                                        note: "", fix: nil, label: "", confidence: 1))
             }
             await stream(verdicts: verdicts, lines: lines, pageIndex: pageIndex)
             // Nothing settled in the lane (e.g. Subtle with no errors): say so,
@@ -200,8 +210,8 @@ final class AmbientTutorController: ObservableObject {
         let minConf = sensitivity == .subtle ? 0.90 : 0.0
         for v in verdicts.sorted(by: { $0.line < $1.line }) {
             guard lines.indices.contains(v.line) else { continue }
-            // The model marks a still-unfinished region as such — no glyph for it.
-            if v.unfinished { continue }
+            // Unfinished (no answer yet) or non-math (skip) → no glyph.
+            if v.unfinished || v.ignore { continue }
             let rect = lines[v.line].rect
             if v.ok {
                 if sensitivity == .subtle { continue } // Subtle: errors only
@@ -329,8 +339,9 @@ final class AmbientTutorController: ObservableObject {
     // MARK: - AI plumbing
 
     /// One region's verdict, keyed to the OCR region index `i`. `unfinished`
-    /// means the region has no answer yet (model's call, not OCR's) → no glyph.
-    private struct Verdict { var line: Int; var ok: Bool; var unfinished: Bool; var note: String; var fix: String?; var label: String; var confidence: Double }
+    /// means no answer yet; `ignore` means the model said it's not math (skip).
+    /// Both render no glyph but count as "covered" so they aren't backfilled.
+    private struct Verdict { var line: Int; var ok: Bool; var unfinished: Bool; var ignore: Bool = false; var note: String; var fix: String?; var label: String; var confidence: Double }
 
     private static let checkSystem = """
     You are a meticulous math/study tutor. The page IMAGE is attached, and you are \
@@ -394,11 +405,11 @@ final class AmbientTutorController: ObservableObject {
         else if let s = d["i"] as? String, let i = Int(s) { index = i }
         else { return nil }
         let status = (d["status"] as? String ?? (d["ok"] as? Bool == false ? "wrong" : "correct")).lowercased()
-        if status == "skip" { return nil }
         return Verdict(
             line: index,
             ok: status == "correct",
             unfinished: status == "unfinished",
+            ignore: status == "skip",
             note: d["note"] as? String ?? "",
             fix: d["fix"] as? String,
             label: d["label"] as? String ?? "",

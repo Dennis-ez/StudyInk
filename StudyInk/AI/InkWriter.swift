@@ -87,13 +87,19 @@ enum InkWriter {
         let loops = polylines(from: path).filter { $0.count >= 2 }
         guard !loops.isEmpty else { return [] }
 
-        let box = path.boundingBoxOfPath
-        guard box.height > 0.5 else { return [] }
+        // Bounds from the flattened outline (reliable, unlike boundingBoxOfPath
+        // on a transformed glyph path).
+        var minY = CGFloat.greatestFiniteMagnitude
+        var maxY = -CGFloat.greatestFiniteMagnitude
+        for loop in loops {
+            for p in loop { minY = min(minY, p.y); maxY = max(maxY, p.y) }
+        }
+        guard maxY - minY > 0.5 else { return [] }
 
         let spacing = max(0.8, nib * 0.85)
         var strokes: [PKStroke] = []
-        var y = box.minY + spacing * 0.5
-        while y < box.maxY {
+        var y = minY + spacing * 0.5
+        while y < maxY {
             // X crossings of this scanline with every outline segment.
             var xs: [CGFloat] = []
             for loop in loops {
