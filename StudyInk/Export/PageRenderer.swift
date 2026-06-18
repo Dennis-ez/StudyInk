@@ -143,11 +143,7 @@ enum PageRenderer {
         if let data = snapshot.drawingData, let stored = try? PKDrawing(data: data), !stored.strokes.isEmpty {
             let adapted = InkColorAdapter.displayDrawing(stored, darkMode: darkMode)
             let drawing = boldened(adapted, factor: inkBoost)
-            var inkImage: UIImage?
-            UITraitCollection(userInterfaceStyle: .light).performAsCurrent {
-                inkImage = drawing.image(from: pageRect, scale: 2)
-            }
-            inkImage?.draw(in: pageRect)
+            inkImage(drawing, from: pageRect)?.draw(in: pageRect)
         }
 
         // Typed text boxes.
@@ -169,6 +165,22 @@ enum PageRenderer {
             NSAttributedString(string: box.text, attributes: attributes)
                 .draw(in: box.frame.insetBy(dx: 4, dy: 4))
         }
+    }
+
+    /// Rasterizes a drawing to an image. `PKDrawing.image()` must run on the
+    /// main thread — off it (we render thumbnails/page images from background
+    /// tasks) the iOS 26 SDK hands back a BLANK image, so the ink vanishes.
+    /// Hop to main when needed; force a LIGHT trait so iOS 26 doesn't re-adapt
+    /// the (already display-mapped) stroke colours against the ambient appearance.
+    private static func inkImage(_ drawing: PKDrawing, from rect: CGRect) -> UIImage? {
+        let make: () -> UIImage = {
+            var image: UIImage?
+            UITraitCollection(userInterfaceStyle: .light).performAsCurrent {
+                image = drawing.image(from: rect, scale: 2)
+            }
+            return image ?? UIImage()
+        }
+        return Thread.isMainThread ? make() : DispatchQueue.main.sync(execute: make)
     }
 
     /// Widens every stroke by `factor` (preserving relative widths) so ink stays
