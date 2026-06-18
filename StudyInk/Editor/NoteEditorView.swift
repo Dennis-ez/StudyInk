@@ -162,17 +162,21 @@ struct NoteEditorView: View {
                 transform: transform,
                 onFixIt: { item in
                     // The "your-style amber ink" write-on is the deferred deep
-                    // feature; for now answer it in ink with the correction.
+                    // feature; for now write the correction in amber ink right
+                    // beside the line it belongs to (we already know the rect,
+                    // so no AI/OCR round-trip to land it in the wrong place).
                     ambient.dismiss()
                     if let result = item.result {
-                        Task {
-                            await tutor.answerInInk(
-                                request: "Write only: = \(result)",
-                                on: canvasController.canvasView,
-                                colorHex: ambientInkHex,
-                                penWidth: canvasController.toolState.width
-                            )
-                        }
+                        let rect = item.anchorRect
+                        let fontSize = max(16, min(34, rect.height * 0.95))
+                        let point = CGPoint(x: rect.maxX + 16, y: rect.midY - fontSize * 0.7)
+                        tutor.writeInk(
+                            text: "= \(result)",
+                            at: point,
+                            fontSize: fontSize,
+                            colorHex: ambientInkHex,
+                            on: canvasController.canvasView
+                        )
                     }
                 },
                 onShowWhy: { item in
@@ -181,15 +185,15 @@ struct NoteEditorView: View {
                 },
                 onAcceptGhost: { g in
                     ambient.dismissGhost()
-                    Task {
-                        await tutor.answerInInk(
-                            request: "Write only: \(g.text)",
-                            on: canvasController.canvasView,
-                            colorHex: ambientInkHex,
-                            penWidth: canvasController.toolState.width
-                        )
-                        ambient.invalidateGhost()
-                    }
+                    // The ghost was shown at g.anchor — write it there exactly,
+                    // so the accepted ink lands where the preview was.
+                    tutor.writeInk(
+                        text: g.text,
+                        at: g.anchor,
+                        colorHex: ambientInkHex,
+                        on: canvasController.canvasView
+                    )
+                    ambient.invalidateGhost()
                 }
             )
 

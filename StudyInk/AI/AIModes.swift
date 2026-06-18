@@ -183,6 +183,43 @@ extension AITutorController {
     }
 }
 
+extension AITutorController {
+    /// Writes text as handwritten ink at an EXPLICIT page-space location. Used
+    /// by the ambient tutor, where the caller already knows exactly where the
+    /// ink goes (the glyph's line rect / the ghost's anchor) — so there's no AI
+    /// round-trip and no OCR anchor-matching to land it in the wrong place.
+    func writeInk(text: String, at pagePoint: CGPoint, fontSize: CGFloat = 22, colorHex: String, on canvas: PKCanvasView?) {
+        guard let canvas, let page = currentPage else { return }
+        let pageSize = page.canvasSize
+        let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return }
+
+        let textWidth = InkWriter.width(of: cleaned, fontSize: fontSize)
+        let margin: CGFloat = 24
+        var topLeft = pagePoint
+        // Keep the whole block on the page.
+        topLeft.x = min(topLeft.x, max(margin, pageSize.width - margin - textWidth))
+        topLeft.x = max(topLeft.x, margin)
+        topLeft.y = max(margin, min(topLeft.y, pageSize.height - margin - InkWriter.lineHeight(fontSize: fontSize) * 4))
+
+        // Adapt the colour the way the pen does (iOS 26 renders ink colours
+        // literally on the pinned-light canvas), and trace with a stem-width
+        // stroke so the glyphs read solid rather than hollow outlines.
+        let base = InkColorAdapter.displayColor(UIColor(hex: colorHex) ?? .label, darkMode: isDarkMode)
+        let ink = PKInk(.pen, color: base)
+        let strokes = InkWriter.strokes(
+            for: cleaned,
+            topLeft: topLeft,
+            fontSize: fontSize,
+            ink: ink,
+            strokeWidth: max(2.6, fontSize * 0.14)
+        )
+        guard !strokes.isEmpty else { return }
+        canvas.drawing = canvas.drawing.appending(PKDrawing(strokes: strokes))
+        Haptics.tap()
+    }
+}
+
 /// Subject context selector (Calculus 1 / Discrete Math 1 / custom) for the note.
 struct SubjectContextMenu: View {
     @ObservedObject var note: Note
