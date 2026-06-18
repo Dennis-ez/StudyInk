@@ -43,8 +43,13 @@ enum PageRenderer {
         let format = UIGraphicsImageRendererFormat()
         format.scale = scale
         let renderer = UIGraphicsImageRenderer(size: snapshot.pageSize, format: format)
+        // In a tiny preview the page is shrunk many times, so a normal 2–3pt
+        // stroke falls below a pixel and antialiases to near-invisible grey —
+        // sparse handwriting then "vanishes". Fatten the ink the more we shrink
+        // so it still reads, tapering back to 1× at full size.
+        let inkBoost = min(4, max(1, 0.5 / scale))
         return renderer.image { ctx in
-            draw(snapshot, in: ctx.cgContext, darkMode: darkMode)
+            draw(snapshot, in: ctx.cgContext, darkMode: darkMode, inkBoost: inkBoost)
         }
     }
 
@@ -120,7 +125,7 @@ enum PageRenderer {
         }
     }
 
-    private static func draw(_ snapshot: Snapshot, in cg: CGContext, darkMode: Bool) {
+    private static func draw(_ snapshot: Snapshot, in cg: CGContext, darkMode: Bool, inkBoost: CGFloat = 1) {
         let pageRect = CGRect(origin: .zero, size: snapshot.pageSize)
 
         drawBackground(snapshot, in: cg, darkMode: darkMode)
@@ -136,7 +141,8 @@ enum PageRenderer {
         // LIGHT trait context — exactly like the live canvas, which is pinned
         // to .light — so the near-white strokes render literally.
         if let data = snapshot.drawingData, let stored = try? PKDrawing(data: data), !stored.strokes.isEmpty {
-            let drawing = InkColorAdapter.displayDrawing(stored, darkMode: darkMode)
+            let adapted = InkColorAdapter.displayDrawing(stored, darkMode: darkMode)
+            let drawing = boldened(adapted, factor: inkBoost)
             var inkImage: UIImage?
             UITraitCollection(userInterfaceStyle: .light).performAsCurrent {
                 inkImage = drawing.image(from: pageRect, scale: 2)
@@ -163,5 +169,30 @@ enum PageRenderer {
             NSAttributedString(string: box.text, attributes: attributes)
                 .draw(in: box.frame.insetBy(dx: 4, dy: 4))
         }
+    }
+
+    /// Widens every stroke by `factor` (preserving relative widths) so ink stays
+    /// legible in heavily-shrunk previews. `factor == 1` returns the drawing as-is.
+    private static func boldened(_ drawing: PKDrawing, factor: CGFloat) -> PKDrawing {
+        guard factor > 1.001 else { return drawing }
+        var strokes = drawing.strokes
+        for i in strokes.indices {
+            let s = strokes[i]
+            let path = s.path
+            let points = (0..<path.count).map { index -> PKStrokePoint in
+                let p = path[index]
+                return PKStrokePoint(
+                    location: p.location, timeOffset: p.timeOffset,
+                    size: CGSize(width: p.size.width * factor, height: p.size.height * factor),
+                    opacity: p.opacity, force: p.force, azimuth: p.azimuth, altitude: p.altitude
+                )
+            }
+            strokes[i] = PKStroke(
+                ink: s.ink,
+                path: PKStrokePath(controlPoints: points, creationDate: path.creationDate),
+                transform: s.transform, mask: s.mask
+            )
+        }
+        return PKDrawing(strokes: strokes)
     }
 }
