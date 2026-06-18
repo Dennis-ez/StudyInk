@@ -176,7 +176,7 @@ final class AmbientTutorController: ObservableObject {
                 showNotice(String(localized: "ambient.notice.unreadable"))
                 return
             }
-            await stream(verdicts: verdicts, lines: lines, pageSize: page.canvasSize, pageIndex: pageIndex)
+            await stream(verdicts: verdicts, lines: lines, pageIndex: pageIndex)
             // Nothing settled in the lane (e.g. Subtle with no errors): say so,
             // instead of looking like the tap did nothing.
             if items(onPage: pageIndex).isEmpty {
@@ -188,18 +188,17 @@ final class AmbientTutorController: ObservableObject {
         }
     }
 
-    /// Streams glyphs top-down (120ms each): ✓ on every correct statement, a
-    /// correction on every wrong one. Each verdict is placed on the real ink it
-    /// refers to (matched OCR row, or the model's y snapped to a nearby row);
-    /// verdicts that don't land on any ink are dropped (no glyphs on blank lines).
-    private func stream(verdicts: [Verdict], lines: [OCRLine], pageSize: CGSize, pageIndex: Int) async {
+    /// Streams glyphs top-down (120ms each): ✓ on every correct region, a
+    /// correction on every wrong one. Anchored to the region's own OCR rect, and
+    /// the model decides completeness (so OCR dropping the "3" in "lim…=3" can't
+    /// suppress a valid correction).
+    private func stream(verdicts: [Verdict], lines: [OCRLine], pageIndex: Int) async {
         let minConf = sensitivity == .subtle ? 0.90 : 0.0
-        // Top-down: items with a y first (in order), anchor-only items after.
-        for v in verdicts.sorted(by: { ($0.y ?? 2) < ($1.y ?? 2) }) {
-            // Place only where there's actual ink — never override the model's
-            // completeness judgement with OCR (OCR drops the "3" in "lim…=3",
-            // which used to suppress a valid correction).
-            guard let rect = Self.anchorRect(for: v, lines: lines, pageSize: pageSize) else { continue }
+        for v in verdicts.sorted(by: { $0.line < $1.line }) {
+            guard lines.indices.contains(v.line) else { continue }
+            // The model marks a still-unfinished region as such — no glyph for it.
+            if v.unfinished { continue }
+            let rect = lines[v.line].rect
             if v.ok {
                 if sensitivity == .subtle { continue } // Subtle: errors only
                 withAnimation(.easeOut(duration: 0.3)) {
@@ -291,47 +290,6 @@ final class AmbientTutorController: ObservableObject {
         return "=+-−×÷*/·→≤≥<>".contains(last)
     }
 
-    /// Resolves a verdict's page-space anchor rect, or nil if it doesn't land on
-    /// real ink. Prefers an OCR row whose text matches the anchor token (lands a
-    /// stacked limit on its "lim …" row); else snaps the model's `y` to a nearby
-    /// row; else returns nil so a stray/hallucinated verdict gets no glyph.
-    private static func anchorRect(for v: Verdict, lines: [OCRLine], pageSize: CGSize) -> CGRect? {
-        guard !lines.isEmpty else { return nil }
-        let key = normalize(v.anchor)
-        let pageY = (v.y ?? 0.5) * pageSize.height
-
-        // 1) Text match: an OCR row whose normalized text shares a prefix with the
-        //    anchor (only for keys with real signal), nearest to the model's y.
-        //    This is what lands a stacked limit on its real "lim …" row even when
-        //    OCR mangles the rest of the equation.
-        if key.count >= 2 {
-            let matches = lines.filter { row in
-                let t = normalize(row.text)
-                guard !t.isEmpty else { return false }
-                return t.hasPrefix(key) || key.hasPrefix(t) || t.contains(key)
-            }
-            if let best = matches.min(by: { abs($0.rect.midY - pageY) < abs($1.rect.midY - pageY) }) {
-                return best.rect
-            }
-        }
-
-        // 2) Snap to the nearest OCR row IF it sits at this height — the model's y
-        //    pointing at actual ink. A verdict whose y lands on a blank stretch
-        //    (no row within the band) is a misread/hallucination → drop it, so no
-        //    glyphs settle on empty lines.
-        let band = max(pageSize.height * 0.06, 36)
-        if let near = lines.min(by: { abs($0.rect.midY - pageY) < abs($1.rect.midY - pageY) }),
-           abs(near.rect.midY - pageY) <= band {
-            return near.rect
-        }
-        return nil
-    }
-
-    /// Lowercased, alphanumerics only — robust to OCR mangling symbols/spacing.
-    private static func normalize(_ s: String) -> String {
-        String(s.lowercased().unicodeScalars.filter(CharacterSet.alphanumerics.contains))
-    }
-
     /// Collapses Vision's per-fragment observations into one entry per visual
     /// row: fragments whose vertical spans overlap belong to the same equation
     /// (e.g. "∫ x dx" + "="), so they're concatenated left-to-right and their
@@ -359,40 +317,38 @@ final class AmbientTutorController: ObservableObject {
 
     // MARK: - AI plumbing
 
-    /// A verdict the model returns. Position is anchored by `y` (a fraction of
-    /// page height, 0=top … 1=bottom) plus an `anchor` snippet — NOT an OCR line
-    /// index — so stacked notation that OCR fragments still lands correctly.
-    private struct Verdict { var y: CGFloat?; var anchor: String; var ok: Bool; var note: String; var fix: String?; var label: String; var confidence: Double }
+    /// One region's verdict, keyed to the OCR region index `i`. `unfinished`
+    /// means the region has no answer yet (model's call, not OCR's) → no glyph.
+    private struct Verdict { var line: Int; var ok: Bool; var unfinished: Bool; var note: String; var fix: String?; var label: String; var confidence: Double }
 
     private static let checkSystem = """
-    You are an attentive math/study tutor reviewing a student's HANDWRITTEN work. \
-    The page IMAGE is attached — READ the handwriting directly from it; recognise \
-    limits (lim x→0 sinx/x), integrals (∫x dx), fractions, subscripts and exponents \
-    correctly even when they're stacked over two rows. Find every COMPLETED \
-    equation/statement on the page and decide if it is mathematically correct. \
-    For EACH one, report:
-    - "y": its vertical CENTER as a fraction of page height, 0.0 (top) … 1.0 (bottom).
-    - "anchor": the first 2–6 characters of the statement as written (e.g. "lim", "∫x", "3x=6").
-    - "ok": true if correct, false if wrong.
-    - when false also: "label" (e.g. "Almost —"), "note" (one short sentence on the mistake), "fix" (the full corrected line in plain math, no LaTeX), "conf" (0.0–1.0).
-    Judge EVERY completed equation — especially limits and integrals; never skip one. \
-    OMIT only genuinely UNFINISHED work: a line ending in '=' or an operator with \
-    nothing after it, or a bare question with no answer yet. \
+    You are a meticulous math/study tutor. The page IMAGE is attached, and you are \
+    given a NUMBERED list of regions — one per line of the student's handwriting — \
+    with rough OCR text (often WRONG on notation, so READ the handwriting from the \
+    image: limits "lim x→0 sinx/x", integrals "∫x dx", fractions, subscripts, \
+    exponents — these often span two rows, treat the stack as one equation). \
+    For EVERY region index, look at that line in the image and classify it:
+    - "correct"   — the math is right
+    - "wrong"     — there is a mistake (add "note": one short sentence, and "fix": the full corrected line in plain math, no LaTeX, and "conf": 0.0–1.0)
+    - "unfinished"— it ends with '=' or an operator with nothing after, or is a question with no answer yet
+    - "skip"      — the region is not math (a heading, stray mark, label)
+    You MUST return one entry for EVERY region index given, in order. Do not skip a \
+    region just because its OCR text looks garbled — read the image. \
     Respond with ONLY a JSON object:
-    {"items":[{"y":0.12,"anchor":"1+3","ok":true},{"y":0.55,"anchor":"∫x","ok":false,"label":"Almost —","note":"...","fix":"∫x dx = x²/2 + C","conf":0.9}]}
+    {"regions":[{"i":0,"status":"correct"},{"i":1,"status":"wrong","note":"...","fix":"...","conf":0.9},{"i":2,"status":"unfinished"}]}
     No prose outside the JSON.
     """
 
     private static func checkInstruction(lines: [OCRLine], pageNumber: Int) -> String {
-        // Rough OCR as a hint only — the model reads the image for the real
-        // content and reports each statement's vertical position itself.
-        let hint = lines.map(\.text).joined(separator: " / ")
+        let numbered = lines.enumerated()
+            .map { "\($0.offset): \($0.element.text)" }
+            .joined(separator: "\n")
         return """
-        Grade ONLY the image labeled "Page \(pageNumber) image:" — the other page \
-        images are background context, do not grade them. Read my handwriting from \
-        that page; 'y' is the position within THAT page (0 top … 1 bottom). \
-        (Rough OCR for reference, often wrong on notation: \(hint))
-        Return the JSON verdict with a y position and anchor for each statement.
+        Grade ONLY the image labeled "Page \(pageNumber) image:" — other page images \
+        are background context. Here are the \(lines.count) regions on it (rough OCR, \
+        read the image for the real content):
+        \(numbered)
+        Return a status for EVERY region index 0…\(lines.count - 1).
         """
     }
 
@@ -401,13 +357,12 @@ final class AmbientTutorController: ObservableObject {
         if let start = raw.firstIndex(of: "{"), let end = raw.lastIndex(of: "}"),
            let data = String(raw[start...end]).data(using: .utf8),
            let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let arr = (obj["items"] ?? obj["lines"]) as? [[String: Any]] {
+           let arr = (obj["regions"] ?? obj["items"] ?? obj["lines"]) as? [[String: Any]] {
             let verdicts = arr.compactMap(verdict(from:))
             if !verdicts.isEmpty { return verdicts }
         }
-        // Fallback: the response was truncated (long answers blow the token
-        // budget mid-array) or lightly malformed — recover each complete {...}
-        // object on its own so we still place the statements we did get.
+        // Fallback: a truncated/lightly-malformed response — recover each complete
+        // {...} object on its own so we still place the regions we did get.
         return Self.objectMatcher
             .matches(in: raw, range: NSRange(raw.startIndex..., in: raw))
             .compactMap { m -> Verdict? in
@@ -421,20 +376,18 @@ final class AmbientTutorController: ObservableObject {
 
     private static let objectMatcher = try! NSRegularExpression(pattern: "\\{[^{}]*\\}")
 
-    /// Builds a Verdict from one JSON object. `y` is optional (number or string);
-    /// without it the statement is placed by its anchor text alone.
+    /// Builds a Verdict from one region object. Accepts `i` as number or string.
     private static func verdict(from d: [String: Any]) -> Verdict? {
-        let yValue: CGFloat?
-        if let n = d["y"] as? NSNumber { yValue = CGFloat(n.doubleValue) }
-        else if let s = d["y"] as? String, let dbl = Double(s) { yValue = CGFloat(dbl) }
-        else { yValue = nil }
-        let anchor = (d["anchor"] as? String ?? "").trimmingCharacters(in: .whitespaces)
-        // Need at least one positioning signal.
-        guard yValue != nil || !anchor.isEmpty else { return nil }
+        let index: Int
+        if let n = d["i"] as? NSNumber { index = n.intValue }
+        else if let s = d["i"] as? String, let i = Int(s) { index = i }
+        else { return nil }
+        let status = (d["status"] as? String ?? (d["ok"] as? Bool == false ? "wrong" : "correct")).lowercased()
+        if status == "skip" { return nil }
         return Verdict(
-            y: yValue.map { min(1, max(0, $0)) },
-            anchor: anchor,
-            ok: d["ok"] as? Bool ?? true,
+            line: index,
+            ok: status == "correct",
+            unfinished: status == "unfinished",
             note: d["note"] as? String ?? "",
             fix: d["fix"] as? String,
             label: d["label"] as? String ?? "",
