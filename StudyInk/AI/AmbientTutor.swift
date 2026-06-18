@@ -189,16 +189,17 @@ final class AmbientTutorController: ObservableObject {
     }
 
     /// Streams glyphs top-down (120ms each): ✓ on every correct statement, a
-    /// correction on every wrong one. Each verdict is placed by its `y` fraction,
-    /// snapped to the nearest matching OCR row when one exists for pixel accuracy.
+    /// correction on every wrong one. Each verdict is placed on the real ink it
+    /// refers to (matched OCR row, or the model's y snapped to a nearby row);
+    /// verdicts that don't land on any ink are dropped (no glyphs on blank lines).
     private func stream(verdicts: [Verdict], lines: [OCRLine], pageSize: CGSize, pageIndex: Int) async {
         let minConf = sensitivity == .subtle ? 0.90 : 0.0
         // Top-down: items with a y first (in order), anchor-only items after.
         for v in verdicts.sorted(by: { ($0.y ?? 2) < ($1.y ?? 2) }) {
-            let (rect, matched) = Self.anchorRect(for: v, lines: lines, pageSize: pageSize)
-            // If we snapped to an OCR row that's clearly unfinished (ends with =),
-            // it isn't right OR wrong yet — skip it.
-            if let matched, Self.isOpenLine(matched.text) { continue }
+            // Place only where there's actual ink — never override the model's
+            // completeness judgement with OCR (OCR drops the "3" in "lim…=3",
+            // which used to suppress a valid correction).
+            guard let rect = Self.anchorRect(for: v, lines: lines, pageSize: pageSize) else { continue }
             if v.ok {
                 if sensitivity == .subtle { continue } // Subtle: errors only
                 withAnimation(.easeOut(duration: 0.3)) {
@@ -290,19 +291,19 @@ final class AmbientTutorController: ObservableObject {
         return "=+-−×÷*/·→≤≥<>".contains(last)
     }
 
-    /// Resolves a verdict's page-space anchor rect. Primary signal is the model's
-    /// `y` fraction; we snap to a matching OCR row when one exists (pixel-accurate
-    /// and gives fix-it a real line to write under), and synthesize a rect at `y`
-    /// when OCR missed the statement entirely (e.g. a stacked limit). Also returns
-    /// the matched OCR row, if any, so the caller can skip unfinished lines.
-    private static func anchorRect(for v: Verdict, lines: [OCRLine], pageSize: CGSize) -> (CGRect, OCRLine?) {
+    /// Resolves a verdict's page-space anchor rect, or nil if it doesn't land on
+    /// real ink. Prefers an OCR row whose text matches the anchor token (lands a
+    /// stacked limit on its "lim …" row); else snaps the model's `y` to a nearby
+    /// row; else returns nil so a stray/hallucinated verdict gets no glyph.
+    private static func anchorRect(for v: Verdict, lines: [OCRLine], pageSize: CGSize) -> CGRect? {
+        guard !lines.isEmpty else { return nil }
         let key = normalize(v.anchor)
-        // Model y → page space. Without a y (older/terse responses) we lean on
-        // the anchor text and a synthesized rect at the page center as last resort.
         let pageY = (v.y ?? 0.5) * pageSize.height
 
         // 1) Text match: an OCR row whose normalized text shares a prefix with the
         //    anchor (only for keys with real signal), nearest to the model's y.
+        //    This is what lands a stacked limit on its real "lim …" row even when
+        //    OCR mangles the rest of the equation.
         if key.count >= 2 {
             let matches = lines.filter { row in
                 let t = normalize(row.text)
@@ -310,27 +311,20 @@ final class AmbientTutorController: ObservableObject {
                 return t.hasPrefix(key) || key.hasPrefix(t) || t.contains(key)
             }
             if let best = matches.min(by: { abs($0.rect.midY - pageY) < abs($1.rect.midY - pageY) }) {
-                return (best.rect, best)
+                return best.rect
             }
         }
 
-        // 2) No text match — snap to the nearest OCR row if one sits at this height
-        //    (only when we actually have a y to trust).
-        if v.y != nil {
-            let band = max(pageSize.height * 0.05, 30)
-            if let near = lines.min(by: { abs($0.rect.midY - pageY) < abs($1.rect.midY - pageY) }),
-               abs(near.rect.midY - pageY) <= band {
-                return (near.rect, near)
-            }
+        // 2) Snap to the nearest OCR row IF it sits at this height — the model's y
+        //    pointing at actual ink. A verdict whose y lands on a blank stretch
+        //    (no row within the band) is a misread/hallucination → drop it, so no
+        //    glyphs settle on empty lines.
+        let band = max(pageSize.height * 0.06, 36)
+        if let near = lines.min(by: { abs($0.rect.midY - pageY) < abs($1.rect.midY - pageY) }),
+           abs(near.rect.midY - pageY) <= band {
+            return near.rect
         }
-
-        // 3) Place by y alone (OCR missed it, e.g. a stacked limit) so the glyph
-        //    still lands on the right line.
-        let heights = lines.map(\.rect.height).sorted()
-        let h = heights.isEmpty ? 28 : heights[heights.count / 2]
-        let x = lines.map(\.rect.minX).min() ?? pageSize.width * 0.1
-        let w = max(pageSize.width * 0.3, 120)
-        return (CGRect(x: x, y: pageY - h / 2, width: w, height: h), nil)
+        return nil
     }
 
     /// Lowercased, alphanumerics only — robust to OCR mangling symbols/spacing.
