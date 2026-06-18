@@ -146,21 +146,17 @@ final class AmbientTutorController: ObservableObject {
         let page = pages[pageIndex]
 
         notice = nil
+        ghost = nil   // a stale idle-suggestion shouldn't linger over a check
         isChecking = true
         defer { isChecking = false }
         clear(pageIndex: pageIndex)
 
-        // Vision returns observations in no guaranteed order. Sort them top-to-
-        // bottom (left-to-right within a row) so a line's INDEX equals its visual
-        // position — that's the numbering the model infers when it reads the
-        // image top-down, so verdict i lands on lines[i]'s actual rect.
-        let lines = (await NoteContextBuilder.ocrLines(for: page))
-            .sorted { a, b in
-                if abs(a.rect.minY - b.rect.minY) > max(a.rect.height, b.rect.height) * 0.5 {
-                    return a.rect.minY < b.rect.minY
-                }
-                return a.rect.minX < b.rect.minX
-            }
+        // Vision fragments one equation into several observations (a lim stack,
+        // a "∫ x dx =" split into "∫ x dx" + "="). Merge same-row fragments into
+        // ONE line so each line is a whole statement the model can verdict, its
+        // rect spans the equation for anchoring, and a trailing "=" is detected.
+        // Rows come back ordered top-to-bottom, so line index == visual position.
+        let lines = Self.mergeRows(await NoteContextBuilder.ocrLines(for: page))
         guard !lines.isEmpty else {
             showNotice(String(localized: "ambient.notice.empty"))
             return
@@ -190,10 +186,10 @@ final class AmbientTutorController: ObservableObject {
         }
     }
 
-    /// Streams ✓ marks top-down (120ms/line), then the first correction.
+    /// Streams glyphs top-down (120ms/line): ✓ on every correct line, a
+    /// correction on every wrong one.
     private func stream(verdicts: [Verdict], lines: [OCRLine], pageIndex: Int) async {
         let minConf = sensitivity == .subtle ? 0.90 : 0.0
-        var firstErrorEmitted = false
         for v in verdicts.sorted(by: { $0.line < $1.line }) {
             guard lines.indices.contains(v.line) else { continue }
             let rect = lines[v.line].rect
@@ -208,8 +204,7 @@ final class AmbientTutorController: ObservableObject {
                                             label: "", body: ""))
                 }
                 try? await Task.sleep(nanoseconds: 120_000_000)
-            } else if !firstErrorEmitted, v.confidence >= minConf {
-                firstErrorEmitted = true
+            } else if v.confidence >= minConf {
                 withAnimation(.easeOut(duration: 0.3)) {
                     items.append(MarginItem(
                         pageIndex: pageIndex, anchorRect: rect,
@@ -218,6 +213,7 @@ final class AmbientTutorController: ObservableObject {
                         body: v.note, result: v.fix?.isEmpty == true ? nil : v.fix))
                 }
                 Haptics.selection()
+                try? await Task.sleep(nanoseconds: 120_000_000)
             }
         }
     }
@@ -242,7 +238,7 @@ final class AmbientTutorController: ObservableObject {
         let pages = note.sortedPages
         guard pages.indices.contains(pageIndex) else { return }
         let page = pages[pageIndex]
-        let lines = await NoteContextBuilder.ocrLines(for: page)
+        let lines = Self.mergeRows(await NoteContextBuilder.ocrLines(for: page))
         // An UNFINISHED line (ends with =, an operator, →) is the real target:
         // the student is waiting to fill in its right-hand side, so complete it
         // inline — even if some later scribble sits lower on the page. Only when
@@ -289,6 +285,31 @@ final class AmbientTutorController: ObservableObject {
     static func isOpenLine(_ text: String) -> Bool {
         guard let last = text.trimmingCharacters(in: .whitespaces).last else { return false }
         return "=+-−×÷*/·→≤≥<>".contains(last)
+    }
+
+    /// Collapses Vision's per-fragment observations into one entry per visual
+    /// row: fragments whose vertical spans overlap belong to the same equation
+    /// (e.g. "∫ x dx" + "="), so they're concatenated left-to-right and their
+    /// rects unioned. Returns rows ordered top-to-bottom. Stacked notation (a
+    /// lim's "x→0" under "lim") stays on its own row — little vertical overlap.
+    static func mergeRows(_ lines: [OCRLine]) -> [OCRLine] {
+        let sorted = lines.sorted { $0.rect.minY < $1.rect.minY }
+        var rows: [OCRLine] = []
+        for line in sorted {
+            guard let last = rows.last else { rows.append(line); continue }
+            let overlap = min(last.rect.maxY, line.rect.maxY) - max(last.rect.minY, line.rect.minY)
+            if overlap > 0.4 * min(last.rect.height, line.rect.height) {
+                let leftFirst = last.rect.minX <= line.rect.minX
+                rows[rows.count - 1] = OCRLine(
+                    text: leftFirst ? "\(last.text) \(line.text)" : "\(line.text) \(last.text)",
+                    rect: last.rect.union(line.rect),
+                    confidence: min(last.confidence, line.confidence)
+                )
+            } else {
+                rows.append(line)
+            }
+        }
+        return rows
     }
 
     // MARK: - AI plumbing
