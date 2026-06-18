@@ -159,7 +159,12 @@ final class AmbientTutorController: ObservableObject {
         // ONE line so each line is a whole statement the model can verdict, its
         // rect spans the equation for anchoring, and a trailing "=" is detected.
         // Rows come back ordered top-to-bottom, so line index == visual position.
+        // A pasted question image/screenshot is rendered into the page, so its
+        // printed text gets OCR'd too — never grade THAT (it's the problem, not
+        // the student's work). Drop any region that sits inside a media frame.
+        let mediaFrames = page.mediaItems.map(\.frame)
         let lines = Self.mergeRows(await NoteContextBuilder.ocrLines(for: page))
+            .filter { line in !mediaFrames.contains { $0.intersects(line.rect) } }
         lastLineRects = lines.map(\.rect)
         guard !lines.isEmpty else {
             showNotice(String(localized: "ambient.notice.empty"))
@@ -258,7 +263,11 @@ final class AmbientTutorController: ObservableObject {
         let pages = note.sortedPages
         guard pages.indices.contains(pageIndex) else { return }
         let page = pages[pageIndex]
+        // Ignore the pasted question image's text — predict from the student's
+        // own work, not the problem statement.
+        let mediaFrames = page.mediaItems.map(\.frame)
         let lines = Self.mergeRows(await NoteContextBuilder.ocrLines(for: page))
+            .filter { line in !mediaFrames.contains { $0.intersects(line.rect) } }
         // An UNFINISHED line (ends with =, an operator, →) is the real target:
         // the student is waiting to fill in its right-hand side, so complete it
         // inline — even if some later scribble sits lower on the page. Only when
@@ -304,7 +313,8 @@ final class AmbientTutorController: ObservableObject {
     /// `=`/operators survive recognition well enough to drive completion.
     static func isOpenLine(_ text: String) -> Bool {
         guard let last = text.trimmingCharacters(in: .whitespaces).last else { return false }
-        return "=+-−×÷*/·→≤≥<>".contains(last)
+        // Trailing '(' (e.g. a half-written derivative "…)(") is unfinished too.
+        return "=+-−×÷*/·→≤≥<>(".contains(last)
     }
 
     /// Collapses Vision's per-fragment observations into one entry per visual
@@ -357,6 +367,10 @@ final class AmbientTutorController: ObservableObject {
     the function/task the student is working on (e.g. "y = ((x+2)/(x+1))²"). Judge \
     each handwritten line IN THE CONTEXT of that problem (right function, right \
     sub-question, valid step), not just as isolated algebra. \
+    The student labels which sub-question a block answers with a HEADER (often \
+    Hebrew / right-to-left, e.g. "ת.ה:" = domain, "תחומי עליה/ירידה:" = increasing/\
+    decreasing intervals) — "skip" those header lines, and grade the work beneath \
+    each header against THAT sub-question. \
     For EVERY region index, look at that line in the image and classify it:
     - "correct"   — the math is right
     - "wrong"     — there is a mistake (add "note": one short sentence, and "fix": the full corrected line in plain math, no LaTeX, and "conf": 0.0–1.0)
