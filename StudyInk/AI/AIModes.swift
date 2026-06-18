@@ -188,19 +188,34 @@ extension AITutorController {
     /// by the ambient tutor, where the caller already knows exactly where the
     /// ink goes (the glyph's line rect / the ghost's anchor) — so there's no AI
     /// round-trip and no OCR anchor-matching to land it in the wrong place.
-    func writeInk(text: String, at pagePoint: CGPoint, fontSize: CGFloat = 22, colorHex: String, on canvas: PKCanvasView?) {
+    func writeInk(text: String, at pagePoint: CGPoint, fontSize: CGFloat = 22, colorHex: String, avoid: [CGRect] = [], on canvas: PKCanvasView?) {
         guard let canvas, let page = currentPage else { return }
         let pageSize = page.canvasSize
         let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { return }
 
         let textWidth = InkWriter.width(of: cleaned, fontSize: fontSize)
+        let lineH = InkWriter.lineHeight(fontSize: fontSize)
+        let blockH = lineH * CGFloat(cleaned.components(separatedBy: "\n").count)
         let margin: CGFloat = 24
         var topLeft = pagePoint
         // Keep the whole block on the page.
         topLeft.x = min(topLeft.x, max(margin, pageSize.width - margin - textWidth))
         topLeft.x = max(topLeft.x, margin)
-        topLeft.y = max(margin, min(topLeft.y, pageSize.height - margin - InkWriter.lineHeight(fontSize: fontSize) * 4))
+        topLeft.y = max(margin, min(topLeft.y, pageSize.height - margin - blockH))
+
+        // Don't write over existing ink: if the block would overlap an occupied
+        // line, drop it just below that line. (Column-aware — `intersects` only
+        // trips when the x-ranges overlap too, so other columns don't push it.)
+        var guardCount = 0
+        while guardCount < 16 {
+            let block = CGRect(x: topLeft.x, y: topLeft.y, width: max(textWidth, 8), height: blockH)
+            guard let hit = avoid.first(where: { $0.intersects(block) }) else { break }
+            let next = hit.maxY + 6
+            if next + blockH > pageSize.height - margin { break } // no room; leave as is
+            topLeft.y = next
+            guardCount += 1
+        }
 
         // Adapt the colour the way the pen does (iOS 26 renders ink colours
         // literally on the pinned-light canvas), and trace with a stem-width

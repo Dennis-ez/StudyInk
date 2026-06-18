@@ -180,6 +180,7 @@ struct NoteEditorView: View {
                             at: point,
                             fontSize: fontSize,
                             colorHex: ambientInkHex,
+                            avoid: ambient.lastLineRects,
                             on: canvasController.canvasView
                         )
                     }

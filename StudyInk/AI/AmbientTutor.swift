@@ -90,6 +90,9 @@ final class AmbientTutorController: ObservableObject {
     @Published var notice: String?
     /// The next-step ghost suggestion, if any.
     @Published var ghost: GhostSuggestion?
+    /// OCR line rects from the most recent check — used so AI ink (fix-it) lands
+    /// in a clear gap instead of over the student's existing work.
+    private(set) var lastLineRects: [CGRect] = []
     /// Guards the idle auto-trigger so we only suggest once per writing burst.
     private var lastGhostSourceLine: String?
     @AppStorage("ambient.sensitivity") private var sensitivityRaw = AmbientSensitivity.helpful.rawValue
@@ -157,6 +160,7 @@ final class AmbientTutorController: ObservableObject {
         // rect spans the equation for anchoring, and a trailing "=" is detected.
         // Rows come back ordered top-to-bottom, so line index == visual position.
         let lines = Self.mergeRows(await NoteContextBuilder.ocrLines(for: page))
+        lastLineRects = lines.map(\.rect)
         guard !lines.isEmpty else {
             showNotice(String(localized: "ambient.notice.empty"))
             return

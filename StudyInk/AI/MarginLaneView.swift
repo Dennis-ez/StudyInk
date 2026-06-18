@@ -14,27 +14,24 @@ struct MarginLaneView: View {
     var onShowWhy: (MarginItem) -> Void = { _ in }
     var onAcceptGhost: (GhostSuggestion) -> Void = { _ in }
 
-    /// Page-space x of the margin gutter (where the red rule lives).
-    private let marginPageX: CGFloat = 34
+    /// Smallest page-space x a glyph may sit at (keeps it on the page for a
+    /// left-margin question); right-column questions sit beside their own line.
+    private let minGlyphPageX: CGFloat = 30
 
     private var pageItems: [MarginItem] { ambient.items(onPage: pageIndex) }
+
+    /// Page-space x just left of an equation, so the glyph sits next to THAT
+    /// question (works for two-column layouts) instead of the page's far margin.
+    private func glyphPageX(for item: MarginItem) -> CGFloat {
+        max(minGlyphPageX, item.anchorRect.minX - 30)
+    }
 
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .topLeading) {
-                // Faint amber lane wash — the only "it's on" cue.
-                if ambient.isOn && !pageItems.isEmpty {
-                    LinearGradient(
-                        colors: [AppTheme.current.aiAccent.opacity(0.07), .clear],
-                        startPoint: .leading, endPoint: .trailing
-                    )
-                    .frame(width: 72)
-                    .allowsHitTesting(false)
-                }
-
-                // Glyphs at each line's content-space y.
+                // Glyphs just left of each line's equation.
                 ForEach(pageItems) { item in
-                    let p = transform.toScreen(CGPoint(x: marginPageX, y: item.anchorRect.midY))
+                    let p = transform.toScreen(CGPoint(x: glyphPageX(for: item), y: item.anchorRect.midY))
                     // IMPORTANT: gesture/contentShape BEFORE .position — applying
                     // them after .position makes the tap target fill the whole
                     // screen and blocks the canvas (can't draw).
@@ -51,7 +48,7 @@ struct MarginLaneView: View {
                 // at the glyph's line height.
                 if let id = ambient.openItemID,
                    let item = ambient.items.first(where: { $0.id == id }) {
-                    let p = transform.toScreen(CGPoint(x: marginPageX, y: item.anchorRect.midY))
+                    let p = transform.toScreen(CGPoint(x: glyphPageX(for: item), y: item.anchorRect.midY))
                     MarginNoteView(
                         item: item,
                         onDismiss: { ambient.dismiss() },
