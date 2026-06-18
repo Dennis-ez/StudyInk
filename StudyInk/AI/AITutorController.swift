@@ -87,7 +87,8 @@ final class AITutorController: ObservableObject {
 
             let raw = try await AIService.send(
                 system: SystemPrompt.tutor(subjectContext: note.subjectContext ?? "calculus1"),
-                messages: [.user(blocks)]
+                messages: [.user(blocks)],
+                maxTokens: 2400   // room for a full worked explanation (was truncating mid-$…$)
             )
             let parsed = AIResponseParser.parse(raw)
             let lines = await NoteContextBuilder.ocrLines(for: page)
@@ -125,7 +126,8 @@ final class AITutorController: ObservableObject {
 
             let raw = try await AIService.send(
                 system: SystemPrompt.tutor(subjectContext: note.subjectContext ?? "calculus1"),
-                messages: messages
+                messages: messages,
+                maxTokens: 2400
             )
             let parsed = AIResponseParser.parse(raw)
             let lines = await NoteContextBuilder.ocrLines(for: page)
