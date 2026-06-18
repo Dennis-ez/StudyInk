@@ -285,12 +285,12 @@ final class AmbientTutorController: ObservableObject {
             let context = await NoteContextBuilder.build(note: note, currentPageIndex: pageIndex, darkMode: darkMode)
             var blocks = context.blocks
             let instruction = isOpen
-                ? "The student's current line ends with an operator and is UNFINISHED — read the page and predict ONLY what comes right after it to complete THIS line (e.g. the value after '='). Reply with ONLY that, plain math, no words, no label. If unsure, reply with nothing."
-                : "Predict the SINGLE next line this student is about to write to continue. Reply with ONLY that expression in plain math — no words, no label. If there's no clear next step, reply with nothing."
+                ? "The student's current line ends with '=' (or an operator) and is UNFINISHED. DO THE ALGEBRA and give the FULLY SIMPLIFIED result that belongs after it — the actual worked-out value/expression, NOT a restatement of the left side and NOT a partial fragment. Use plain unicode math (· for multiply, ², ³, √, fractions as a/b); NEVER '*' or LaTeX. Output ONLY that expression, no words, no label. If you genuinely can't, output nothing."
+                : "Predict the SINGLE next line this student should write to make real progress on the task. Use plain unicode math (· not '*', no LaTeX), ONLY the expression — no words, no label. If there's no clear next step, output nothing."
             blocks.append(.text(instruction))
-            let raw = try await AIService.send(system: Self.ghostSystem, messages: [.user(blocks)], maxTokens: 80)
+            let raw = try await AIService.send(system: Self.ghostSystem, messages: [.user(blocks)], maxTokens: 260)
             let text = Self.cleanGhost(raw)
-            guard !text.isEmpty, text.count < 60 else { return }
+            guard !text.isEmpty, text.count < 80 else { return }
             lastGhostSourceLine = last.text
             let anchor = isOpen
                 ? CGPoint(x: last.rect.maxX + 14, y: last.rect.minY)   // inline, after the operator
@@ -301,11 +301,16 @@ final class AmbientTutorController: ObservableObject {
         } catch { }
     }
 
-    private static let ghostSystem = "You quietly predict the next line a student is about to write to continue their math/study work. READ their handwriting from the attached page image (the OCR text often misreads notation like lim/∫/fractions — trust the image). FIRST read any problem statement on the page — typed, printed, or a pasted screenshot/photo, possibly in another language (e.g. Hebrew) — that defines the function/task, and predict the next step toward solving THAT problem. Output ONLY that single next line as plain math text — no explanation, no label, no markdown. If unsure, output nothing."
+    private static let ghostSystem = "You are a calculus/algebra tutor giving a student the next line of their solution. READ their handwriting from the attached page image (OCR misreads lim/∫/fractions — trust the image). FIRST read any problem statement on the page — typed, printed, or a pasted screenshot/photo, possibly in another language (e.g. Hebrew) — that defines the function/task. Then actually DO THE MATH: work out the genuine next step toward solving THAT problem (e.g. fully simplify a derivative, factor, take a limit), and give the worked-out result — never just re-copy what the student already wrote, never a half-expression. Output ONLY that one line as plain unicode math (· for multiply, ², ³, √, fractions a/b); no '*', no LaTeX, no words. If you can't produce a correct, useful line, output nothing."
 
     private static func cleanGhost(_ raw: String) -> String {
-        guard let first = raw.split(separator: "\n").first else { return "" }
-        return String(first).trimmingCharacters(in: CharacterSet(charactersIn: " `'\"*"))
+        let lines = raw.split(whereSeparator: \.isNewline).map { String($0) }
+        guard var text = lines.first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) else { return "" }
+        text = text
+            .replacingOccurrences(of: "*", with: "·")   // proper multiply, never '*'
+            .replacingOccurrences(of: "\\", with: "")    // stray LaTeX backslashes
+            .trimmingCharacters(in: CharacterSet(charactersIn: " `'\"="))
+        return text
     }
 
     /// True when a line is unfinished — it ends with `=` or an operator (so its
