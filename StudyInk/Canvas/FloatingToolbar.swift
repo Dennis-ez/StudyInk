@@ -356,25 +356,22 @@ struct FloatingToolbar: View {
             }
         } label: {
             let ink = controller.inkColor(for: kind)
-            // Highlight in the tool's own ink colour (ink tools) or the accent
-            // (eraser/lasso/hand) so the SELECTED tool's colour is visible.
-            let highlight = ink ?? Color.accentColor
             ZStack(alignment: .bottom) {
                 ZStack {
+                    // Selection = an accent highlight ring/wash.
                     if isActive {
-                        Circle().fill(highlight.opacity(0.20)).frame(width: 31, height: 31)
-                        Circle().strokeBorder(highlight, lineWidth: 1.5).frame(width: 31, height: 31)
+                        Circle().fill(Color.accentColor.opacity(0.16)).frame(width: 31, height: 31)
                     }
                     Lucide(kind.lucideName, size: 18)
-                        .foregroundStyle(isActive ? highlight : (ink ?? Color.primary))
+                        .foregroundStyle(isActive ? Color.accentColor : SemanticColor.textPrimary)
                 }
-                // Current-color indicator dot, centered under the tool.
+                // Current-colour dot, centered at the bottom of the tool.
                 if let ink {
                     Circle()
                         .fill(ink)
-                        .frame(width: 6, height: 6)
+                        .frame(width: 7, height: 7)
                         .overlay(Circle().strokeBorder(SemanticColor.surface, lineWidth: 1))
-                        .offset(y: 8)
+                        .offset(y: 9)
                 }
             }
         }

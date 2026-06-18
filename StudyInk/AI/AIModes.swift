@@ -161,12 +161,15 @@ extension AITutorController {
             // colour or it renders faint/wrong on the pinned-light canvas).
             let base = InkColorAdapter.displayColor(UIColor(hex: colorHex) ?? .label, darkMode: isDarkMode)
             let ink = PKInk(.pen, color: base)
+            // InkWriter traces the glyph CONTOUR, so the stroke must be ~the
+            // glyph's stem width or letters render hollow/outlined. Scale it to
+            // the font size for a solid, filled-in handwritten look.
             let strokes = InkWriter.strokes(
                 for: answer,
                 topLeft: topLeft,
                 fontSize: fontSize,
                 ink: ink,
-                strokeWidth: max(1.8, CGFloat(penWidth) * 0.6)
+                strokeWidth: max(2.6, fontSize * 0.14)
             )
             guard !strokes.isEmpty else {
                 errorMessage = String(localized: "ai.draw.failed")
