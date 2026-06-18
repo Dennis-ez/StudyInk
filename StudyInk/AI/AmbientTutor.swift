@@ -167,7 +167,7 @@ final class AmbientTutorController: ObservableObject {
                 note: note, currentPageIndex: pageIndex, darkMode: darkMode
             )
             var blocks = context.blocks
-            blocks.append(.text(Self.checkInstruction(lines: lines)))
+            blocks.append(.text(Self.checkInstruction(lines: lines, pageNumber: pageIndex + 1)))
             // Per-item y/anchor/note/fix is verbose; give it room so a multi-
             // equation page doesn't truncate mid-array.
             let raw = try await AIService.send(system: Self.checkSystem, messages: [.user(blocks)], maxTokens: 3000)
@@ -383,13 +383,15 @@ final class AmbientTutorController: ObservableObject {
     No prose outside the JSON.
     """
 
-    private static func checkInstruction(lines: [OCRLine]) -> String {
+    private static func checkInstruction(lines: [OCRLine], pageNumber: Int) -> String {
         // Rough OCR as a hint only — the model reads the image for the real
         // content and reports each statement's vertical position itself.
         let hint = lines.map(\.text).joined(separator: " / ")
         return """
-        Check my handwritten work from the page image. (Rough OCR for reference, \
-        often wrong on notation: \(hint))
+        Grade ONLY the image labeled "Page \(pageNumber) image:" — the other page \
+        images are background context, do not grade them. Read my handwriting from \
+        that page; 'y' is the position within THAT page (0 top … 1 bottom). \
+        (Rough OCR for reference, often wrong on notation: \(hint))
         Return the JSON verdict with a y position and anchor for each statement.
         """
     }
