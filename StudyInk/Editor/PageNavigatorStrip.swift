@@ -202,6 +202,9 @@ struct PageThumbnailView: View {
     @ObservedObject var page: Page
     @Environment(\.colorScheme) private var colorScheme
     @State private var thumbnail: UIImage?
+    /// True once we know the page is empty OR have rendered its image — so a
+    /// blank page shows just its template instead of spinning forever.
+    @State private var resolved = false
     /// Measured display width — the page renders at this size (× screen scale),
     /// not a fixed tiny raster that upscales into blur.
     @State private var displayWidth: CGFloat = 0
@@ -227,8 +230,9 @@ struct PageThumbnailView: View {
                     Image(uiImage: thumbnail)
                         .resizable()
                         .scaledToFit()
-                } else {
+                } else if !resolved {
                     // Still rendering — the ink-stroke loader, not a beachball.
+                    // (A blank page resolves immediately, so it never spins.)
                     InkSpinner(size: 26)
                 }
             }
@@ -258,6 +262,7 @@ struct PageThumbnailView: View {
         let snapshot = PageRenderer.Snapshot(page: page)
         guard snapshot.drawingData != nil || !snapshot.mediaItems.isEmpty || !snapshot.textBoxes.isEmpty else {
             thumbnail = nil
+            resolved = true   // empty page — show the template, never spin
             return
         }
         // Pixels-per-page-point that fills the actual cell on this screen.
@@ -267,7 +272,7 @@ struct PageThumbnailView: View {
         let dark = colorScheme == .dark
         Task.detached(priority: .utility) {
             let image = PageRenderer.render(snapshot, darkMode: dark, scale: renderScale)
-            await MainActor.run { thumbnail = image }
+            await MainActor.run { thumbnail = image; resolved = true }
         }
     }
 }

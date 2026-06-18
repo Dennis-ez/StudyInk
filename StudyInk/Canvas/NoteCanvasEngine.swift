@@ -19,6 +19,11 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     let canvas = PKCanvasView()
     private var activeIndex = 0
     private var isProgrammaticChange = false
+    /// True once the active page's real drawing has been loaded into the live
+    /// canvas. Stops ensureContent() from re-seeding (and resurrecting erased
+    /// strokes) on a re-render after the user has erased the whole page — the
+    /// canvas being empty then is intentional, not "not loaded yet".
+    private var seededActiveDrawing = false
     /// Appearance the live canvas is currently displaying ink for. iOS 26
     /// renders colors literally, so loaded ink is mapped storage→display and
     /// saved ink display→storage against this. Kept in sync via appearanceChanged().
@@ -229,13 +234,15 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
                 renderImage(for: index)
             }
         }
-        if canvas.drawing.strokes.isEmpty,
+        if !seededActiveDrawing,
+           canvas.drawing.strokes.isEmpty,
            let drawing = controller.drawingProvider?(activeIndex),
            !drawing.strokes.isEmpty {
             isProgrammaticChange = true
             canvas.drawing = InkColorAdapter.displayDrawing(drawing, darkMode: displayDark)
             isProgrammaticChange = false
             lastStrokeCount = drawing.strokes.count
+            seededActiveDrawing = true
         }
     }
 
@@ -311,6 +318,10 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         // Storage → display: black ink shows near-white on a dark canvas.
         canvas.drawing = InkColorAdapter.displayDrawing(controller.drawingProvider?(index) ?? PKDrawing(), darkMode: displayDark)
         isProgrammaticChange = false
+        // If the provider is wired up, this page is fully loaded (an empty page
+        // is legitimately empty). If not, ensureContent() seeds it once the
+        // provider connects.
+        seededActiveDrawing = controller.drawingProvider != nil
         // PencilKit renders the swapped-in drawing asynchronously; the canvas
         // would briefly show the PREVIOUS page's ink. Hide the live canvas and
         // show this page's cached render until PencilKit has caught up.
