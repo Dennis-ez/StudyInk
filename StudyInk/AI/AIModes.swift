@@ -86,7 +86,7 @@ extension AITutorController {
                 errorMessage = String(localized: "ai.sketch.failed")
                 return
             }
-            canvas.drawing = canvas.drawing.appending(PKDrawing(strokes: strokes))
+            appendInkUndoably(strokes, to: canvas)
             Haptics.tap()
         } catch {
             errorMessage = error.localizedDescription
@@ -175,7 +175,7 @@ extension AITutorController {
                 errorMessage = String(localized: "ai.draw.failed")
                 return
             }
-            canvas.drawing = canvas.drawing.appending(PKDrawing(strokes: strokes))
+            appendInkUndoably(strokes, to: canvas)
             Haptics.tap()
         } catch {
             errorMessage = error.localizedDescription
@@ -230,8 +230,26 @@ extension AITutorController {
             strokeWidth: max(1.8, fontSize * 0.09)
         )
         guard !strokes.isEmpty else { return }
-        canvas.drawing = canvas.drawing.appending(PKDrawing(strokes: strokes))
+        appendInkUndoably(strokes, to: canvas)
         Haptics.tap()
+    }
+
+    /// Appends AI strokes to the canvas as a single undoable (and redoable) edit,
+    /// so the undo/redo buttons remove/restore the AI's writing like any stroke.
+    func appendInkUndoably(_ strokes: [PKStroke], to canvas: PKCanvasView) {
+        let before = canvas.drawing
+        registerInkUndo(restoring: before, on: canvas)
+        canvas.drawing = before.appending(PKDrawing(strokes: strokes))
+    }
+
+    /// Registers an undo that restores `drawing`; performing it re-registers the
+    /// inverse, so the manager's redo brings the AI ink back.
+    private func registerInkUndo(restoring drawing: PKDrawing, on canvas: PKCanvasView) {
+        canvas.undoManager?.registerUndo(withTarget: canvas) { [weak self] target in
+            let current = target.drawing
+            self?.registerInkUndo(restoring: current, on: target)
+            target.drawing = drawing
+        }
     }
 }
 

@@ -321,28 +321,7 @@ final class AmbientTutorController: ObservableObject {
                 rows.append(line)
             }
         }
-        guard rows.count > 2 else { return rows }
-
-        // Pass 2 — vertical stacks: a fraction's denominator or a limit's "x→0"
-        // sits MUCH closer than the page's normal line spacing and overlaps in x.
-        // Fold those into the row above so one equation = one region (one glyph,
-        // and the model sees a whole statement instead of "3 = 1" / "6  2").
-        let centers = rows.map(\.rect.midY)
-        let gaps = zip(centers.dropFirst(), centers).map(-).sorted()
-        let typical = gaps[gaps.count / 2]                 // median consecutive gap
-        var stacked: [OCRLine] = []
-        for row in rows {
-            if let last = stacked.last {
-                let dist = row.rect.midY - last.rect.midY
-                let xOverlap = min(last.rect.maxX, row.rect.maxX) - max(last.rect.minX, row.rect.minX)
-                if dist < typical * 0.62, xOverlap > 0.3 * min(last.rect.width, row.rect.width) {
-                    stacked[stacked.count - 1] = join(last, row)
-                    continue
-                }
-            }
-            stacked.append(row)
-        }
-        return stacked
+        return rows
     }
 
     /// Joins two OCR fragments into one, text ordered left-to-right, rects unioned.
