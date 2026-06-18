@@ -174,7 +174,7 @@ final class AmbientTutorController: ObservableObject {
                 showNotice(String(localized: "ambient.notice.unreadable"))
                 return
             }
-            await stream(verdicts: verdicts, lines: lines, pageIndex: pageIndex)
+            await stream(verdicts: verdicts, lines: lines, pageSize: page.canvasSize, pageIndex: pageIndex)
             // Nothing settled in the lane (e.g. Subtle with no errors): say so,
             // instead of looking like the tap did nothing.
             if items(onPage: pageIndex).isEmpty {
@@ -186,16 +186,16 @@ final class AmbientTutorController: ObservableObject {
         }
     }
 
-    /// Streams glyphs top-down (120ms/line): ✓ on every correct line, a
-    /// correction on every wrong one.
-    private func stream(verdicts: [Verdict], lines: [OCRLine], pageIndex: Int) async {
+    /// Streams glyphs top-down (120ms each): ✓ on every correct statement, a
+    /// correction on every wrong one. Each verdict is placed by its `y` fraction,
+    /// snapped to the nearest matching OCR row when one exists for pixel accuracy.
+    private func stream(verdicts: [Verdict], lines: [OCRLine], pageSize: CGSize, pageIndex: Int) async {
         let minConf = sensitivity == .subtle ? 0.90 : 0.0
-        for v in verdicts.sorted(by: { $0.line < $1.line }) {
-            guard lines.indices.contains(v.line) else { continue }
-            let rect = lines[v.line].rect
-            // An unfinished line (ends with =, an operator, or a bare question)
-            // isn't right OR wrong yet — never stamp it ✓ / ~.
-            if Self.isOpenLine(lines[v.line].text) { continue }
+        for v in verdicts.sorted(by: { $0.y < $1.y }) {
+            let (rect, matched) = Self.anchorRect(for: v, lines: lines, pageSize: pageSize)
+            // If we snapped to an OCR row that's clearly unfinished (ends with =),
+            // it isn't right OR wrong yet — skip it.
+            if let matched, Self.isOpenLine(matched.text) { continue }
             if v.ok {
                 if sensitivity == .subtle { continue } // Subtle: errors only
                 withAnimation(.easeOut(duration: 0.3)) {
@@ -287,6 +287,49 @@ final class AmbientTutorController: ObservableObject {
         return "=+-−×÷*/·→≤≥<>".contains(last)
     }
 
+    /// Resolves a verdict's page-space anchor rect. Primary signal is the model's
+    /// `y` fraction; we snap to a matching OCR row when one exists (pixel-accurate
+    /// and gives fix-it a real line to write under), and synthesize a rect at `y`
+    /// when OCR missed the statement entirely (e.g. a stacked limit). Also returns
+    /// the matched OCR row, if any, so the caller can skip unfinished lines.
+    private static func anchorRect(for v: Verdict, lines: [OCRLine], pageSize: CGSize) -> (CGRect, OCRLine?) {
+        let pageY = v.y * pageSize.height
+        let key = normalize(v.anchor)
+
+        // 1) Text match: an OCR row whose normalized text shares a prefix with the
+        //    anchor (only for keys with real signal), nearest to the model's y.
+        if key.count >= 2 {
+            let matches = lines.filter { row in
+                let t = normalize(row.text)
+                guard !t.isEmpty else { return false }
+                return t.hasPrefix(key) || key.hasPrefix(t) || t.contains(key)
+            }
+            if let best = matches.min(by: { abs($0.rect.midY - pageY) < abs($1.rect.midY - pageY) }) {
+                return (best.rect, best)
+            }
+        }
+
+        // 2) No text match — snap to the nearest OCR row if one sits at this height.
+        let band = max(pageSize.height * 0.05, 30)
+        if let near = lines.min(by: { abs($0.rect.midY - pageY) < abs($1.rect.midY - pageY) }),
+           abs(near.rect.midY - pageY) <= band {
+            return (near.rect, near)
+        }
+
+        // 3) OCR missed it — place by the model's y alone so the glyph still lands
+        //    on the right line.
+        let heights = lines.map(\.rect.height).sorted()
+        let h = heights.isEmpty ? 28 : heights[heights.count / 2]
+        let x = lines.map(\.rect.minX).min() ?? pageSize.width * 0.1
+        let w = max(pageSize.width * 0.3, 120)
+        return (CGRect(x: x, y: pageY - h / 2, width: w, height: h), nil)
+    }
+
+    /// Lowercased, alphanumerics only — robust to OCR mangling symbols/spacing.
+    private static func normalize(_ s: String) -> String {
+        String(s.lowercased().unicodeScalars.filter(CharacterSet.alphanumerics.contains))
+    }
+
     /// Collapses Vision's per-fragment observations into one entry per visual
     /// row: fragments whose vertical spans overlap belong to the same equation
     /// (e.g. "∫ x dx" + "="), so they're concatenated left-to-right and their
@@ -314,37 +357,38 @@ final class AmbientTutorController: ObservableObject {
 
     // MARK: - AI plumbing
 
-    private struct Verdict { var line: Int; var ok: Bool; var note: String; var fix: String?; var label: String; var confidence: Double }
+    /// A verdict the model returns. Position is anchored by `y` (a fraction of
+    /// page height, 0=top … 1=bottom) plus an `anchor` snippet — NOT an OCR line
+    /// index — so stacked notation that OCR fragments still lands correctly.
+    private struct Verdict { var y: CGFloat; var anchor: String; var ok: Bool; var note: String; var fix: String?; var label: String; var confidence: Double }
 
     private static let checkSystem = """
-    You are an attentive math/study tutor reviewing a student's HANDWRITTEN work, \
-    equation by equation. The page IMAGE is attached — READ the actual handwriting \
-    from it. The OCR text you are given is often WRONG for math notation (limits \
-    "lim x→0", integrals "∫…dx", fractions, subscripts, exponents) — trust the \
-    image, use the line numbers only to anchor your verdicts to positions. \
-    IMPORTANT: stacked notation spans TWO consecutive numbered lines — a limit's \
-    "x→0" sits on the line under "lim", a fraction's denominator sits under its \
-    numerator. Treat those two lines as ONE equation and anchor your verdict to \
-    the line that holds the '=' (usually the upper line). You MUST return a \
-    verdict for EVERY completed equation you can see — especially limits and \
-    integrals; never skip one just because the OCR text looks garbled. \
-    Only OMIT a line that is genuinely UNFINISHED — it ends with '=' or an \
-    operator with nothing after it, or is a bare question with no answer yet. \
-    Respond with ONLY a JSON object of the form:
-    {"lines":[{"i":0,"ok":true},{"i":1,"ok":false,"label":"Almost —","note":"<one short sentence on the mistake>","fix":"<the corrected expression>","conf":0.9}]}
-    Keep "note" to one sentence. "fix" is the full corrected line in plain math. Omit \
-    fields you are unsure of. No prose outside the JSON.
+    You are an attentive math/study tutor reviewing a student's HANDWRITTEN work. \
+    The page IMAGE is attached — READ the handwriting directly from it; recognise \
+    limits (lim x→0 sinx/x), integrals (∫x dx), fractions, subscripts and exponents \
+    correctly even when they're stacked over two rows. Find every COMPLETED \
+    equation/statement on the page and decide if it is mathematically correct. \
+    For EACH one, report:
+    - "y": its vertical CENTER as a fraction of page height, 0.0 (top) … 1.0 (bottom).
+    - "anchor": the first 2–6 characters of the statement as written (e.g. "lim", "∫x", "3x=6").
+    - "ok": true if correct, false if wrong.
+    - when false also: "label" (e.g. "Almost —"), "note" (one short sentence on the mistake), "fix" (the full corrected line in plain math, no LaTeX), "conf" (0.0–1.0).
+    Judge EVERY completed equation — especially limits and integrals; never skip one. \
+    OMIT only genuinely UNFINISHED work: a line ending in '=' or an operator with \
+    nothing after it, or a bare question with no answer yet. \
+    Respond with ONLY a JSON object:
+    {"items":[{"y":0.12,"anchor":"1+3","ok":true},{"y":0.55,"anchor":"∫x","ok":false,"label":"Almost —","note":"...","fix":"∫x dx = x²/2 + C","conf":0.9}]}
+    No prose outside the JSON.
     """
 
     private static func checkInstruction(lines: [OCRLine]) -> String {
-        let numbered = lines.enumerated()
-            .map { "\($0.offset): \($0.element.text)" }
-            .joined(separator: "\n")
+        // Rough OCR as a hint only — the model reads the image for the real
+        // content and reports each statement's vertical position itself.
+        let hint = lines.map(\.text).joined(separator: " / ")
         return """
-        Read my handwriting from the page image and check each line. These rough OCR \
-        guesses are ONLY for line numbering (they misread notation like lim/∫/fractions):
-        \(numbered)
-        Return the JSON verdict.
+        Check my handwritten work from the page image. (Rough OCR for reference, \
+        often wrong on notation: \(hint))
+        Return the JSON verdict with a y position and anchor for each statement.
         """
     }
 
@@ -353,12 +397,14 @@ final class AmbientTutorController: ObservableObject {
         let json = String(raw[start...end])
         guard let data = json.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let arr = obj["lines"] as? [[String: Any]] else { return [] }
+              let arr = (obj["items"] ?? obj["lines"]) as? [[String: Any]] else { return [] }
         return arr.compactMap { d in
-            guard let i = d["i"] as? Int else { return nil }
-            let ok = d["ok"] as? Bool ?? true
+            guard let yNum = d["y"] as? NSNumber else { return nil }
+            let y = min(1, max(0, CGFloat(yNum.doubleValue)))
             return Verdict(
-                line: i, ok: ok,
+                y: y,
+                anchor: (d["anchor"] as? String ?? "").trimmingCharacters(in: .whitespaces),
+                ok: d["ok"] as? Bool ?? true,
                 note: d["note"] as? String ?? "",
                 fix: d["fix"] as? String,
                 label: d["label"] as? String ?? "",
