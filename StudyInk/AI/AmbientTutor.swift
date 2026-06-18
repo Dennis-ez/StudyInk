@@ -134,7 +134,17 @@ final class AmbientTutorController: ObservableObject {
         defer { isChecking = false }
         clear(pageIndex: pageIndex)
 
-        let lines = await NoteContextBuilder.ocrLines(for: page)
+        // Vision returns observations in no guaranteed order. Sort them top-to-
+        // bottom (left-to-right within a row) so a line's INDEX equals its visual
+        // position — that's the numbering the model infers when it reads the
+        // image top-down, so verdict i lands on lines[i]'s actual rect.
+        let lines = (await NoteContextBuilder.ocrLines(for: page))
+            .sorted { a, b in
+                if abs(a.rect.minY - b.rect.minY) > max(a.rect.height, b.rect.height) * 0.5 {
+                    return a.rect.minY < b.rect.minY
+                }
+                return a.rect.minX < b.rect.minX
+            }
         guard !lines.isEmpty else { return }
 
         do {
@@ -201,7 +211,10 @@ final class AmbientTutorController: ObservableObject {
         guard pages.indices.contains(pageIndex) else { return }
         let page = pages[pageIndex]
         let lines = await NoteContextBuilder.ocrLines(for: page)
-        guard let last = lines.last, !last.text.trimmingCharacters(in: .whitespaces).isEmpty,
+        // Vision's order is arbitrary — the ghost goes below the visually LOWEST
+        // line of work, not whatever happens to be last in the array.
+        guard let last = lines.max(by: { $0.rect.maxY < $1.rect.maxY }),
+              !last.text.trimmingCharacters(in: .whitespaces).isEmpty,
               last.text != lastGhostSourceLine else { return }
 
         do {
