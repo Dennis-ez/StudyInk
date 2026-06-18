@@ -105,9 +105,10 @@ extension AITutorController {
             var blocks = context.blocks
             blocks.append(.text("""
             INK ANSWER MODE: The student asked: "\(request)".
+            FIRST read any problem statement on the page (typed, printed, or a pasted screenshot/photo — possibly Hebrew/another language) that defines the function/task, so you answer the RIGHT question in context.
             Solve/answer it from the note's content (do the math properly; show the result, not the working, unless asked).
             Respond with ONLY a JSON object:
-            {"answer": "<the answer exactly as it should be written on the page — plain unicode (², ³, √, ∫, ×, ÷, π, fractions as 3/4), NEVER LaTeX, at most ~28 characters per line, \\n between lines, at most 4 lines>",
+            {"answer": "<the answer as it should be written on the page, as LaTeX: fractions \\\\frac{num}{den} (NOT a/b), exponents x^{2}, subscripts x_{0}, roots \\\\sqrt{...}, · for multiply; no $ delimiters; \\n between lines, at most 4 lines>",
              "anchor": "<the exact text of the question as it appears in the note OCR, copied verbatim, or null if unsure>"}
             """))
 

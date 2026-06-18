@@ -90,7 +90,7 @@ struct GhostInkLayer: View {
     var body: some View {
         let p = transform.toScreen(ghost.anchor)
         HStack(spacing: 8) {
-            Text(verbatim: ghost.text)
+            Text(verbatim: InkWriter.plainText(from: ghost.text))
                 .font(.fraunces(19, weight: .medium, relativeTo: .title3).italic())
                 .foregroundStyle(AppTheme.current.aiAccent.opacity(pulse ? 0.62 : 0.36))
             Button(action: onAccept) {
@@ -197,7 +197,7 @@ struct MarginNoteView: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             if let result = item.result, !result.isEmpty {
-                Text(verbatim: "= \(result)")
+                Text(verbatim: "= \(InkWriter.plainText(from: result))")
                     .font(.fraunces(15, weight: .medium, relativeTo: .subheadline).italic())
                     .foregroundStyle(.primary)
                     .frame(maxWidth: .infinity)

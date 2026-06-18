@@ -285,12 +285,12 @@ final class AmbientTutorController: ObservableObject {
             let context = await NoteContextBuilder.build(note: note, currentPageIndex: pageIndex, darkMode: darkMode)
             var blocks = context.blocks
             let instruction = isOpen
-                ? "The student's current line ends with '=' (or an operator) and is UNFINISHED. DO THE ALGEBRA and give the FULLY SIMPLIFIED result that belongs after it — the actual worked-out value/expression, NOT a restatement of the left side and NOT a partial fragment. Use plain unicode math (· for multiply, ², ³, √, fractions as a/b); NEVER '*' or LaTeX. Output ONLY that expression, no words, no label. If you genuinely can't, output nothing."
-                : "Predict the SINGLE next line this student should write to make real progress on the task. Use plain unicode math (· not '*', no LaTeX), ONLY the expression — no words, no label. If there's no clear next step, output nothing."
+                ? "The student's current line ends with '=' (or an operator) and is UNFINISHED. DO THE ALGEBRA and give the FULLY SIMPLIFIED result that belongs after it — the actual worked-out value/expression, NOT a restatement of the left side and NOT a partial fragment. Write it as LaTeX: fractions as \\frac{num}{den} (NOT a/b), exponents x^{2}, subscripts x_{0}, roots \\sqrt{...}, · for multiply. Output ONLY that expression, no $ delimiters, no words, no label. If you genuinely can't, output nothing."
+                : "Predict the SINGLE next line this student should write to make real progress on the task. Write it as LaTeX (\\frac{num}{den} for fractions, x^{2}, \\sqrt{...}, · for multiply). Output ONLY the expression — no $ delimiters, no words. If there's no clear next step, output nothing."
             blocks.append(.text(instruction))
             let raw = try await AIService.send(system: Self.ghostSystem, messages: [.user(blocks)], maxTokens: 260)
             let text = Self.cleanGhost(raw)
-            guard !text.isEmpty, text.count < 80 else { return }
+            guard !text.isEmpty, text.count < 140 else { return }
             lastGhostSourceLine = last.text
             let anchor = isOpen
                 ? CGPoint(x: last.rect.maxX + 14, y: last.rect.minY)   // inline, after the operator
@@ -301,14 +301,16 @@ final class AmbientTutorController: ObservableObject {
         } catch { }
     }
 
-    private static let ghostSystem = "You are a calculus/algebra tutor giving a student the next line of their solution. READ their handwriting from the attached page image (OCR misreads lim/∫/fractions — trust the image). FIRST read any problem statement on the page — typed, printed, or a pasted screenshot/photo, possibly in another language (e.g. Hebrew) — that defines the function/task. Then actually DO THE MATH: work out the genuine next step toward solving THAT problem (e.g. fully simplify a derivative, factor, take a limit), and give the worked-out result — never just re-copy what the student already wrote, never a half-expression. Output ONLY that one line as plain unicode math (· for multiply, ², ³, √, fractions a/b); no '*', no LaTeX, no words. If you can't produce a correct, useful line, output nothing."
+    private static let ghostSystem = "You are a calculus/algebra tutor giving a student the next line of their solution. READ their handwriting from the attached page image (OCR misreads lim/∫/fractions — trust the image). FIRST read any problem statement on the page — typed, printed, or a pasted screenshot/photo, possibly in another language (e.g. Hebrew) — that defines the function/task. Then actually DO THE MATH: work out the genuine next step toward solving THAT problem (e.g. fully simplify a derivative, factor, take a limit), and give the worked-out result — never just re-copy what the student already wrote, never a half-expression. Output ONLY that one line as LaTeX (fractions as \\frac{num}{den}, exponents x^{2}, roots \\sqrt{...}, · for multiply) — no $ delimiters, no words. If you can't produce a correct, useful line, output nothing."
 
     private static func cleanGhost(_ raw: String) -> String {
         let lines = raw.split(whereSeparator: \.isNewline).map { String($0) }
         guard var text = lines.first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) else { return "" }
+        // Keep LaTeX (\frac, ^, _) — InkWriter lays it out as 2D ink. Strip $…$
+        // math delimiters and a leading '='.
         text = text
-            .replacingOccurrences(of: "*", with: "·")   // proper multiply, never '*'
-            .replacingOccurrences(of: "\\", with: "")    // stray LaTeX backslashes
+            .replacingOccurrences(of: "*", with: "·")
+            .replacingOccurrences(of: "$", with: "")
             .trimmingCharacters(in: CharacterSet(charactersIn: " `'\"="))
         return text
     }
@@ -378,7 +380,7 @@ final class AmbientTutorController: ObservableObject {
     each header against THAT sub-question. \
     For EVERY region index, look at that line in the image and classify it:
     - "correct"   — the math is right
-    - "wrong"     — there is a mistake (add "note": one short sentence, and "fix": the full corrected line in plain math, no LaTeX, and "conf": 0.0–1.0)
+    - "wrong"     — there is a mistake (add "note": one short sentence, "fix": the full corrected line as LaTeX (fractions \\frac{num}{den}, exponents x^{2}, roots \\sqrt{...}, · for multiply; no $ delimiters), and "conf": 0.0–1.0)
     - "unfinished"— it ends with '=' or an operator with nothing after, or is a question with no answer yet
     - "skip"      — the region is not math (a heading, stray mark, label)
     You MUST return one entry for EVERY region index given, in order. Do not skip a \
