@@ -168,7 +168,9 @@ final class AmbientTutorController: ObservableObject {
             )
             var blocks = context.blocks
             blocks.append(.text(Self.checkInstruction(lines: lines)))
-            let raw = try await AIService.send(system: Self.checkSystem, messages: [.user(blocks)])
+            // Per-item y/anchor/note/fix is verbose; give it room so a multi-
+            // equation page doesn't truncate mid-array.
+            let raw = try await AIService.send(system: Self.checkSystem, messages: [.user(blocks)], maxTokens: 3000)
             let verdicts = Self.parseVerdicts(raw)
             guard !verdicts.isEmpty else {
                 showNotice(String(localized: "ambient.notice.unreadable"))
@@ -191,7 +193,8 @@ final class AmbientTutorController: ObservableObject {
     /// snapped to the nearest matching OCR row when one exists for pixel accuracy.
     private func stream(verdicts: [Verdict], lines: [OCRLine], pageSize: CGSize, pageIndex: Int) async {
         let minConf = sensitivity == .subtle ? 0.90 : 0.0
-        for v in verdicts.sorted(by: { $0.y < $1.y }) {
+        // Top-down: items with a y first (in order), anchor-only items after.
+        for v in verdicts.sorted(by: { ($0.y ?? 2) < ($1.y ?? 2) }) {
             let (rect, matched) = Self.anchorRect(for: v, lines: lines, pageSize: pageSize)
             // If we snapped to an OCR row that's clearly unfinished (ends with =),
             // it isn't right OR wrong yet — skip it.
@@ -293,8 +296,10 @@ final class AmbientTutorController: ObservableObject {
     /// when OCR missed the statement entirely (e.g. a stacked limit). Also returns
     /// the matched OCR row, if any, so the caller can skip unfinished lines.
     private static func anchorRect(for v: Verdict, lines: [OCRLine], pageSize: CGSize) -> (CGRect, OCRLine?) {
-        let pageY = v.y * pageSize.height
         let key = normalize(v.anchor)
+        // Model y → page space. Without a y (older/terse responses) we lean on
+        // the anchor text and a synthesized rect at the page center as last resort.
+        let pageY = (v.y ?? 0.5) * pageSize.height
 
         // 1) Text match: an OCR row whose normalized text shares a prefix with the
         //    anchor (only for keys with real signal), nearest to the model's y.
@@ -309,15 +314,18 @@ final class AmbientTutorController: ObservableObject {
             }
         }
 
-        // 2) No text match — snap to the nearest OCR row if one sits at this height.
-        let band = max(pageSize.height * 0.05, 30)
-        if let near = lines.min(by: { abs($0.rect.midY - pageY) < abs($1.rect.midY - pageY) }),
-           abs(near.rect.midY - pageY) <= band {
-            return (near.rect, near)
+        // 2) No text match — snap to the nearest OCR row if one sits at this height
+        //    (only when we actually have a y to trust).
+        if v.y != nil {
+            let band = max(pageSize.height * 0.05, 30)
+            if let near = lines.min(by: { abs($0.rect.midY - pageY) < abs($1.rect.midY - pageY) }),
+               abs(near.rect.midY - pageY) <= band {
+                return (near.rect, near)
+            }
         }
 
-        // 3) OCR missed it — place by the model's y alone so the glyph still lands
-        //    on the right line.
+        // 3) Place by y alone (OCR missed it, e.g. a stacked limit) so the glyph
+        //    still lands on the right line.
         let heights = lines.map(\.rect.height).sorted()
         let h = heights.isEmpty ? 28 : heights[heights.count / 2]
         let x = lines.map(\.rect.minX).min() ?? pageSize.width * 0.1
@@ -360,7 +368,7 @@ final class AmbientTutorController: ObservableObject {
     /// A verdict the model returns. Position is anchored by `y` (a fraction of
     /// page height, 0=top … 1=bottom) plus an `anchor` snippet — NOT an OCR line
     /// index — so stacked notation that OCR fragments still lands correctly.
-    private struct Verdict { var y: CGFloat; var anchor: String; var ok: Bool; var note: String; var fix: String?; var label: String; var confidence: Double }
+    private struct Verdict { var y: CGFloat?; var anchor: String; var ok: Bool; var note: String; var fix: String?; var label: String; var confidence: Double }
 
     private static let checkSystem = """
     You are an attentive math/study tutor reviewing a student's HANDWRITTEN work. \
@@ -393,23 +401,48 @@ final class AmbientTutorController: ObservableObject {
     }
 
     private static func parseVerdicts(_ raw: String) -> [Verdict] {
-        guard let start = raw.firstIndex(of: "{"), let end = raw.lastIndex(of: "}") else { return [] }
-        let json = String(raw[start...end])
-        guard let data = json.data(using: .utf8),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let arr = (obj["items"] ?? obj["lines"]) as? [[String: Any]] else { return [] }
-        return arr.compactMap { d in
-            guard let yNum = d["y"] as? NSNumber else { return nil }
-            let y = min(1, max(0, CGFloat(yNum.doubleValue)))
-            return Verdict(
-                y: y,
-                anchor: (d["anchor"] as? String ?? "").trimmingCharacters(in: .whitespaces),
-                ok: d["ok"] as? Bool ?? true,
-                note: d["note"] as? String ?? "",
-                fix: d["fix"] as? String,
-                label: d["label"] as? String ?? "",
-                confidence: (d["conf"] as? Double) ?? 1.0
-            )
+        // Preferred path: parse the whole JSON object.
+        if let start = raw.firstIndex(of: "{"), let end = raw.lastIndex(of: "}"),
+           let data = String(raw[start...end]).data(using: .utf8),
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let arr = (obj["items"] ?? obj["lines"]) as? [[String: Any]] {
+            let verdicts = arr.compactMap(verdict(from:))
+            if !verdicts.isEmpty { return verdicts }
         }
+        // Fallback: the response was truncated (long answers blow the token
+        // budget mid-array) or lightly malformed — recover each complete {...}
+        // object on its own so we still place the statements we did get.
+        return Self.objectMatcher
+            .matches(in: raw, range: NSRange(raw.startIndex..., in: raw))
+            .compactMap { m -> Verdict? in
+                guard let r = Range(m.range, in: raw),
+                      let data = String(raw[r]).data(using: .utf8),
+                      let d = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+                else { return nil }
+                return verdict(from: d)
+            }
+    }
+
+    private static let objectMatcher = try! NSRegularExpression(pattern: "\\{[^{}]*\\}")
+
+    /// Builds a Verdict from one JSON object. `y` is optional (number or string);
+    /// without it the statement is placed by its anchor text alone.
+    private static func verdict(from d: [String: Any]) -> Verdict? {
+        let yValue: CGFloat?
+        if let n = d["y"] as? NSNumber { yValue = CGFloat(n.doubleValue) }
+        else if let s = d["y"] as? String, let dbl = Double(s) { yValue = CGFloat(dbl) }
+        else { yValue = nil }
+        let anchor = (d["anchor"] as? String ?? "").trimmingCharacters(in: .whitespaces)
+        // Need at least one positioning signal.
+        guard yValue != nil || !anchor.isEmpty else { return nil }
+        return Verdict(
+            y: yValue.map { min(1, max(0, $0)) },
+            anchor: anchor,
+            ok: d["ok"] as? Bool ?? true,
+            note: d["note"] as? String ?? "",
+            fix: d["fix"] as? String,
+            label: d["label"] as? String ?? "",
+            confidence: (d["conf"] as? Double) ?? 1.0
+        )
     }
 }
