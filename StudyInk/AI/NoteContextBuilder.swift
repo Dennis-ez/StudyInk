@@ -31,8 +31,11 @@ enum NoteContextBuilder {
         let snapshots = pages.map(PageRenderer.Snapshot.init)
         let images = await Task.detached(priority: .userInitiated) {
             snapshots.enumerated().map { index, snapshot in
-                // Page images scaled down to keep payloads light; current page sharper.
-                PageRenderer.render(snapshot, darkMode: darkMode, scale: index == currentPageIndex ? 1.0 : 0.5)
+                // The current page is rendered at 2× so the model can READ small
+                // handwritten notation (stacked fractions, limit subscripts,
+                // exponents) — at 1× it can't and silently skips them. Other
+                // pages stay light (0.5×) since they're only background context.
+                PageRenderer.render(snapshot, darkMode: darkMode, scale: index == currentPageIndex ? 2.0 : 0.5)
             }
         }.value
 
