@@ -314,18 +314,26 @@ final class AmbientTutorController: ObservableObject {
             .filter { Self.isOpenLine($0.text) }
             .max(by: { $0.rect.maxY < $1.rect.maxY })
         let lowest = lines.max(by: { $0.rect.maxY < $1.rect.maxY })
-        let target: OCRLine? = openLine ?? (auto ? nil : lowest)
+        // A short bare lowest line (e.g. "x =", or "x" with the '=' lost by OCR)
+        // is an unfinished line to COMPLETE, even if isOpenLine didn't catch it.
+        let lowestShortIncomplete = lowest.map {
+            $0.text.filter({ !$0.isWhitespace }).count <= 4
+        } ?? false
+        let target: OCRLine? = openLine ?? ((auto && !lowestShortIncomplete) ? nil : lowest)
         guard let last = target,
               !last.text.trimmingCharacters(in: .whitespaces).isEmpty,
               last.text != lastGhostSourceLine else { return }
-        let isOpen = openLine != nil
+        let isOpen = openLine != nil || lowestShortIncomplete
 
         do {
             let context = await NoteContextBuilder.build(note: note, currentPageIndex: pageIndex, darkMode: darkMode)
             var blocks = context.blocks
+            // Anchor the model to the student's ACTUAL last line so it continues
+            // from there (not back at the top of the page).
+            let lastText = last.text.trimmingCharacters(in: .whitespaces)
             let instruction = isOpen
-                ? "The student's current line ends with '=' (or an operator) and is UNFINISHED. DO THE ALGEBRA on the WHOLE left-hand side and give its COMPLETE final simplified result — combine EVERY factor and term into ONE simplified expression (e.g. multiply out all the factors), never just simplify a single factor or sub-part, never restate the left side, never a partial fragment. Write it as LaTeX: fractions as \\frac{num}{den} (NOT a/b), exponents x^{2}, subscripts x_{0}, roots \\sqrt{...}, · for multiply. Output ONLY that final expression, no $ delimiters, no words, no label. If you genuinely can't, output nothing."
-                : "Predict the SINGLE next line this student should write to make real progress on the task. Write it as LaTeX (\\frac{num}{den} for fractions, x^{2}, \\sqrt{...}, · for multiply). Output ONLY the expression — no $ delimiters, no words. If there's no clear next step, output nothing."
+                ? "The student's LAST handwritten line reads roughly: \"\(lastText)\" and is UNFINISHED. Continue from THERE — give the single next line that directly follows it: do the algebra and write the COMPLETE result that belongs after the '=' (e.g. if they wrote '2x =' give the value of x; if a derivative, the fully simplified form combining ALL factors). Never restate the left side, never jump back to an earlier step, never a partial fragment. LaTeX: fractions \\frac{num}{den} (NOT a/b), x^{2}, x_{0}, \\sqrt{...}, · for multiply. Output ONLY that expression — no $ delimiters, no words. If you genuinely can't, output nothing."
+                : "The student's LAST handwritten line reads roughly: \"\(lastText)\". Give the SINGLE next line that should follow it to make progress — continue from there, do NOT jump back to an earlier step. LaTeX (\\frac{num}{den}, x^{2}, \\sqrt{...}, · for multiply). Output ONLY the expression — no $ delimiters, no words. If there's no clear next step, output nothing."
             blocks.append(.text(instruction))
             let raw = try await AIService.send(system: Self.ghostSystem, messages: [.user(blocks)], maxTokens: 260)
             let text = Self.cleanGhost(raw)
