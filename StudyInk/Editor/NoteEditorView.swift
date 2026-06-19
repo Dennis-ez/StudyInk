@@ -1243,10 +1243,10 @@ extension NoteEditorView {
         ghostIdleTask?.cancel()
         guard ambient.sensitivity == .helpful, !distractionFree else { return }
         ghostIdleTask = Task {
-            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            try? await Task.sleep(nanoseconds: 3_200_000_000)
             guard !Task.isCancelled else { return }
             canvasController.commitPendingInk()
-            await ambient.suggestNext(note: note, pageIndex: pageIndex, darkMode: colorScheme == .dark)
+            await ambient.suggestNext(note: note, pageIndex: pageIndex, darkMode: colorScheme == .dark, auto: true)
         }
     }
 

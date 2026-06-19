@@ -195,21 +195,31 @@ final class AmbientTutorController: ObservableObject {
                 showNotice(String(localized: "ambient.notice.unreadable"))
                 return
             }
-            // Backfill: the model reliably flags WRONG answers but sometimes omits
-            // ones it considers fine, and it never explicitly 'skip'-ed them. So
-            // every uncovered region with real content (≥3 letters/digits — not a
-            // stray dot) that isn't unfinished gets a ✓, so the check covers all
-            // of them run after run. OCR drops handwritten '=', so we can't gate
-            // on it. Only backfill MATH regions (a digit or math symbol) — never a
-            // prose claim (e.g. Hebrew "no discontinuity points"), since we can't
-            // assume an unflagged textual statement is correct.
+            // Coverage WITHOUT guessing: the model sometimes omits a region. We do
+            // NOT assume omitted == correct (that would stamp a ✓ on a wrong line).
+            // Instead, re-ask it to actually grade just the missing math regions.
             let covered = Set(verdicts.map(\.line))
-            for (i, line) in lines.enumerated() where !covered.contains(i)
-                && line.text.contains(where: { $0.isNumber || "+-=×÷*/^()√∫π".contains($0) })
-                && line.text.filter({ $0.isLetter || $0.isNumber }).count >= 2
-                && !Self.isOpenLine(line.text) {
-                verdicts.append(Verdict(line: i, ok: true, unfinished: false,
-                                        note: "", fix: nil, label: "", confidence: 1))
+            let missing = lines.enumerated().filter { (i, line) in
+                !covered.contains(i)
+                    && line.text.contains(where: { $0.isNumber || "+-=×÷*/^()√∫π".contains($0) })
+                    && !Self.isOpenLine(line.text)
+                    && !line.text.trimmingCharacters(in: .whitespaces).hasSuffix(":")
+            }
+            if !missing.isEmpty {
+                let numbered = missing.map { "\($0.offset): \($0.element.text)" }.joined(separator: "\n")
+                var followUp = context.blocks
+                followUp.append(.text("""
+                You graded most of page \(pageIndex + 1) but skipped some regions. \
+                Grade EACH of these remaining regions now (read the image; classify \
+                correct / wrong / unfinished / skip — judge correctness honestly, \
+                a final answer can be wrong):
+                \(numbered)
+                Return ONLY {"regions":[{"i":<index>,"status":"…", …}]} for these indices.
+                """))
+                if let raw2 = try? await AIService.send(system: Self.checkSystem, messages: [.user(followUp)], maxTokens: 1500) {
+                    let still = Set(verdicts.map(\.line))
+                    verdicts += Self.parseVerdicts(raw2).filter { !still.contains($0.line) }
+                }
             }
             await stream(verdicts: verdicts, lines: lines, pageIndex: pageIndex)
             // Nothing settled in the lane (e.g. Subtle with no errors): say so,
@@ -283,9 +293,11 @@ final class AmbientTutorController: ObservableObject {
         lastGhostSourceLine = nil
     }
 
-    /// Predict the single next line the student is about to write and show it as
-    /// ghost text below the last line. Gated to Helpful sensitivity.
-    func suggestNext(note: Note, pageIndex: Int, darkMode: Bool) async {
+    /// Predict the next line and show it as a ghost. `auto` = fired by the idle
+    /// timer (vs the explicit "Suggest next step" button). Auto only COMPLETES an
+    /// unfinished line (high-signal); it won't speculate a whole new line — that's
+    /// the noisy case, reserved for the manual button.
+    func suggestNext(note: Note, pageIndex: Int, darkMode: Bool, auto: Bool = false) async {
         guard ghost == nil else { return }
         let pages = note.sortedPages
         guard pages.indices.contains(pageIndex) else { return }
@@ -297,13 +309,13 @@ final class AmbientTutorController: ObservableObject {
             .filter { line in !mediaFrames.contains { $0.intersects(line.rect) } }
         // An UNFINISHED line (ends with =, an operator, →) is the real target:
         // the student is waiting to fill in its right-hand side, so complete it
-        // inline — even if some later scribble sits lower on the page. Only when
-        // nothing is open do we predict a brand-new line below the lowest work.
+        // inline. Only the MANUAL button speculates a brand-new line below.
         let openLine = lines
             .filter { Self.isOpenLine($0.text) }
             .max(by: { $0.rect.maxY < $1.rect.maxY })
         let lowest = lines.max(by: { $0.rect.maxY < $1.rect.maxY })
-        guard let last = openLine ?? lowest,
+        let target: OCRLine? = openLine ?? (auto ? nil : lowest)
+        guard let last = target,
               !last.text.trimmingCharacters(in: .whitespaces).isEmpty,
               last.text != lastGhostSourceLine else { return }
         let isOpen = openLine != nil
@@ -318,6 +330,9 @@ final class AmbientTutorController: ObservableObject {
             let raw = try await AIService.send(system: Self.ghostSystem, messages: [.user(blocks)], maxTokens: 260)
             let text = Self.cleanGhost(raw)
             guard !text.isEmpty, text.count < 140 else { return }
+            // Drop a suggestion that just echoes the line it's completing.
+            let a = Self.mathKey(text), b = Self.mathKey(last.text)
+            guard a.count >= 1, a != b, !b.contains(a) else { return }
             lastGhostSourceLine = last.text
             let anchor = isOpen
                 ? CGPoint(x: last.rect.maxX + 14, y: last.rect.midY)                    // inline, centred on the line
@@ -345,6 +360,12 @@ final class AmbientTutorController: ObservableObject {
     /// True when a line is unfinished — it ends with `=` or an operator (so its
     /// right-hand side is still to come). OCR misreads notation, but trailing
     /// `=`/operators survive recognition well enough to drive completion.
+    /// Lowercased alphanumerics only — for echo detection (is the suggestion just
+    /// a copy of the line it's completing?).
+    private static func mathKey(_ s: String) -> String {
+        String(s.lowercased().unicodeScalars.filter(CharacterSet.alphanumerics.contains))
+    }
+
     static func isOpenLine(_ text: String) -> Bool {
         guard let last = text.trimmingCharacters(in: .whitespaces).last else { return false }
         // Trailing '(' (e.g. a half-written derivative "…)(") is unfinished too.
