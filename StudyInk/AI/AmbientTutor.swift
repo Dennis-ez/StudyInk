@@ -395,7 +395,14 @@ final class AmbientTutorController: ObservableObject {
         for line in sorted {
             guard let last = rows.last else { rows.append(line); continue }
             let overlap = min(last.rect.maxY, line.rect.maxY) - max(last.rect.minY, line.rect.minY)
-            if overlap > 0.4 * min(last.rect.height, line.rect.height) {
+            // Horizontal gap between the running row and this fragment. Tokens of
+            // ONE equation sit close; two separate items on the same baseline (a
+            // left-aligned equation and a far-right conclusion, e.g. "1+1=2" and
+            // "אין נק׳ קיצון") have a big gap and must stay SEPARATE so each is
+            // judged on its own.
+            let hGap = max(last.rect.minX, line.rect.minX) - min(last.rect.maxX, line.rect.maxX)
+            let nearEnough = hGap < 3.0 * max(last.rect.height, line.rect.height)
+            if overlap > 0.4 * min(last.rect.height, line.rect.height) && nearEnough {
                 rows[rows.count - 1] = join(last, line)
             } else {
                 rows.append(line)
