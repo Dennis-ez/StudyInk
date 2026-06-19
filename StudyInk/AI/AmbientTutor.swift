@@ -202,10 +202,14 @@ final class AmbientTutorController: ObservableObject {
             // Instead, re-ask it to actually grade just the missing math regions.
             let covered = Set(verdicts.map(\.line))
             let missing = lines.enumerated().filter { (i, line) in
-                !covered.contains(i)
-                    && line.text.contains(where: { $0.isNumber || "+-=×÷*/^()√∫π".contains($0) })
-                    && !Self.isOpenLine(line.text)
-                    && !line.text.trimmingCharacters(in: .whitespaces).hasSuffix(":")
+                guard !covered.contains(i) else { return false }
+                let t = line.text.trimmingCharacters(in: .whitespaces)
+                guard !t.hasSuffix(":"), !Self.isOpenLine(t) else { return false }     // header / unfinished
+                let hasMath = t.contains(where: { $0.isNumber || "+-=×÷*/^()√∫π".contains($0) })
+                let words = t.filter(\.isLetter).count
+                // Re-grade an equation OR a substantial worded claim (e.g. a Hebrew
+                // "no critical points" conclusion) — both need a real verdict.
+                return hasMath || words >= 4
             }
             if !missing.isEmpty {
                 let numbered = missing.map { "\($0.offset): \($0.element.text)" }.joined(separator: "\n")
