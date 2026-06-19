@@ -206,20 +206,20 @@ struct NoteEditorView: View {
                 }
             )
 
-            // Ambient tutor status: a thinking pill while checking, then a
-            // transient banner (error / "nothing to check" / "looks all good")
-            // so the tap never looks like it did nothing.
+            // Ambient tutor result banner ("looks all good" / error). Thinking
+            // itself is the breathing corner badge below.
             ambientStatusHUD
 
-            // Any other AI work (Circle & Ask, Explain, Answer in Ink, …) shows
-            // a breathing sparkle in the top corner so "the AI is thinking".
-            if tutor.isThinking {
+            // ANY AI work — Check my work, Circle & Ask, Explain, Answer in Ink —
+            // shows one breathing sparkle in the top corner so "the AI is
+            // thinking" (replaces the old 'Checking your work…' pill).
+            if tutor.isThinking || ambient.isChecking {
                 AIThinkingBadge()
                     .padding(.top, 84)
                     .padding(.trailing, showPageStrip ? 120 : 22)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                     .allowsHitTesting(false)
-                    .animation(.spring(response: 0.35, dampingFraction: 0.85), value: tutor.isThinking)
+                    .animation(.spring(response: 0.35, dampingFraction: 0.85), value: tutor.isThinking || ambient.isChecking)
             }
 
             // Note title + creation time in the desk gutter above the first
@@ -1202,23 +1202,13 @@ extension NoteEditorView {
     /// The tutor's amber ink colour — the design tags AI-written ink amber.
     private var ambientInkHex: String { UIColor(AppTheme.current.aiAccent).hexString }
 
-    /// Top-center status pill for the ambient tutor: spins while checking, then
-    /// shows a brief banner so a check never silently does nothing.
+    /// Top-center result banner for the ambient tutor ("looks all good", an
+    /// error, "nothing to check"). The thinking state itself is the breathing
+    /// corner badge — see aiThinkingHUD.
     @ViewBuilder
     private var ambientStatusHUD: some View {
         VStack {
-            if ambient.isChecking {
-                HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
-                    Text("ambient.checking")
-                        .font(.subheadline.weight(.medium))
-                }
-                .padding(.horizontal, 16).padding(.vertical, 10)
-                .background(.regularMaterial, in: Capsule())
-                .overlay(Capsule().strokeBorder(SemanticColor.separator))
-                .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
-                .transition(.move(edge: .top).combined(with: .opacity))
-            } else if let notice = ambient.notice {
+            if let notice = ambient.notice, !ambient.isChecking {
                 Text(notice)
                     .font(.subheadline.weight(.medium))
                     .multilineTextAlignment(.center)
@@ -1233,7 +1223,6 @@ extension NoteEditorView {
         .padding(.top, 84)
         .frame(maxWidth: .infinity, alignment: .center)
         .allowsHitTesting(false)
-        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: ambient.isChecking)
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: ambient.notice)
     }
 

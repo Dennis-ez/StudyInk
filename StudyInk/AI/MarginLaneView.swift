@@ -256,26 +256,17 @@ struct AIThinkingBadge: View {
     @State private var breathe = false
 
     var body: some View {
-        HStack(spacing: 9) {
-            Circle()
-                .fill(AppTheme.current.aiAccent)
-                .frame(width: 18, height: 18)
-                .overlay(Lucide("sparkles", size: 10).foregroundStyle(.white))
-                .scaleEffect(breathe ? 1.0 : 0.84)
-                .shadow(color: AppTheme.current.aiAccent.opacity(breathe ? 0.6 : 0.22),
-                        radius: breathe ? 13 : 6)
-            Text("ai.thinking")
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(SemanticColor.textPrimary)
-        }
-        .padding(.horizontal, 14).padding(.vertical, 9)
-        .background(.regularMaterial, in: Capsule())
-        .overlay(Capsule().strokeBorder(SemanticColor.separator))
-        .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
-        .onAppear {
-            withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) { breathe = true }
-        }
-        .transition(.scale(scale: 0.8).combined(with: .opacity))
-        .accessibilityLabel(Text("ai.thinking"))
+        Circle()
+            .fill(AppTheme.current.aiAccent)
+            .frame(width: 34, height: 34)
+            .overlay(Lucide("sparkles", size: 17).foregroundStyle(.white))
+            .scaleEffect(breathe ? 1.0 : 0.82)
+            .shadow(color: AppTheme.current.aiAccent.opacity(breathe ? 0.7 : 0.25),
+                    radius: breathe ? 18 : 7)
+            .onAppear {
+                withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) { breathe = true }
+            }
+            .transition(.scale(scale: 0.6).combined(with: .opacity))
+            .accessibilityLabel(Text("ai.thinking"))
     }
 }

@@ -117,11 +117,14 @@ final class GuidedModeController: ObservableObject {
         // Render the page so the model can read handwriting visually, not just OCR.
         let snapshot = PageRenderer.Snapshot(page: page)
         let pageImage = await Task.detached(priority: .utility) {
-            PageRenderer.render(snapshot, darkMode: false, scale: 1)
+            // 2× so small handwriting (stacked fractions, limit subscripts) and a
+            // pasted question image are legible — at 1× the model can't read them.
+            PageRenderer.render(snapshot, darkMode: false, scale: 2)
         }.value
 
         let hint = """
         GUIDED MODE: You are passively watching the student write. The image above is the student's CURRENT PAGE — read their handwriting from it (OCR is unreliable). Any OCR/typed text follows for reference.
+        FIRST read any PROBLEM STATEMENT on the page (typed, printed, or a pasted screenshot/photo — possibly Hebrew or another language) that defines the task, and notice WHERE in the solution the student is and whether they seem stuck (an unfinished line, a wrong turn, a long pause).
         Decide whether ONE genuinely useful, proactive suggestion exists. A good suggestion:
         - quotes or names the exact expression/line it is about (e.g. "you wrote lim x→0 sin(x)/x — want me to check the evaluation?")
         - offers a concrete next action (check a step, verify a base case, test an edge case, finish a definition)
