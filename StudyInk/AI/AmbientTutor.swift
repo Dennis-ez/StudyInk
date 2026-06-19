@@ -189,7 +189,9 @@ final class AmbientTutorController: ObservableObject {
             blocks.append(.text(Self.checkInstruction(lines: lines, pageNumber: pageIndex + 1, problem: problem)))
             // Per-item y/anchor/note/fix is verbose; give it room so a multi-
             // equation page doesn't truncate mid-array.
-            let raw = try await AIService.send(system: Self.checkSystem, messages: [.user(blocks)], maxTokens: 3000)
+            // temperature 0 → grading the SAME page gives the SAME verdicts every
+            // run (was varying because the default temperature samples randomly).
+            let raw = try await AIService.send(system: Self.checkSystem, messages: [.user(blocks)], maxTokens: 3000, temperature: 0)
             var verdicts = Self.parseVerdicts(raw)
             guard !verdicts.isEmpty else {
                 showNotice(String(localized: "ambient.notice.unreadable"))
@@ -216,7 +218,7 @@ final class AmbientTutorController: ObservableObject {
                 \(numbered)
                 Return ONLY {"regions":[{"i":<index>,"status":"…", …}]} for these indices.
                 """))
-                if let raw2 = try? await AIService.send(system: Self.checkSystem, messages: [.user(followUp)], maxTokens: 1500) {
+                if let raw2 = try? await AIService.send(system: Self.checkSystem, messages: [.user(followUp)], maxTokens: 1500, temperature: 0) {
                     let still = Set(verdicts.map(\.line))
                     verdicts += Self.parseVerdicts(raw2).filter { !still.contains($0.line) }
                 }
@@ -435,13 +437,17 @@ final class AmbientTutorController: ObservableObject {
     decreasing intervals) — "skip" those header lines, and grade the work beneath \
     each header against THAT sub-question. \
     A line may also be a CONCLUSION IN WORDS (often Hebrew/RTL) — e.g. "אין נקודות \
-    אי רציפות" (no discontinuity points), "עולה בכל תחום ההגדרה" (increasing on the \
-    whole domain), an asymptote/limit/extremum claim. JUDGE those statements too \
-    against the actual function — if the claim is false (e.g. it says no \
-    discontinuity but the domain excludes a point), mark it "wrong". \
+    קיצון" (no extremum/critical points), "אין נקודות אי רציפות" (no discontinuity \
+    points), "עולה בכל תחום ההגדרה" (increasing everywhere), an asymptote claim. \
+    JUDGE those statements by actually COMPUTING the relevant fact for THIS function \
+    and comparing: for "no critical points" solve f'(x)=0 (if it has a solution in \
+    the domain, the claim is WRONG); for "no discontinuity points" find where the \
+    denominator is 0 / the domain is excluded (if any, the claim is WRONG); for a \
+    monotonicity/asymptote claim, check the sign of f' / the limits. If the claim \
+    contradicts the computed fact, mark it "wrong" with a one-sentence note. \
     For EVERY region index, look at that line in the image and classify it:
     - "correct"   — the math OR the stated conclusion is right
-    - "wrong"     — a mistake or a false claim (add "note": one short sentence, "fix": the corrected statement/line — math as LaTeX (fractions \\frac{num}{den}, exponents x^{2}, roots \\sqrt{...}, · for multiply; no $ delimiters), and "conf": 0.0–1.0)
+    - "wrong"     — a mistake or a false claim. Add "note": one short sentence of explanation (words go HERE). Add "fix": ONLY the corrected line itself as a bare math expression — NO words, NO "the answer is", NO leading "=" — e.g. "-2(x+2)/(x+1)^{3} = 0" or "x = 3", written as LaTeX (\\frac{num}{den}, x^{2}, \\sqrt{...}, · for multiply; no $ delimiters). For a worded conclusion with no formula, omit "fix". Add "conf": 0.0–1.0.
     - "unfinished"— it ends with '=' or an operator with nothing after, or is a question with no answer yet
     - "skip"      — the region is a HEADER/label/stray mark, not a statement to judge
     You MUST return one entry for EVERY region index given, in order. Do not skip a \

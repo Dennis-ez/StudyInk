@@ -85,11 +85,14 @@ enum AIServiceError: LocalizedError {
 
 /// Single entry point the tutor uses; routes to the provider chosen in Settings.
 enum AIService {
-    static func send(system: String, messages: [AIMessage], maxTokens: Int = 1500) async throws -> String {
+    /// `temperature` controls sampling randomness. Grading ("Check my work")
+    /// passes 0 so the SAME page yields the SAME verdicts every run; creative
+    /// asks can leave the default.
+    static func send(system: String, messages: [AIMessage], maxTokens: Int = 1500, temperature: Double = 0.3) async throws -> String {
         switch AIConfig.provider {
-        case .claude: return try await ClaudeService.send(system: system, messages: messages, maxTokens: maxTokens)
-        case .gemini: return try await GeminiService.send(system: system, messages: messages, maxTokens: maxTokens)
-        case .custom: return try await OpenAICompatService.send(system: system, messages: messages, maxTokens: maxTokens)
+        case .claude: return try await ClaudeService.send(system: system, messages: messages, maxTokens: maxTokens, temperature: temperature)
+        case .gemini: return try await GeminiService.send(system: system, messages: messages, maxTokens: maxTokens, temperature: temperature)
+        case .custom: return try await OpenAICompatService.send(system: system, messages: messages, maxTokens: maxTokens, temperature: temperature)
         }
     }
 
