@@ -316,7 +316,7 @@ enum InkWriter {
         }
     }
 
-    // MARK: - Glyph rendering (contour)
+    // MARK: - Glyph rendering (centerline / single-stroke)
 
     private static func glyphStrokes(_ text: String, baselineLeft: CGPoint, font: UIFont, ink: PKInk, width: CGFloat) -> [PKStroke] {
         guard !text.isEmpty else { return [] }
@@ -337,16 +337,128 @@ enum InkWriter {
 
             for i in 0..<count {
                 guard let glyphPath = CTFontCreatePathForGlyph(runFont, glyphs[i], nil) else { continue }
-                for polyline in polylines(from: glyphPath) {
-                    let points = polyline.map { p in
-                        CGPoint(x: baselineLeft.x + positions[i].x + p.x, y: baselineLeft.y - p.y)
-                    }
-                    guard points.count >= 2 else { continue }
-                    strokes.append(stroke(through: points, ink: ink, width: width))
-                }
+                let origin = CGPoint(x: baselineLeft.x + positions[i].x, y: baselineLeft.y)
+                strokes += centerlineStrokes(for: glyphPath, glyphOrigin: origin, ink: ink, width: width)
             }
         }
         return strokes
+    }
+
+    /// SOLID single-stroke handwriting: rasterize the FILLED glyph, thin it to its
+    /// 1-pixel skeleton (the centerline), and trace that as pen strokes — like a
+    /// real pen wrote down the middle of each stroke. Not a hollow outline and not
+    /// a thickness hack: the pen width is just the natural stroke weight.
+    private static func centerlineStrokes(for path: CGPath, glyphOrigin: CGPoint, ink: PKInk, width: CGFloat) -> [PKStroke] {
+        let box = path.boundingBoxOfPath
+        // Degenerate marks (dots, tiny accents) — keep the outline.
+        guard box.width > 1.5, box.height > 1.5 else { return outlineFallback(for: path, glyphOrigin: glyphOrigin, ink: ink, width: width) }
+
+        let s: CGFloat = 4              // px per point
+        let pad = 2
+        let bw = Int((box.width * s).rounded()) + pad * 2
+        let bh = Int((box.height * s).rounded()) + pad * 2
+        guard bw > 2, bh > 2, bw * bh < 500_000 else {
+            return outlineFallback(for: path, glyphOrigin: glyphOrigin, ink: ink, width: width)
+        }
+
+        // Fill the glyph into a grayscale buffer (origin bottom-left, y-up).
+        var grid = [Bool](repeating: false, count: bw * bh)
+        var px = [UInt8](repeating: 0, count: bw * bh)
+        px.withUnsafeMutableBytes { buf in
+            guard let ctx = CGContext(data: buf.baseAddress, width: bw, height: bh, bitsPerComponent: 8,
+                                      bytesPerRow: bw, space: CGColorSpaceCreateDeviceGray(),
+                                      bitmapInfo: CGImageAlphaInfo.none.rawValue) else { return }
+            ctx.setFillColor(gray: 1, alpha: 1)
+            ctx.translateBy(x: CGFloat(pad), y: CGFloat(pad))
+            ctx.scaleBy(x: s, y: s)
+            ctx.translateBy(x: -box.minX, y: -box.minY)
+            ctx.addPath(path)
+            ctx.fillPath()
+        }
+        for k in 0..<(bw * bh) { grid[k] = px[k] > 100 }
+
+        zhangSuenThin(&grid, bw, bh)
+        let polys = traceSkeleton(grid, bw, bh)
+        guard !polys.isEmpty else { return outlineFallback(for: path, glyphOrigin: glyphOrigin, ink: ink, width: width) }
+
+        var strokes: [PKStroke] = []
+        for poly in polys where poly.count >= 3 {   // drop tiny thinning spurs
+            let pts = poly.map { (bx, by) -> CGPoint in
+                let gx = (CGFloat(bx) - CGFloat(pad)) / s + box.minX
+                let gy = (CGFloat(by) - CGFloat(pad)) / s + box.minY
+                return CGPoint(x: glyphOrigin.x + gx, y: glyphOrigin.y - gy)
+            }
+            strokes.append(stroke(through: pts, ink: ink, width: width))
+        }
+        return strokes.isEmpty ? outlineFallback(for: path, glyphOrigin: glyphOrigin, ink: ink, width: width) : strokes
+    }
+
+    /// Outline trace, used only for degenerate glyphs the skeleton can't handle.
+    private static func outlineFallback(for path: CGPath, glyphOrigin: CGPoint, ink: PKInk, width: CGFloat) -> [PKStroke] {
+        polylines(from: path).compactMap { poly in
+            let pts = poly.map { CGPoint(x: glyphOrigin.x + $0.x, y: glyphOrigin.y - $0.y) }
+            guard pts.count >= 2 else { return nil }
+            return stroke(through: pts, ink: ink, width: width)
+        }
+    }
+
+    /// Zhang-Suen thinning: erodes the filled glyph to a 1px medial skeleton.
+    private static func zhangSuenThin(_ g: inout [Bool], _ w: Int, _ h: Int) {
+        func at(_ x: Int, _ y: Int) -> Int { y * w + x }
+        var changed = true
+        while changed {
+            changed = false
+            for step in 0..<2 {
+                var clear: [Int] = []
+                for y in 1..<(h - 1) {
+                    for x in 1..<(w - 1) where g[at(x, y)] {
+                        let p2 = g[at(x, y - 1)], p3 = g[at(x + 1, y - 1)], p4 = g[at(x + 1, y)],
+                            p5 = g[at(x + 1, y + 1)], p6 = g[at(x, y + 1)], p7 = g[at(x - 1, y + 1)],
+                            p8 = g[at(x - 1, y)], p9 = g[at(x - 1, y - 1)]
+                        let nb = [p2, p3, p4, p5, p6, p7, p8, p9]
+                        let bc = nb.filter { $0 }.count
+                        if bc < 2 || bc > 6 { continue }
+                        var ac = 0
+                        for k in 0..<8 where !nb[k] && nb[(k + 1) % 8] { ac += 1 }
+                        if ac != 1 { continue }
+                        if step == 0 { if (p2 && p4 && p6) || (p4 && p6 && p8) { continue } }
+                        else { if (p2 && p4 && p8) || (p2 && p6 && p8) { continue } }
+                        clear.append(at(x, y))
+                    }
+                }
+                if !clear.isEmpty { changed = true; for i in clear { g[i] = false } }
+            }
+        }
+    }
+
+    /// Walks the thinned skeleton into ordered polylines (starting from endpoints).
+    private static func traceSkeleton(_ g: [Bool], _ w: Int, _ h: Int) -> [[(Int, Int)]] {
+        func at(_ x: Int, _ y: Int) -> Int { y * w + x }
+        func neighbours(_ x: Int, _ y: Int) -> [(Int, Int)] {
+            var r: [(Int, Int)] = []
+            for dy in -1...1 { for dx in -1...1 where !(dx == 0 && dy == 0) {
+                let nx = x + dx, ny = y + dy
+                if nx >= 0, nx < w, ny >= 0, ny < h, g[at(nx, ny)] { r.append((nx, ny)) }
+            }}
+            return r
+        }
+        var visited = [Bool](repeating: false, count: w * h)
+        var lines: [[(Int, Int)]] = []
+        var starts: [(Int, Int)] = []
+        for y in 0..<h { for x in 0..<w where g[at(x, y)] && neighbours(x, y).count == 1 { starts.append((x, y)) } }
+        for y in 0..<h { for x in 0..<w where g[at(x, y)] { starts.append((x, y)) } }
+        for (sx, sy) in starts where !visited[at(sx, sy)] {
+            var line: [(Int, Int)] = []
+            var cx = sx, cy = sy
+            while true {
+                visited[at(cx, cy)] = true
+                line.append((cx, cy))
+                guard let n = neighbours(cx, cy).first(where: { !visited[at($0.0, $0.1)] }) else { break }
+                cx = n.0; cy = n.1
+            }
+            if line.count >= 2 { lines.append(line) }
+        }
+        return lines
     }
 
     /// Horizontal rule (fraction bar) as a single stroke.
