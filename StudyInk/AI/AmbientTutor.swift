@@ -186,11 +186,13 @@ final class AmbientTutorController: ObservableObject {
             return
         }
 
-        // Deterministic repeats: if nothing on the page has changed since the
-        // last grade, re-stream the cached verdicts rather than re-asking the
-        // (run-to-run variable) model.
-        let signature = "\(pageIndex)#\(page.drawing.strokes.count)#"
-            + lines.map(\.text).joined(separator: "|") + "#" + problem
+        // Deterministic repeats: if the DRAWING hasn't changed since the last
+        // grade, re-stream the cached verdicts rather than re-asking the (run-to-
+        // run variable) model. Key on the drawing DATA, not the OCR text — OCR
+        // jitters slightly between runs on identical ink, which would defeat the
+        // cache and surface different verdicts for the same work.
+        let inkHash = page.drawing.dataRepresentation().hashValue
+        let signature = "\(pageIndex)#\(page.drawing.strokes.count)#\(inkHash)#\(page.mediaItems.count)"
         if let cached = checkCache[signature] {
             await stream(verdicts: cached, lines: lines, pageIndex: pageIndex)
             if items(onPage: pageIndex).isEmpty {
@@ -209,7 +211,7 @@ final class AmbientTutorController: ObservableObject {
             // equation page doesn't truncate mid-array.
             // temperature 0 → grading the SAME page gives the SAME verdicts every
             // run (was varying because the default temperature samples randomly).
-            let raw = try await AIService.send(system: Self.checkSystem, messages: [.user(blocks)], maxTokens: 3000, temperature: 0)
+            let raw = try await AIService.send(system: Self.checkSystem, messages: [.user(blocks)], maxTokens: 4500, temperature: 0)
             var verdicts = Self.parseVerdicts(raw)
             guard !verdicts.isEmpty else {
                 showNotice(String(localized: "ambient.notice.unreadable"))
@@ -233,13 +235,14 @@ final class AmbientTutorController: ObservableObject {
                 var followUp = context.blocks
                 followUp.append(.text("""
                 You graded most of page \(pageIndex + 1) but skipped some regions. \
-                Grade EACH of these remaining regions now (read the image; classify \
-                correct / wrong / unfinished / skip — judge correctness honestly, \
-                a final answer can be wrong):
+                Using your solution from before, grade EACH of these remaining regions \
+                now (read the image; classify correct / wrong / unfinished / skip — a \
+                final answer CAN be wrong; never "skip" real work):
                 \(numbered)
-                Return ONLY {"regions":[{"i":<index>,"status":"…", …}]} for these indices.
+                Reason briefly, then return the verdicts for these indices as a ```json \
+                block: {"regions":[{"i":<index>,"status":"…", …}]}.
                 """))
-                if let raw2 = try? await AIService.send(system: Self.checkSystem, messages: [.user(followUp)], maxTokens: 1500, temperature: 0) {
+                if let raw2 = try? await AIService.send(system: Self.checkSystem, messages: [.user(followUp)], maxTokens: 2500, temperature: 0) {
                     let still = Set(verdicts.map(\.line))
                     verdicts += Self.parseVerdicts(raw2).filter { !still.contains($0.line) }
                 }
@@ -453,39 +456,41 @@ final class AmbientTutorController: ObservableObject {
     private struct Verdict { var line: Int; var ok: Bool; var unfinished: Bool; var ignore: Bool = false; var note: String; var fix: String?; var label: String; var confidence: Double }
 
     private static let checkSystem = """
-    You are a meticulous math/study tutor. The page IMAGE is attached, and you are \
-    given a NUMBERED list of regions — one per line of the student's handwriting — \
-    with rough OCR text (often WRONG on notation, so READ the handwriting from the \
-    image: limits "lim x→0 sinx/x", integrals "∫x dx", fractions, subscripts, \
-    exponents — these often span two rows, treat the stack as one equation). \
-    FIRST read any PROBLEM STATEMENT on the page — it may be typed, printed, or a \
-    pasted screenshot/photo, and may be in another language (e.g. Hebrew) and define \
-    the function/task the student is working on (e.g. "y = ((x+2)/(x+1))²"). Judge \
-    each handwritten line IN THE CONTEXT of that problem (right function, right \
-    sub-question, valid step), not just as isolated algebra. \
-    The student labels which sub-question a block answers with a HEADER (often \
-    Hebrew / right-to-left, e.g. "ת.ה:" = domain, "תחומי עליה/ירידה:" = increasing/\
-    decreasing intervals) — "skip" those header lines, and grade the work beneath \
-    each header against THAT sub-question. \
-    A line may also be a CONCLUSION IN WORDS (often Hebrew/RTL) — e.g. "אין נקודות \
-    קיצון" (no extremum/critical points), "אין נקודות אי רציפות" (no discontinuity \
-    points), "עולה בכל תחום ההגדרה" (increasing everywhere), an asymptote claim. \
-    JUDGE those statements by actually COMPUTING the relevant fact for THIS function \
-    and comparing: for "no critical points" solve f'(x)=0 (if it has a solution in \
-    the domain, the claim is WRONG); for "no discontinuity points" find where the \
-    denominator is 0 / the domain is excluded (if any, the claim is WRONG); for a \
-    monotonicity/asymptote claim, check the sign of f' / the limits. If the claim \
-    contradicts the computed fact, mark it "wrong" with a one-sentence note. \
-    For EVERY region index, look at that line in the image and classify it:
-    - "correct"   — the math OR the stated conclusion is right
-    - "wrong"     — a mistake or a false claim. Add "note": one short sentence of explanation (words go HERE). Add "fix": ONLY the corrected line itself as a bare math expression — NO words, NO "the answer is", NO leading "=" — e.g. "-2(x+2)/(x+1)^{3} = 0" or "x = 3", written as LaTeX (\\frac{num}{den}, x^{2}, \\sqrt{...}, · for multiply; no $ delimiters). For a worded conclusion with no formula, omit "fix". Add "conf": 0.0–1.0.
-    - "unfinished"— it ends with '=' or an operator with nothing after, or is a question with no answer yet
-    - "skip"      — the region is a HEADER/label/stray mark, not a statement to judge
-    You MUST return one entry for EVERY region index given, in order. Do not skip a \
-    region just because its OCR text looks garbled — read the image. \
-    Respond with ONLY a JSON object:
+    You are a meticulous math/study tutor checking a student's handwritten work. The \
+    page IMAGE is attached, with a NUMBERED list of regions (one per handwriting line) \
+    and rough OCR (OFTEN WRONG on notation — READ the handwriting from the image: \
+    limits "lim x→0 sinx/x", integrals "∫x dx", fractions/subscripts/exponents often \
+    span two rows; treat a stack as ONE equation).
+
+    STEP 1 — UNDERSTAND THE PROBLEM. Read the PROBLEM STATEMENT (typed, printed, or a \
+    pasted screenshot/photo; may be Hebrew/another language; e.g. "y = ((x+2)/(x+1))²") \
+    and each labelled sub-question (headers, often Hebrew/RTL: "ת.ה:" = domain, \
+    "תחומי עליה/ירידה:" = increase/decrease, "נקודות קיצון" = extrema, asymptotes…).
+
+    STEP 2 — SOLVE IT YOURSELF FIRST, in plain text, BEFORE grading anything: work out \
+    the correct answers for THIS function — domain/exclusions, f'(x), where f'(x)=0 \
+    (critical points) and the sign of f', asymptotes, limits — whatever the \
+    sub-questions need. This step is REQUIRED: it is how you avoid calling wrong work \
+    "correct". Show this working.
+
+    STEP 3 — GRADE EACH REGION against YOUR OWN solution. An ANSWER is anything the \
+    student wrote as a result — an equation, a step, a value, or a worded conclusion \
+    ("אין נקודות קיצון" = no critical points, "אין נקודות אי רציפות" = no \
+    discontinuities, a monotonicity/asymptote claim). Judge a worded conclusion by \
+    comparing it to what YOU computed (e.g. if f'(x)=0 has a solution in the domain, \
+    "no critical points" is WRONG).
+    Classify EVERY region index, in order:
+    - "correct"   — you VERIFIED it matches your solution. If you can't verify it, or you are unsure, do NOT mark correct — use "wrong" or a low conf.
+    - "wrong"     — a mistake or false claim. "note": one short sentence (words go HERE). "fix": ONLY the corrected line as bare LaTeX math — NO words, NO leading "=" — e.g. "-2(x+2)/(x+1)^{3} = 0" or "x = 3" (\\frac{num}{den}, x^{2}, \\sqrt{...}, · for multiply; no $). For a worded conclusion with no formula, omit "fix". "conf": 0.0–1.0.
+    - "unfinished"— it LITERALLY ends with '=' or an operator with nothing after it.
+    - "skip"      — ONLY a header/label/stray mark. NEVER "skip" real work or a real answer just because its OCR looks garbled — read the image and grade it.
+    Return one entry for EVERY region index, in order — never drop a line.
+
+    OUTPUT: write your STEP 2 working as plain text first, THEN the verdicts as a JSON \
+    object fenced in a ```json code block:
+    ```json
     {"regions":[{"i":0,"status":"correct"},{"i":1,"status":"wrong","note":"...","fix":"...","conf":0.9},{"i":2,"status":"unfinished"}]}
-    No prose outside the JSON.
+    ```
     """
 
     private static func checkInstruction(lines: [OCRLine], pageNumber: Int, problem: String) -> String {
@@ -512,14 +517,24 @@ final class AmbientTutorController: ObservableObject {
     }
 
     private static func parseVerdicts(_ raw: String) -> [Verdict] {
-        // Preferred path: parse the whole JSON object.
-        if let start = raw.firstIndex(of: "{"), let end = raw.lastIndex(of: "}"),
-           let data = String(raw[start...end]).data(using: .utf8),
+        // The model now reasons first (Step 2) and fences the verdicts in a
+        // ```json block; isolate that so the LaTeX braces in its working don't
+        // confuse the brace scan.
+        var json = raw
+        if let fence = raw.range(of: "```json", options: .caseInsensitive),
+           let close = raw.range(of: "```", range: fence.upperBound..<raw.endIndex) {
+            json = String(raw[fence.upperBound..<close.lowerBound])
+        }
+        // Preferred path: parse the JSON object holding "regions".
+        if let start = json.firstIndex(of: "{"), let end = json.lastIndex(of: "}"),
+           let data = String(json[start...end]).data(using: .utf8),
            let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let arr = (obj["regions"] ?? obj["items"] ?? obj["lines"]) as? [[String: Any]] {
             let verdicts = arr.compactMap(verdict(from:))
             if !verdicts.isEmpty { return verdicts }
         }
+        // Fallback for an unfenced response.
+        let raw = json
         // Fallback: a truncated/lightly-malformed response — recover each complete
         // {...} object on its own so we still place the regions we did get.
         return Self.objectMatcher
