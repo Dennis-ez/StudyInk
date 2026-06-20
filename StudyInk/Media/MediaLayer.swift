@@ -106,6 +106,10 @@ private struct MediaItemView: View {
         .task(id: item.fileName) { image = MediaStore.image(named: item.fileName) }
         .accessibilityLabel(Text(item.kind == .sticker ? "media.sticker" : "media.image"))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+        // Only a SELECTED image is interactive; an unselected one lets touches
+        // (pan/zoom, drawing) pass straight through to the canvas. Tap-to-select
+        // is handled by the canvas's finger-tap (onCanvasFingerTap).
+        .allowsHitTesting(isSelected)
     }
 
     private func handle(systemName: String, tint: Color = .accentColor) -> some View {

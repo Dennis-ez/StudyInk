@@ -107,6 +107,13 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         holdSnap.onHold = { [weak self] points in
             self?.handleHoldSnap(rawPoints: points)
         }
+        // After the snap, the pen keeps dragging the shape's last node live.
+        holdSnap.onAdjust = { [weak self] point in
+            self?.adjustLiveShape(to: point)
+        }
+        holdSnap.onAdjustEnd = { [weak self] in
+            self?.endLiveShape()
+        }
         canvas.addGestureRecognizer(holdSnap)
 
         // Finger-tap a committed shape to re-select it for move/rotate/reshape.
@@ -762,17 +769,58 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
             self.canvas.drawing = replaced
             self.isProgrammaticChange = false
             self.lastStrokeCount = replaced.strokes.count
-            self.persist(replaced, at: self.activeIndex)
             Haptics.tap()
+            // Keep this shape live so the pen (still down) can drag its last node;
+            // endLiveShape() persists when the pen lifts.
+            let index = replaced.strokes.count - 1
+            let size = replaced.strokes.indices.contains(index) ? self.averageWidth(of: replaced.strokes[index]) : 4
+            self.liveShape = LiveShape(shape: shape, index: index, ink: inkingTool.ink, size: size, original: old)
             self.controller.onShapeCreated?(
                 self.activeIndex,
-                replaced.strokes.count - 1,
+                index,
                 shape,
                 inkingTool.ink,
                 self.controller.toolState.width,
                 self.controller.toolState.colorHex
             )
         }
+    }
+
+    // MARK: - Live shape adjust (drag the last node with the pen after a snap)
+
+    private struct LiveShape {
+        var shape: ShapeRecognizer.Shape
+        var index: Int
+        var ink: PKInk
+        var size: CGFloat
+        var original: PKDrawing
+    }
+    private var liveShape: LiveShape?
+
+    /// The pen moved after the snap — drag the shape's last node to follow it and
+    /// re-render the clean shape live (all in canvas coordinates).
+    private func adjustLiveShape(to penPoint: CGPoint) {
+        guard var live = liveShape, canvas.drawing.strokes.indices.contains(live.index) else { return }
+        live.shape = ShapeRecognizer.Shape.movingLastNode(live.shape, to: penPoint)
+        liveShape = live
+        var drawing = canvas.drawing
+        drawing.strokes[live.index] = ShapeRecognizer.idealStroke(for: live.shape, ink: live.ink, width: live.size)
+        isProgrammaticChange = true
+        canvas.drawing = drawing
+        isProgrammaticChange = false
+    }
+
+    /// The pen lifted — commit the adjusted shape (undoable back to before the snap).
+    private func endLiveShape() {
+        guard let live = liveShape else { return }
+        liveShape = nil
+        let final = canvas.drawing
+        canvas.undoManager?.registerUndo(withTarget: canvas) { [original = live.original] target in
+            target.drawing = original
+        }
+        lastStrokeCount = final.strokes.count
+        persist(final, at: activeIndex)
+        DispatchQueue.main.async { [controller] in controller.refreshUndoState() }
     }
 
     /// Circle the size of the eraser stroke, following the touch while erasing.
@@ -844,6 +892,9 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
             )
             return
         }
+        // No shape under the tap — report it in PAGE coordinates so the editor can
+        // select/deselect media (unselected media is non-interactive).
+        controller.onCanvasFingerTap?(CGPoint(x: location.x / inkScale, y: location.y / inkScale))
     }
 
     private func strokeDistance(from stroke: PKStroke, to point: CGPoint) -> CGFloat {
@@ -1172,6 +1223,10 @@ import UIKit.UIGestureRecognizerSubclass
 /// for ~0.45s (without ever claiming the gesture — PencilKit keeps drawing).
 final class StationaryStrokeRecognizer: UIGestureRecognizer {
     var onHold: (([CGPoint]) -> Void)?
+    /// After the snap fires, keep reporting the pen so the shape's last node can
+    /// be dragged live; `onAdjustEnd` fires when the pen lifts.
+    var onAdjust: ((CGPoint) -> Void)?
+    var onAdjustEnd: (() -> Void)?
 
     private var samples: [CGPoint] = []
     private var lastMoveAt = Date()
@@ -1194,6 +1249,8 @@ final class StationaryStrokeRecognizer: UIGestureRecognizer {
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
         guard let touch = touches.first else { return }
         let location = touch.location(in: view)
+        // Once snapped, the pen keeps dragging the shape's last node.
+        if fired { onAdjust?(location); return }
         samples.append(location)
         if hypot(location.x - lastLocation.x, location.y - lastLocation.y) > 2.5 {
             lastLocation = location
@@ -1201,8 +1258,14 @@ final class StationaryStrokeRecognizer: UIGestureRecognizer {
         }
     }
 
-    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) { reset() }
-    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) { reset() }
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
+        if fired { onAdjustEnd?() }
+        reset()
+    }
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
+        if fired { onAdjustEnd?() }
+        reset()
+    }
 
     override func reset() {
         timer?.invalidate()

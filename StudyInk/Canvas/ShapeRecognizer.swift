@@ -10,6 +10,24 @@ enum ShapeRecognizer {
         case ellipse(center: CGPoint, radiusX: CGFloat, radiusY: CGFloat)
         case polygon([CGPoint])   // closed, ordered corners
 
+        /// Move the shape's "last node" to `point` — for live pen-drag after a
+        /// hold-snap. Line: the end point; polygon: the last corner; ellipse:
+        /// resize so its edge reaches the point.
+        static func movingLastNode(_ shape: Shape, to point: CGPoint) -> Shape {
+            switch shape {
+            case let .line(from, _):
+                return .line(from: from, to: point)
+            case var .polygon(corners):
+                guard !corners.isEmpty else { return shape }
+                corners[corners.count - 1] = point
+                return .polygon(corners)
+            case let .ellipse(center, _, _):
+                return .ellipse(center: center,
+                                radiusX: max(4, abs(point.x - center.x)),
+                                radiusY: max(4, abs(point.y - center.y)))
+            }
+        }
+
         /// Uniformly scales the shape's geometry — used to convert between the
         /// live canvas's supersampled (inkScale×) space and page coordinates.
         func scaled(by f: CGFloat) -> Shape {

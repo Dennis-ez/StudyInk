@@ -654,6 +654,17 @@ struct NoteEditorView: View {
                     return PageRenderer.Snapshot(page: pages[index])
                 }
             }
+            // Finger-tap on empty canvas (no shape): select the topmost media
+            // under it (media is otherwise non-interactive so pan/zoom pass
+            // through), or deselect if the tap missed everything.
+            canvasController.onCanvasFingerTap = { point in
+                if let hit = mediaItems.last(where: { $0.frame.contains(point) }) {
+                    Haptics.selection()
+                    selectedMediaID = hit.id
+                } else {
+                    selectedMediaID = nil
+                }
+            }
             // Fresh shapes commit clean and stay unselected — node editing
             // only opens when the user taps a shape with a finger.
             canvasController.onShapeTapped = { pageIndex, strokeIndex, shape, ink, width, colorHex in

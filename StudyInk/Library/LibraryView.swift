@@ -97,9 +97,10 @@ struct LibraryView: View {
                     sortRaw: $sortRaw,
                     selecting: $selectingNotes,
                     onNoteOpened: {
-                        // The canvas takes the whole screen — collapse the spine
-                        // instantly so it's back the moment you return.
-                        sidebarCollapsed = true
+                        // Collapse the spine INSTANTLY (no animation) so the content
+                        // column is already full width when the editor pushes in —
+                        // otherwise the desk flashes in a strip on the right.
+                        withAnimation(nil) { sidebarCollapsed = true }
                     },
                     onNoteClosed: {
                         sidebarCollapsed = false

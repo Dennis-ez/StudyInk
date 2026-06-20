@@ -468,7 +468,13 @@ struct NoteGridView: View {
             // re-expand at the START of the back gesture — see the shared
             // navigationDestination below — instead of after the pop completes.
             Button {
-                if renamingNote != note { autoOpenNote = note }
+                if renamingNote != note {
+                    // Collapse the sidebar BEFORE the push so the editor enters at
+                    // full width — otherwise the cream desk flashes in a strip on
+                    // the right until it settles.
+                    onNoteOpened()
+                    autoOpenNote = note
+                }
             } label: {
                 gridCellLabel(note)
             }
@@ -536,7 +542,10 @@ struct NoteGridView: View {
             .buttonStyle(.plain)
         } else {
             Button {
-                if renamingNote != note { autoOpenNote = note }
+                if renamingNote != note {
+                    onNoteOpened()       // collapse sidebar before the push (no right-side flash)
+                    autoOpenNote = note
+                }
             } label: {
                 listRowLabel(note)
             }

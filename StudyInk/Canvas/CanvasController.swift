@@ -107,6 +107,10 @@ final class CanvasController: NSObject, ObservableObject {
     var onShapeCreated: ((Int, Int, ShapeRecognizer.Shape, PKInk, Double, String) -> Void)?
     /// Finger-tap on a committed shape — the only path that opens node editing.
     var onShapeTapped: ((Int, Int, ShapeRecognizer.Shape, PKInk, Double, String) -> Void)?
+    /// Finger-tap on the canvas that didn't hit a shape — page coordinates. Used
+    /// to select/deselect media (which is otherwise non-interactive so pan/zoom
+    /// pass through).
+    var onCanvasFingerTap: ((CGPoint) -> Void)?
     /// The engine pulls page content through these (set by the editor).
     var drawingProvider: ((Int) -> PKDrawing)?
     var snapshotProvider: ((Int) -> PageRenderer.Snapshot?)?
