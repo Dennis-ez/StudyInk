@@ -180,6 +180,11 @@ final class CanvasController: NSObject, ObservableObject {
         }
     }
 
+    /// The live canvas's supersample factor for native-sharp zoom, set by the
+    /// engine. Tool widths are multiplied by it so a 4pt pen still looks 4pt in
+    /// the canvas's inkScale× coordinate space.
+    var inkScale: CGFloat = 1
+
     func attach(_ canvas: PKCanvasView) {
         canvasView = canvas
         applyTool()
@@ -188,7 +193,7 @@ final class CanvasController: NSObject, ObservableObject {
     }
 
     func applyTool() {
-        canvasView?.tool = toolState.pkTool(darkMode: isDarkMode)
+        canvasView?.tool = toolState.pkTool(darkMode: isDarkMode, widthScale: inkScale)
         // Hand tool: nothing draws, one finger pans regardless of pencil-only.
         let isHand = toolState.kind == .hand
         canvasView?.drawingGestureRecognizer.isEnabled = !isHand

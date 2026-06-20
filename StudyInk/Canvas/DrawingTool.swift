@@ -72,7 +72,12 @@ struct ToolState: Codable, Equatable {
 
     /// Builds the PencilKit tool. `darkMode` drives ink remapping: pure black ink
     /// renders near-white on a dark canvas while the stored logical color is unchanged.
-    func pkTool(darkMode: Bool) -> PKTool {
+    /// `widthScale` is the live canvas's supersample factor (inkScale): the
+    /// canvas works in inkScale× coordinates for native-sharp zoom, so a pen the
+    /// user picked as 4pt must be 4×inkScale in canvas space to *look* 4pt. The
+    /// stored stroke is scaled back to canonical on save, so widths stay correct.
+    func pkTool(darkMode: Bool, widthScale: CGFloat = 1) -> PKTool {
+        let width = self.width * widthScale
         switch kind {
         case .eraserPixel: return PKEraserTool(.bitmap, width: width)
         case .eraserObject: return PKEraserTool(.vector)

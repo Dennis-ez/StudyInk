@@ -255,7 +255,16 @@ extension AITutorController {
     func appendInkUndoably(_ strokes: [PKStroke], to canvas: PKCanvasView) {
         let before = canvas.drawing
         registerInkUndo(restoring: before, on: canvas)
-        canvas.drawing = before.appending(PKDrawing(strokes: strokes))
+        // The live canvas may be supersampled for native-sharp zoom (it carries a
+        // 1/inkScale transform); strokes are generated in page coordinates, so
+        // scale them up into the canvas's coordinate space. No-op (×1) when the
+        // canvas is at identity.
+        var added = PKDrawing(strokes: strokes)
+        let inv = canvas.transform.a
+        if inv > 0, abs(inv - 1) > 0.0001 {
+            added.transform(using: CGAffineTransform(scaleX: 1 / inv, y: 1 / inv))
+        }
+        canvas.drawing = before.appending(added)
     }
 
     /// Registers an undo that restores `drawing`; performing it re-registers the

@@ -9,6 +9,17 @@ enum ShapeRecognizer {
         case line(from: CGPoint, to: CGPoint)
         case ellipse(center: CGPoint, radiusX: CGFloat, radiusY: CGFloat)
         case polygon([CGPoint])   // closed, ordered corners
+
+        /// Uniformly scales the shape's geometry — used to convert between the
+        /// live canvas's supersampled (inkScale×) space and page coordinates.
+        func scaled(by f: CGFloat) -> Shape {
+            func s(_ p: CGPoint) -> CGPoint { CGPoint(x: p.x * f, y: p.y * f) }
+            switch self {
+            case let .line(a, b): return .line(from: s(a), to: s(b))
+            case let .ellipse(c, rx, ry): return .ellipse(center: s(c), radiusX: rx * f, radiusY: ry * f)
+            case let .polygon(pts): return .polygon(pts.map(s))
+            }
+        }
     }
 
     // MARK: - Recognition

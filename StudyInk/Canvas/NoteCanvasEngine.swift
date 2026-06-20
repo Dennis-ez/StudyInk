@@ -30,6 +30,15 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     private var displayDark = false
     private var saveWorkItem: DispatchWorkItem?
     private var didSetInitialZoom = false
+    /// Native-sharp zoom: the live canvas ALWAYS renders at `inkScale`× the page
+    /// size (counter-scaled to fit), so transform-zoom up to maximumZoomScale
+    /// never magnifies below native resolution — ink is sharp at every moment,
+    /// including mid-pinch. PencilKit tiles its rendering, so memory stays
+    /// bounded to the viewport. The cost: the canvas's internal coordinates are
+    /// inkScale×, so ink is scaled at the load/save/AI-insert boundaries (see
+    /// displayIntoCanvas / canonicalFromCanvas). KILL SWITCH: set to 1 to fully
+    /// revert to plain page-coordinate, transform-zoom behaviour.
+    private let inkScale: CGFloat = 4
     /// Cached-render resolution in PIXELS per point, raised when zoomed in.
     /// Starts at the screen scale so adjacent (inactive) pages are retina-sharp
     /// at default zoom, not a soft 1x bitmap.
@@ -59,7 +68,9 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         // past 3x it can't get sharper without breaking PencilKit — see
         // updateRasterScale). So all reachable zoom stays crisp instead of
         // letting the user zoom into blur.
-        maximumZoomScale = 3
+        // Ink is permanently supersampled at inkScale×, so zoom stays native-
+        // sharp up to that factor (no transform-zoom raster wall any more).
+        maximumZoomScale = 4
         bouncesZoom = true
         alwaysBounceVertical = true
         contentInsetAdjustmentBehavior = .never
@@ -80,6 +91,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         // transparent, so dark page + the literal light ink show correctly.
         // Ink colors are pre-adapted by appearance via InkColorAdapter.
         canvas.overrideUserInterfaceStyle = .light
+        controller.inkScale = inkScale
         controller.attach(canvas)
         controller.engine = self
 
@@ -239,7 +251,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
            let drawing = controller.drawingProvider?(activeIndex),
            !drawing.strokes.isEmpty {
             isProgrammaticChange = true
-            canvas.drawing = InkColorAdapter.displayDrawing(drawing, darkMode: displayDark)
+            canvas.drawing = displayIntoCanvas(drawing)
             isProgrammaticChange = false
             lastStrokeCount = drawing.strokes.count
             seededActiveDrawing = true
@@ -312,11 +324,13 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         guard containers.indices.contains(index) else { return }
         activeIndex = index
         let container = containers[index]
-        canvas.frame = CGRect(origin: .zero, size: pageSizes[index])
+        canvas.isUserInteractionEnabled = true
+        applyCanvasGeometry(pageSize: pageSizes[index])
         container.addSubview(canvas)
         isProgrammaticChange = true
-        // Storage → display: black ink shows near-white on a dark canvas.
-        canvas.drawing = InkColorAdapter.displayDrawing(controller.drawingProvider?(index) ?? PKDrawing(), darkMode: displayDark)
+        // Storage → display: black ink shows near-white on a dark canvas, scaled
+        // up into the canvas's inkScale (native-sharp) coordinate space.
+        canvas.drawing = displayIntoCanvas(controller.drawingProvider?(index) ?? PKDrawing())
         isProgrammaticChange = false
         // If the provider is wired up, this page is fully loaded (an empty page
         // is legitimately empty). If not, ensureContent() seeds it once the
@@ -366,7 +380,9 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     /// persist. ALL save paths go through here so Core Data ink is always
     /// canonical regardless of the canvas's current appearance.
     private func persist(_ displayDrawing: PKDrawing, at index: Int) {
-        controller.onDrawingChanged?(index, InkColorAdapter.storageDrawing(displayDrawing, darkMode: displayDark))
+        // displayDrawing is the live canvas's drawing (inkScale space) → scale
+        // back to canonical page coordinates AND un-adapt appearance.
+        controller.onDrawingChanged?(index, canonicalFromCanvas(displayDrawing))
     }
 
     /// The app appearance flipped while editing. Save under the OLD appearance,
@@ -381,11 +397,12 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         // page 0's real ink.
         guard !containers.isEmpty else { displayDark = newDark; return }
         flushPendingSave()                          // persists with old displayDark
-        // canvas holds display(old) colors → canonical → display(new).
-        let canonical = InkColorAdapter.storageDrawing(canvas.drawing, darkMode: displayDark)
+        // canvas holds display(old) colors in inkScale space → canonical →
+        // display(new) back into inkScale space.
+        let canonical = canonicalFromCanvas(canvas.drawing)
         displayDark = newDark
         isProgrammaticChange = true
-        canvas.drawing = InkColorAdapter.displayDrawing(canonical, darkMode: displayDark)
+        canvas.drawing = displayIntoCanvas(canonical)
         isProgrammaticChange = false
         lastStrokeCount = canvas.drawing.strokes.count
         for index in containers.indices where index != activeIndex { renderImage(for: index) }
@@ -514,7 +531,8 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         centerDocument()
         publishGeometry()
         // Programmatic/snap zooms never call didEndZooming — debounce a raster
-        // pass after the last zoom tick so sharpness always lands.
+        // pass after the last zoom tick so the page backgrounds stay sharp. (The
+        // ink is permanently supersampled, so it needs no per-zoom pass.)
         rasterWorkItem?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.updateRasterScale() }
         rasterWorkItem = work
@@ -550,8 +568,15 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
             container.setNeedsDisplay()
         }
         // PencilKit renders ink in nested internal views — the scale bump must
-        // reach the whole tree or zoomed ink stays soft.
-        applyRasterScale(raster, to: canvas)
+        // reach the whole tree or zoomed ink stays soft. When the canvas is
+        // BAKED (native-sharp) it's already physically Z× bigger, so only screen
+        // scale is needed — bumping it by the zoom too would re-create the OOM
+        // backing store the bake exists to avoid.
+        // The live canvas is permanently supersampled (inkScale× geometry), so
+        // it's already native-sharp at screen scale — bumping it by the zoom too
+        // would inflate the backing store into the OOM that the supersample
+        // exists to avoid.
+        applyRasterScale(UIScreen.main.scale, to: canvas)
         // NOTE: re-assigning canvas.drawing here to force a sharper re-render
         // BROKE new ink input (existing strokes showed, new ones never
         // registered). PencilKit's input state can't survive a drawing swap.
@@ -593,6 +618,37 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         for subview in view.subviews {
             applyRasterScale(scale, to: subview)
         }
+    }
+
+    // MARK: - Native-sharp zoom (permanent supersample)
+
+    /// Size the live canvas to `inkScale`× the page and counter-scale it 1/inkScale
+    /// so it still occupies exactly the page in its container — but renders ink
+    /// at inkScale resolution. Call wherever the canvas is (re)mounted on a page.
+    private func applyCanvasGeometry(pageSize: CGSize) {
+        canvas.transform = .identity
+        canvas.bounds = CGRect(origin: .zero,
+                               size: CGSize(width: pageSize.width * inkScale, height: pageSize.height * inkScale))
+        canvas.center = CGPoint(x: pageSize.width / 2, y: pageSize.height / 2)
+        if inkScale != 1 {
+            canvas.transform = CGAffineTransform(scaleX: 1 / inkScale, y: 1 / inkScale)
+        }
+    }
+
+    /// Canonical (page-coordinate) ink → what the live canvas should display:
+    /// appearance-adapted AND scaled up into the canvas's inkScale space.
+    private func displayIntoCanvas(_ canonical: PKDrawing) -> PKDrawing {
+        var d = InkColorAdapter.displayDrawing(canonical, darkMode: displayDark)
+        if inkScale != 1 { d.transform(using: CGAffineTransform(scaleX: inkScale, y: inkScale)) }
+        return d
+    }
+
+    /// The live canvas's drawing (inkScale space) → canonical page-coordinate ink
+    /// for storage: scaled back down AND appearance-unadapted.
+    private func canonicalFromCanvas(_ canvasDrawing: PKDrawing) -> PKDrawing {
+        var d = canvasDrawing
+        if inkScale != 1 { d.transform(using: CGAffineTransform(scaleX: 1 / inkScale, y: 1 / inkScale)) }
+        return InkColorAdapter.storageDrawing(d, darkMode: displayDark)
     }
 
     // MARK: - PKCanvasViewDelegate
@@ -741,8 +797,10 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         switch recognizer.state {
         case .began, .changed:
             // Pixel eraser uses its real width; the object eraser gets a small
-            // fixed reticle (it erases whole strokes, not an area).
-            let diameter = controller.toolState.kind == .eraserPixel ? max(controller.toolState.width, 6) : 14
+            // fixed reticle (it erases whole strokes, not an area). The cursor
+            // lives in the canvas's inkScale× space, so scale it to match.
+            let pageDiameter = controller.toolState.kind == .eraserPixel ? max(controller.toolState.width, 6) : 14
+            let diameter = pageDiameter * inkScale
             let location = recognizer.location(in: canvas)
             eraserCursor.bounds = CGRect(x: 0, y: 0, width: diameter, height: diameter)
             eraserCursor.layer.cornerRadius = CGFloat(diameter) / 2
@@ -779,12 +837,14 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
             guard strokeDistance(from: stroke, to: location) <= tolerance else { continue }
             guard let shape = ShapeRecognizer.recognize(stroke) else { return }
             Haptics.selection()
+            // The shape + width are in the canvas's inkScale× space; the editor
+            // overlay works in page coordinates, so hand it page-space values.
             controller.onShapeTapped?(
                 activeIndex,
                 index,
-                shape,
+                shape.scaled(by: 1 / inkScale),
                 stroke.ink,
-                Double(averageWidth(of: stroke)),
+                Double(averageWidth(of: stroke) / inkScale),
                 displayHex(for: stroke.ink)
             )
             return
@@ -855,11 +915,19 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     }
 
     /// Commits the edited shape back into the ink — one drawing write, one undo.
+    /// The editor builds `stroke` in page coordinates; scale it up into the
+    /// canvas's inkScale× space before re-inserting.
     func endStrokeEdit(with stroke: PKStroke) {
         guard let session = editSession else { return }
         editSession = nil
+        var canvasStroke = stroke
+        if inkScale != 1 {
+            var d = PKDrawing(strokes: [stroke])
+            d.transform(using: CGAffineTransform(scaleX: inkScale, y: inkScale))
+            if let first = d.strokes.first { canvasStroke = first }
+        }
         var drawing = canvas.drawing
-        drawing.strokes.insert(stroke, at: min(session.index, drawing.strokes.count))
+        drawing.strokes.insert(canvasStroke, at: min(session.index, drawing.strokes.count))
         canvas.undoManager?.registerUndo(withTarget: canvas) { target in
             target.drawing = session.originalDrawing
         }
