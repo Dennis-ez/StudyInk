@@ -68,6 +68,8 @@ struct GhostSuggestion {
     /// (so a tall fraction straddles it); for a new line below it's the top-left.
     var anchor: CGPoint
     var text: String
+    /// One short sentence: WHY this is the next step (revealed on the "?" tap).
+    var why: String?
     /// True when completing the current line (after '='), false for a new line.
     var inline: Bool = false
 }
@@ -364,8 +366,9 @@ final class AmbientTutorController: ObservableObject {
                 ? "The student's LAST handwritten line reads roughly: \"\(lastText)\" and is UNFINISHED. Continue from THERE — give the single next line that directly follows it: do the algebra and write the COMPLETE result that belongs after the '=' (e.g. if they wrote '2x =' give the value of x; if a derivative, the fully simplified form combining ALL factors). Never restate the left side, never jump back to an earlier step, never a partial fragment. LaTeX: fractions \\frac{num}{den} (NOT a/b), x^{2}, x_{0}, \\sqrt{...}, · for multiply. Output ONLY that expression — no $ delimiters, no words. If you genuinely can't, output nothing."
                 : "The student's LAST handwritten line reads roughly: \"\(lastText)\". Give the SINGLE next line that should follow it to make progress — continue from there, do NOT jump back to an earlier step. LaTeX (\\frac{num}{den}, x^{2}, \\sqrt{...}, · for multiply). Output ONLY the expression — no $ delimiters, no words. If there's no clear next step, output nothing."
             blocks.append(.text(instruction))
-            let raw = try await AIService.send(system: Self.ghostSystem, messages: [.user(blocks)], maxTokens: 260)
-            let text = Self.cleanGhost(raw)
+            let raw = try await AIService.send(system: Self.ghostSystem, messages: [.user(blocks)], maxTokens: 400)
+            let (nextRaw, why) = Self.parseGhost(raw)
+            let text = Self.cleanGhost(nextRaw)
             guard !text.isEmpty, text.count < 140 else { return }
             // Drop a suggestion that just echoes the line it's completing.
             let a = Self.mathKey(text), b = Self.mathKey(last.text)
@@ -375,12 +378,29 @@ final class AmbientTutorController: ObservableObject {
                 ? CGPoint(x: last.rect.maxX + 14, y: last.rect.midY)                    // inline, centred on the line
                 : CGPoint(x: last.rect.minX, y: last.rect.maxY + last.rect.height * 0.7) // new line below, clearing a fraction
             withAnimation(.easeIn(duration: 0.25)) {
-                ghost = GhostSuggestion(pageIndex: pageIndex, anchor: anchor, text: text, inline: isOpen)
+                ghost = GhostSuggestion(pageIndex: pageIndex, anchor: anchor, text: text, why: why, inline: isOpen)
             }
         } catch { }
     }
 
-    private static let ghostSystem = "You are a calculus/algebra tutor giving a student the next line of their solution. READ their handwriting from the attached page image (OCR misreads lim/∫/fractions — trust the image). FIRST read any problem statement on the page — typed, printed, or a pasted screenshot/photo, possibly in another language (e.g. Hebrew) — that defines the function/task. Then actually DO THE MATH: work out the genuine next step toward solving THAT problem (e.g. fully simplify a derivative, factor, take a limit), and give the worked-out result — never just re-copy what the student already wrote, never a half-expression. Output ONLY that one line as LaTeX (fractions as \\frac{num}{den}, exponents x^{2}, roots \\sqrt{...}, · for multiply) — no $ delimiters, no words. If you can't produce a correct, useful line, output nothing."
+    private static let ghostSystem = "You are a calculus/algebra tutor giving a student the next line of their solution. READ their handwriting from the attached page image (OCR misreads lim/∫/fractions — trust the image). FIRST read any problem statement on the page — typed, printed, or a pasted screenshot/photo, possibly in another language (e.g. Hebrew) — that defines the function/task. Then actually DO THE MATH: work out the genuine next step toward solving THAT problem (e.g. fully simplify a derivative, factor, take a limit), and give the worked-out result — never just re-copy what the student already wrote, never a half-expression. Output a JSON object: {\"next\":\"<that one line as LaTeX: \\\\frac{num}{den}, x^{2}, \\\\sqrt{...}, · for multiply; no $ delimiters, no words>\",\"why\":\"<ONE short sentence, in the student's language, explaining WHY this is the next step (which rule/operation and on what)>\"}. If you can't produce a correct, useful line, output {}."
+
+    /// Pulls the {next, why} out of the ghost response (tolerates fences / prose).
+    private static func parseGhost(_ raw: String) -> (String, String?) {
+        var src = raw
+        if let f = raw.range(of: "```json", options: .caseInsensitive),
+           let c = raw.range(of: "```", range: f.upperBound..<raw.endIndex) {
+            src = String(raw[f.upperBound..<c.lowerBound])
+        }
+        if let s = src.firstIndex(of: "{"), let e = src.lastIndex(of: "}"),
+           let data = String(src[s...e]).data(using: .utf8),
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let next = obj["next"] as? String {
+            let why = (obj["why"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return (next, (why?.isEmpty == false) ? why : nil)
+        }
+        return (raw, nil)   // not JSON — treat the whole thing as the next line
+    }
 
     private static func cleanGhost(_ raw: String) -> String {
         let lines = raw.split(whereSeparator: \.isNewline).map { String($0) }

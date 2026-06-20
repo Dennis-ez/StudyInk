@@ -507,6 +507,9 @@ struct NoteEditorView: View {
                     Spacer()
                     HStack(spacing: 8) {
                         Button {
+                            // Stepping down to Subtle turns watching off (the
+                            // sensitivity is the single control now).
+                            ambient.sensitivity = .subtle
                             guidedMode.isEnabled = false
                         } label: {
                             Label("ai.guidedMode", systemImage: "lightbulb.fill")
@@ -626,6 +629,9 @@ struct NoteEditorView: View {
             tutor.attach(note: note)
             tutor.isDarkMode = colorScheme == .dark
             guidedMode.tutor = tutor
+            // Guided Mode (proactive watching) is folded into the sensitivity:
+            // Helpful watches, Subtle/Off don't.
+            guidedMode.isEnabled = (ambient.sensitivity == .helpful)
             audio.attach(note: note)
             canvasController.onStroke = { index, stroke in
                 let center = CGPoint(x: stroke.renderBounds.midX, y: stroke.renderBounds.midY)
@@ -1320,7 +1326,10 @@ extension NoteEditorView {
                     await ambient.suggestNext(note: note, pageIndex: pageIndex, darkMode: colorScheme == .dark)
                 }
             } label: { Label("ambient.suggest", systemImage: "wand.and.rays") }
-            Picker(selection: Binding(get: { ambient.sensitivity }, set: { ambient.sensitivity = $0 })) {
+            Picker(selection: Binding(get: { ambient.sensitivity }, set: {
+                ambient.sensitivity = $0
+                guidedMode.isEnabled = ($0 == .helpful)   // Helpful = watch proactively
+            })) {
                 ForEach(AmbientSensitivity.allCases) { s in Text(s.labelKey).tag(s) }
             } label: { Label("ambient.sensitivity", systemImage: "dial.medium") }
             Divider()
@@ -1341,9 +1350,8 @@ extension NoteEditorView {
                 aiSketchText = ""
                 showAISketchPrompt = true
             } label: { Label("ai.sketch", systemImage: "scribble") }
-            Toggle(isOn: $guidedMode.isEnabled) {
-                Label("ai.guidedMode", systemImage: "lightbulb")
-            }
+            // Guided Mode (proactive watching) is now folded into the Helpful
+            // sensitivity above — no separate toggle.
         } label: {
             HStack(spacing: 5) {
                 Lucide("wand-sparkles", size: 15)

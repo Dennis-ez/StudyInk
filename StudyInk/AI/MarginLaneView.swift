@@ -86,27 +86,52 @@ struct GhostInkLayer: View {
     var onAccept: () -> Void
     var onDismiss: () -> Void
     @State private var pulse = false
+    @State private var showWhy = false
 
     var body: some View {
         let p = transform.toScreen(ghost.anchor)
-        HStack(spacing: 8) {
-            Text(verbatim: InkWriter.plainText(from: ghost.text))
-                .font(.fraunces(20, weight: .semibold, relativeTo: .title3).italic())
-                .foregroundStyle(AppTheme.current.aiAccent.opacity(pulse ? 1.0 : 0.78))
-            Button(action: onAccept) {
-                HStack(spacing: 5) {
-                    Circle().fill(AppTheme.current.aiAccent)
-                        .frame(width: 15, height: 15)
-                        .overlay(Lucide("sparkles", size: 8).foregroundStyle(.white))
-                    Text("ambient.flickAccept")
-                        .font(.system(size: 11))
-                        .foregroundStyle(SemanticColor.textMutedColor)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text(verbatim: InkWriter.plainText(from: ghost.text))
+                    .font(.fraunces(20, weight: .semibold, relativeTo: .title3).italic())
+                    .foregroundStyle(AppTheme.current.aiAccent.opacity(pulse ? 1.0 : 0.78))
+                Button(action: onAccept) {
+                    HStack(spacing: 5) {
+                        Circle().fill(AppTheme.current.aiAccent)
+                            .frame(width: 15, height: 15)
+                            .overlay(Lucide("sparkles", size: 8).foregroundStyle(.white))
+                        Text("ambient.flickAccept")
+                            .font(.system(size: 11))
+                            .foregroundStyle(SemanticColor.textMutedColor)
+                    }
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(SemanticColor.surface, in: Capsule())
+                    .overlay(Capsule().strokeBorder(SemanticColor.separator))
                 }
-                .padding(.horizontal, 8).padding(.vertical, 3)
-                .background(SemanticColor.surface, in: Capsule())
-                .overlay(Capsule().strokeBorder(SemanticColor.separator))
+                .buttonStyle(.plain)
+                // "Why is this the next step?" — reveals the model's one-line reason.
+                if ghost.why != nil {
+                    Button { withAnimation(.easeOut(duration: 0.2)) { showWhy.toggle() } } label: {
+                        Circle().fill(SemanticColor.surface)
+                            .frame(width: 22, height: 22)
+                            .overlay(Text(verbatim: "?").font(.system(size: 12, weight: .bold)).foregroundStyle(AppTheme.current.aiAccent))
+                            .overlay(Circle().strokeBorder(SemanticColor.separator))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Text("ambient.why"))
+                }
             }
-            .buttonStyle(.plain)
+            if showWhy, let why = ghost.why {
+                Text(verbatim: why)
+                    .font(.system(size: 12))
+                    .foregroundStyle(SemanticColor.textMutedColor)
+                    .multilineTextAlignment(why.isMostlyRTL ? .trailing : .leading)
+                    .padding(.horizontal, 10).padding(.vertical, 7)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(SemanticColor.separator))
+                    .frame(maxWidth: 240, alignment: .leading)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
         .fixedSize()
         // Gesture BEFORE .position so the flick area is the ghost itself, not
