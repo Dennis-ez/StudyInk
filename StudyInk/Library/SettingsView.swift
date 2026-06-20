@@ -136,7 +136,11 @@ struct SettingsView: View {
                 Spacer()
             }
             .foregroundStyle(.primary)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .frame(height: 40)
+            // The whole row is tappable, not just the icon/word (the Spacer is
+            // transparent and otherwise wouldn't hit-test).
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         // Selected = subtle fill + a 3pt accent bar inset at the leading edge.

@@ -360,9 +360,12 @@ struct FloatingToolbar: View {
         } label: {
             let ink = controller.inkColor(for: kind)
             ZStack {
-                // Selection = an accent highlight ring/wash behind the icon.
+                // Selection = an accent squircle wash behind the icon (matches
+                // the press/hover squircle shape — not a circle).
                 if isActive {
-                    Circle().fill(Color.accentColor.opacity(0.16)).frame(width: 31, height: 31)
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(Color.accentColor.opacity(0.16))
+                        .frame(width: 30, height: 30)
                 }
                 // The icon IS the colour indicator: a pen tool's glyph is tinted
                 // with its own ink colour (even when selected, so its colour is
