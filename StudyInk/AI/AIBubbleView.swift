@@ -12,8 +12,6 @@ struct AIBubbleView: View {
 
     @State private var followUpText = ""
     @State private var dragStart: CGPoint?
-    @State private var resizeStartWidth: Double?
-    @State private var resizeStartHeight: Double?
     @State private var appeared = false
     @State private var shimmerPhase = false
     @FocusState private var followUpFocused: Bool
@@ -40,11 +38,10 @@ struct AIBubbleView: View {
 
     private var isRTL: Bool { bubble.latestAnswer.isMostlyRTL }
 
-    /// Bubbles scale with the page (clamped for legibility) so they read as
-    /// page content, not floating chrome.
-    private var pageZoom: CGFloat {
-        min(max(transform.zoomScale, 0.6), 1.8)
-    }
+    /// The bubble is a FIXED-size chat card (like the check-my-work note) — it
+    /// stays anchored to its page point as you scroll/zoom, but never scales with
+    /// the zoom, so its text stays a consistent, readable size.
+    private var pageZoom: CGFloat { 1 }
 
     var body: some View {
         let screenPos = transform.toScreen(CGPoint(x: bubble.x, y: bubble.y))
@@ -123,38 +120,8 @@ struct AIBubbleView: View {
                 .strokeBorder(SemanticColor.separator, lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(alignment: .bottomTrailing) { resizeHandle }
         .elevation(.e3)
         .environment(\.layoutDirection, isRTL ? .rightToLeft : .leftToRight)
-    }
-
-    /// Bottom-corner grip resizes width and thread height together.
-    private var resizeHandle: some View {
-        Image(systemName: "arrow.up.left.and.arrow.down.right")
-            .font(.system(size: 9, weight: .bold))
-            .foregroundStyle(.tertiary)
-            .padding(6)
-            .contentShape(Rectangle().scale(2))
-            .gesture(
-                DragGesture(minimumDistance: 2)
-                    .onChanged { value in
-                        if resizeStartWidth == nil {
-                            resizeStartWidth = bubble.width
-                            resizeStartHeight = bubble.maxHeight ?? 320
-                        }
-                        guard let start = resizeStartWidth else { return }
-                        tutor.resize(
-                            bubbleID: bubble.id,
-                            width: start + value.translation.width / pageZoom,
-                            maxHeight: (resizeStartHeight ?? 320) + value.translation.height / pageZoom
-                        )
-                    }
-                    .onEnded { _ in
-                        resizeStartWidth = nil
-                        resizeStartHeight = nil
-                    }
-            )
-            .accessibilityLabel(Text("media.resize"))
     }
 
     private var header: some View {
@@ -226,7 +193,7 @@ struct AIBubbleView: View {
             threadContent
             ScrollView { threadContent }
         }
-        .frame(maxHeight: bubble.maxHeight ?? 320)
+        .frame(maxHeight: 360)   // fixed, scrollable thread (no resize handle)
     }
 
     private var threadContent: some View {
