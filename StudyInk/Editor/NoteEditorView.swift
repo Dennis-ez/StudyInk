@@ -447,9 +447,17 @@ struct NoteEditorView: View {
                     },
                     canPaste: canvasController.hasPasteContent,
                     onCut: { canvasController.engine?.cutStrokeSelection(selection); clearStrokeSelection() },
-                    onCopy: { canvasController.engine?.copyStrokeSelection(selection); clearStrokeSelection() },
+                    onCopy: {
+                        let t = selectionTransform(selection)
+                        canvasController.engine?.copyStrokeSelection(rotation: t.0, scale: t.1, translation: t.2, selection: selection)
+                        clearStrokeSelection()
+                    },
                     onPaste: { canvasController.engine?.pasteStrokes(); clearStrokeSelection() },
-                    onDuplicate: { canvasController.engine?.duplicateStrokeSelection(selection); clearStrokeSelection() },
+                    onDuplicate: {
+                        let t = selectionTransform(selection)
+                        canvasController.engine?.duplicateStrokeSelection(rotation: t.0, scale: t.1, translation: t.2, selection: selection)
+                        clearStrokeSelection()
+                    },
                     onDelete: { canvasController.engine?.deleteStrokeSelection(); clearStrokeSelection() }
                 )
             }
@@ -890,6 +898,14 @@ struct NoteEditorView: View {
         if canvasController.toolState.kind == .lasso {
             withAnimation { transformLassoActive = true }
         }
+    }
+
+    /// The selection's live move/rotate/scale in the canvas's coordinate space
+    /// (screen drag → ÷ zoom), so copy/duplicate keep it where the user dragged.
+    private func selectionTransform(_ selection: StrokeSelection) -> (Double, CGFloat, CGSize) {
+        let zoom = canvasController.canvasTransform(forPage: selection.pageIndex).zoomScale
+        return (strokeRotation, strokeScale,
+                CGSize(width: strokeTranslation.width / zoom, height: strokeTranslation.height / zoom))
     }
 
     /// Reset the selection UI after an edit-menu action (the engine has already

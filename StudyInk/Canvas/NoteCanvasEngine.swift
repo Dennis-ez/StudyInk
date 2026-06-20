@@ -978,25 +978,29 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         DispatchQueue.main.async { [controller] in controller.refreshUndoState() }
     }
 
-    /// Duplicate: drop the originals back and add an offset copy, both committed.
-    func duplicateStrokeSelection(_ selection: StrokeSelection) {
+    /// Duplicate: commit the current move/rotate/scale onto the originals (so the
+    /// item stays where the user dragged it), then add an offset copy.
+    func duplicateStrokeSelection(rotation: Double, scale: CGFloat, translation: CGSize, selection: StrokeSelection) {
         guard let original = selectionOriginal else { return }
         selectionOriginal = nil
+        let moved = StrokeSelector.applyTransform(
+            rotation: rotation, scale: scale, translation: translation, selection: selection, to: original)
         let picked = selection.strokeIndices.compactMap {
-            original.strokes.indices.contains($0) ? original.strokes[$0] : nil
+            moved.strokes.indices.contains($0) ? moved.strokes[$0] : nil
         }
         var copies = PKDrawing(strokes: picked)
         copies.transform(using: CGAffineTransform(translationX: 26 * inkScale, y: 26 * inkScale))
         canvas.undoManager?.registerUndo(withTarget: canvas) { target in target.drawing = original }
-        canvas.drawing = original.appending(copies)   // not programmatic → persists
+        canvas.drawing = moved.appending(copies)   // not programmatic → persists
     }
 
     /// Copy: a screenshot of the page region under the lasso goes to the system
     /// pasteboard (captures non-ink content too); the editable strokes go to the
-    /// in-app clipboard. The selection is restored (copy doesn't remove).
-    func copyStrokeSelection(_ selection: StrokeSelection) {
+    /// in-app clipboard. The selection stays where the user left it (the current
+    /// move/rotate/scale is committed, so it doesn't snap back).
+    func copyStrokeSelection(rotation: Double, scale: CGFloat, translation: CGSize, selection: StrokeSelection) {
         writeClipboards(selection)
-        cancelStrokeSelection()   // copy keeps the strokes in place
+        commitStrokeSelection(rotation: rotation, scale: scale, translation: translation, selection: selection)
     }
 
     /// Cut: copy to the clipboards, then leave the strokes deleted.
