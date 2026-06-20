@@ -79,7 +79,8 @@ final class AITutorController: ObservableObject {
                 currentPageIndex: currentPageIndex,
                 darkMode: isDarkMode,
                 focusRegion: focusRegion,
-                focusImage: focusImage
+                focusImage: focusImage,
+                focusAnchor: anchor   // where the student is working → orient the answer
             )
             var blocks = context.blocks
             blocks.append(.text("Student question: \(question)"))
@@ -111,7 +112,8 @@ final class AITutorController: ObservableObject {
 
         do {
             let context = await NoteContextBuilder.build(
-                note: note, currentPageIndex: currentPageIndex, darkMode: isDarkMode
+                note: note, currentPageIndex: currentPageIndex, darkMode: isDarkMode,
+                focusAnchor: CGPoint(x: bubbles[index].anchorX, y: bubbles[index].anchorY)
             )
             var messages: [AIMessage] = [.user(context.blocks)]
             // Replay the thread so the model has the bubble's conversation.
