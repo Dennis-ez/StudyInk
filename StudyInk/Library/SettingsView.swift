@@ -81,8 +81,12 @@ struct SettingsView: View {
     // MARK: - Body
 
     var body: some View {
-        NavigationSplitView {
+        // Constant .all visibility = the sidebar can't be collapsed/hidden, and a
+        // single fixed column width = it can't be drag-resized.
+        NavigationSplitView(columnVisibility: .constant(.all)) {
             sidebar
+                .navigationSplitViewColumnWidth(248)
+                .toolbar(removing: .sidebarToggle)
         } detail: {
             detail
         }

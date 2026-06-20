@@ -93,7 +93,12 @@ struct ToolState: Codable, Equatable {
             // drawing is mapped back via InkColorAdapter.storageDrawing).
             let base = InkColorAdapter.displayColor(UIColor(hex: colorHex) ?? .black, darkMode: darkMode)
             let color = base.withAlphaComponent(kind == .highlighter ? min(opacity, 0.6) : opacity)
-            return PKInkingTool(inkType, color: color, width: width)
+            let type = inkType
+            // Constant-width inks (monoline = pressure-off pens) render at the FULL
+            // nominal width, which reads much heavier than the tapered pressure pens
+            // at the same size. Scale them down so the sizes feel consistent.
+            let typeFactor: CGFloat = type == .monoline ? 0.55 : 1
+            return PKInkingTool(type, color: color, width: width * typeFactor)
         }
     }
 

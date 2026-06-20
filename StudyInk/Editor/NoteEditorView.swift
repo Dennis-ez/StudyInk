@@ -116,7 +116,13 @@ struct NoteEditorView: View {
     }
 
     @ViewBuilder private var floatingHeader: some View {
-        if !distractionFree { editorHeader }
+        if !distractionFree {
+            editorHeader
+                // The AI side panel (320pt, trailing) should PUSH the header
+                // icons left rather than cover them.
+                .padding(.trailing, tutor.panelOpen ? 320 : 0)
+                .animation(.spring(response: 0.35, dampingFraction: 0.85), value: tutor.panelOpen)
+        }
     }
 
     var body: some View {
@@ -1172,6 +1178,16 @@ extension NoteEditorView {
             .accessibilityLabel(Text("action.back"))
 
             Spacer(minLength: 8)
+
+            // Undo / redo always live here, top-right.
+            Button(action: { canvasController.undo() }) { headerSquare("undo-2") }
+                .buttonStyle(.plain)
+                .disabled(!canvasController.canUndo)
+                .accessibilityLabel(Text("action.undo"))
+            Button(action: { canvasController.redo() }) { headerSquare("redo-2") }
+                .buttonStyle(.plain)
+                .disabled(!canvasController.canRedo)
+                .accessibilityLabel(Text("action.redo"))
 
             recorderMenu
                 .background(themePaper, in: RoundedRectangle(cornerRadius: 10, style: .continuous))

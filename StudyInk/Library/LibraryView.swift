@@ -116,15 +116,16 @@ struct LibraryView: View {
                 .fileImporter(isPresented: $importingPDF, allowedContentTypes: [.pdf]) { result in
                     if case .success(let url) = result { importPDFAsNote(from: url) }
                 }
-                // The toolbar's New Note goes straight into the editor.
+                // The toolbar's New Note goes straight into the editor. Expand the
+                // sidebar at the START of the back gesture (binding setter), not
+                // after the pop finishes, so it never flashes missing on return.
                 .navigationDestination(isPresented: Binding(
                     get: { autoOpenNote != nil },
-                    set: { if !$0 { autoOpenNote = nil } }
+                    set: { if !$0 { autoOpenNote = nil; sidebarCollapsed = false } }
                 )) {
                     if let note = autoOpenNote {
                         NoteEditorContainer(note: note)
                             .onAppear { sidebarCollapsed = true }
-                            .onDisappear { sidebarCollapsed = false }
                     }
                 }
             }

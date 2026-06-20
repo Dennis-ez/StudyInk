@@ -60,17 +60,18 @@ struct FloatingToolbar: View {
     private var enabledAccessories: Set<String> {
         Set(enabledAccessoriesRaw.split(separator: ",").map(String.init))
     }
-    /// Bar slots: both eraser variants collapse into one button that shows the
-    /// variant currently in use (inline strip switches between them).
+    /// Bar slots: the scrolling section is the inking tools only — eraser and
+    /// lasso are PINNED separately (always visible), so they never page off.
     private var displayTools: [ToolKind] {
-        var eraserShown = false
-        return enabledTools.compactMap { kind in
-            guard kind == .eraserPixel || kind == .eraserObject else { return kind }
-            if eraserShown { return nil }
-            eraserShown = true
-            let active = controller.toolState.kind
-            return (active == .eraserPixel || active == .eraserObject) ? active : controller.lastEraserKind
-        }
+        enabledTools.filter { $0 != .eraserPixel && $0 != .eraserObject && $0 != .lasso }
+    }
+
+    /// Always-visible tools, pinned next to the AI pen: the current eraser
+    /// variant + the lasso.
+    private var pinnedTools: [ToolKind] {
+        let active = controller.toolState.kind
+        let eraser = (active == .eraserPixel || active == .eraserObject) ? active : controller.lastEraserKind
+        return [eraser, .lasso]
     }
 
     var body: some View {
@@ -183,19 +184,13 @@ struct FloatingToolbar: View {
 
         layout {
             grip
-            // Undo / redo live on the bar (spec: grip · undo · redo │ tools …).
-            Button(action: controller.undo) {
-                Lucide("undo-2", size: 18)
-            }
-            .disabled(!controller.canUndo)
-            .accessibilityLabel(Text("action.undo"))
-            Button(action: controller.redo) {
-                Lucide("redo-2", size: 18)
-            }
-            .disabled(!controller.canRedo)
-            .accessibilityLabel(Text("action.redo"))
-            Divider().frame(maxHeight: 22).frame(maxWidth: 22)
+            // Undo / redo moved to the top-right header (always visible there).
             toolsSection
+            // Eraser + lasso are pinned here — always visible, never paged off.
+            Divider().frame(maxHeight: 22).frame(maxWidth: 22)
+            ForEach(pinnedTools) { kind in
+                toolButton(kind)
+            }
             if !enabledAccessories.isEmpty {
                 Divider().frame(maxHeight: 22).frame(maxWidth: 22)
             }

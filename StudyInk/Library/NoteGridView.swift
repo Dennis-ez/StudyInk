@@ -294,15 +294,17 @@ struct NoteGridView: View {
                 .scrollContentBackground(.hidden)
             }
         }
-        // Freshly created notes open straight into the editor.
+        // Every note (tapped or freshly created) opens through this one
+        // destination. Clearing the binding on back fires onNoteClosed at the
+        // START of the pop, so the library sidebar re-expands immediately instead
+        // of a beat after the pop finishes.
         .navigationDestination(isPresented: Binding(
             get: { autoOpenNote != nil },
-            set: { if !$0 { autoOpenNote = nil } }
+            set: { if !$0 { autoOpenNote = nil; onNoteClosed() } }
         )) {
             if let note = autoOpenNote {
                 NoteEditorContainer(note: note)
                     .onAppear(perform: onNoteOpened)
-                    .onDisappear(perform: onNoteClosed)
             }
         }
         .alert(Text("library.renameNote"), isPresented: renamingBinding) {
@@ -447,14 +449,13 @@ struct NoteGridView: View {
             .buttonStyle(.plain)
             .accessibilityLabel(Text(verbatim: note.title ?? ""))
         } else {
-            NavigationLink {
-                NoteEditorContainer(note: note)
-                    .onAppear(perform: onNoteOpened)
-                    .onDisappear(perform: onNoteClosed)
-                    .noteZoomDestination(id: note.objectID, in: zoomNamespace)
+            // Binding-driven push (not NavigationLink) so the library sidebar can
+            // re-expand at the START of the back gesture — see the shared
+            // navigationDestination below — instead of after the pop completes.
+            Button {
+                autoOpenNote = note
             } label: {
                 gridCellLabel(note)
-                    .noteZoomSource(id: note.objectID, in: zoomNamespace)
             }
             .buttonStyle(.plain)
             .draggable((note.id ?? UUID()).uuidString)
@@ -522,15 +523,12 @@ struct NoteGridView: View {
             }
             .buttonStyle(.plain)
         } else {
-            NavigationLink {
-                NoteEditorContainer(note: note)
-                    .onAppear(perform: onNoteOpened)
-                    .onDisappear(perform: onNoteClosed)
-                    .noteZoomDestination(id: note.objectID, in: zoomNamespace)
+            Button {
+                autoOpenNote = note
             } label: {
                 listRowLabel(note)
-                    .noteZoomSource(id: note.objectID, in: zoomNamespace)
             }
+            .buttonStyle(.plain)
             // No .draggable here: its horizontal drag swallowed the swipe
             // gesture, so swipe-to-delete never triggered in list mode.
             // (Drag-to-file-into-a-subject still works from the grid.)
