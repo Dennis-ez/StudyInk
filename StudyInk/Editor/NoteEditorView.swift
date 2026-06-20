@@ -400,7 +400,7 @@ struct NoteEditorView: View {
 
             // Select & rotate: lasso capture (freeform or marquee, switchable
             // inline), then live rotation preview.
-            TransformLassoOverlay(isActive: $transformLassoActive, transform: transform, rectangular: canvasController.lassoRectangular) { polygon in
+            TransformLassoOverlay(isActive: $transformLassoActive, transform: canvasController.canvasTransform(forPage: pageIndex), rectangular: canvasController.lassoRectangular) { polygon in
                 beginStrokeTransform(with: polygon)
             }
             // Node editing for freshly created shapes.
@@ -410,8 +410,9 @@ struct NoteEditorView: View {
                         get: { editingShape! },
                         set: { editingShape = $0 }
                     ),
-                    transform: canvasController.transform(forPage: editingShape!.pageIndex),
-                    snap: snapMetrics,
+                    transform: canvasController.canvasTransform(forPage: editingShape!.pageIndex),
+                    snap: snapMetrics.map { SnapMetrics(stepX: $0.stepX.map { $0 * canvasController.inkScale },
+                                                        stepY: $0.stepY.map { $0 * canvasController.inkScale }) },
                     onChange: { _ in
                         // No engine write during the drag — the stroke is lifted
                         // out of the ink and the overlay preview is the only
@@ -435,7 +436,7 @@ struct NoteEditorView: View {
             if let selection = strokeSelection {
                 StrokeTransformOverlay(
                     selection: selection,
-                    transform: canvasController.transform(forPage: selection.pageIndex),
+                    transform: canvasController.canvasTransform(forPage: selection.pageIndex),
                     rotation: $strokeRotation,
                     translation: $strokeTranslation,
                     scale: $strokeScale,
@@ -857,16 +858,17 @@ struct NoteEditorView: View {
         }
         guard let selection = strokeSelection, let canvas = canvasController.canvasView,
               abs(strokeRotation) > 0.5 || strokeTranslation != .zero || abs(strokeScale - 1) > 0.01 else { return }
-        // The overlay drag is in screen points; convert to page space.
-        let zoom = canvasController.transform(forPage: selection.pageIndex).zoomScale
-        let pageTranslation = CGSize(width: strokeTranslation.width / zoom,
-                                     height: strokeTranslation.height / zoom)
+        // The overlay drag is in screen points; convert to the canvas's own
+        // (inkScale×) coordinate space, where the selected strokes live.
+        let zoom = canvasController.canvasTransform(forPage: selection.pageIndex).zoomScale
+        let canvasTranslation = CGSize(width: strokeTranslation.width / zoom,
+                                       height: strokeTranslation.height / zoom)
         let old = canvas.drawing
         canvas.undoManager?.registerUndo(withTarget: canvas) { target in
             target.drawing = old
         }
         canvas.drawing = StrokeSelector.applyTransform(
-            rotation: strokeRotation, scale: strokeScale, translation: pageTranslation, selection: selection, to: old
+            rotation: strokeRotation, scale: strokeScale, translation: canvasTranslation, selection: selection, to: old
         )
         Haptics.success()
     }

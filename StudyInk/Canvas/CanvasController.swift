@@ -128,6 +128,15 @@ final class CanvasController: NSObject, ObservableObject {
         return CanvasTransform(zoomScale: zoomScale, contentOffset: CGPoint(x: -origin.x, y: -origin.y))
     }
 
+    /// Maps the live canvas's inkScale× coordinates into editor screen space —
+    /// for overlays that read raw canvas geometry (lasso selection/transform)
+    /// rather than page-space data. Same screen result, but the values it
+    /// round-trips are canvas coordinates, so they line up with canvas.drawing.
+    func canvasTransform(forPage pageIndex: Int) -> CanvasTransform {
+        let t = transform(forPage: pageIndex)
+        return CanvasTransform(zoomScale: t.zoomScale / inkScale, contentOffset: t.contentOffset)
+    }
+
     func scrollToPage(_ index: Int, animated: Bool = true) {
         engine?.scrollToPage(index, animated: animated)
     }

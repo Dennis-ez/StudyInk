@@ -567,20 +567,12 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
             container.imageView.layer.contentsScale = raster
             container.setNeedsDisplay()
         }
-        // PencilKit renders ink in nested internal views — the scale bump must
-        // reach the whole tree or zoomed ink stays soft. When the canvas is
-        // BAKED (native-sharp) it's already physically Z× bigger, so only screen
-        // scale is needed — bumping it by the zoom too would re-create the OOM
-        // backing store the bake exists to avoid.
-        // The live canvas is permanently supersampled (inkScale× geometry), so
-        // it's already native-sharp at screen scale — bumping it by the zoom too
-        // would inflate the backing store into the OOM that the supersample
-        // exists to avoid.
-        applyRasterScale(UIScreen.main.scale, to: canvas)
-        // NOTE: re-assigning canvas.drawing here to force a sharper re-render
-        // BROKE new ink input (existing strokes showed, new ones never
-        // registered). PencilKit's input state can't survive a drawing swap.
-        // Deep-zoom sharpness needs PencilKit-native zoom, not this. Reverted.
+        // The live canvas is permanently supersampled (inkScale× geometry at
+        // screen scale), so it's ALREADY native-sharp and never needs a per-zoom
+        // raster pass. Re-applying contentScaleFactor here on every zoom-end
+        // forced PencilKit to re-rasterize its ink, which showed as a one-frame
+        // ink "reposition" glitch on release — so it's gone. The canvas's scale
+        // is set once at mount.
         // Cached full-page bitmaps of inactive pages are NOT tiled — render at
         // screen scale (retina-sharp at rest) and bump with zoom, but cap the
         // zoom contribution at 2x to keep memory sane (zoomed past that you're
@@ -612,13 +604,6 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     // with ink not rendering at all — removed. Past 3x zoom stays soft until
     // the engine moves to PencilKit-native zooming.
 
-    private func applyRasterScale(_ scale: CGFloat, to view: UIView) {
-        view.contentScaleFactor = scale
-        view.layer.contentsScale = scale
-        for subview in view.subviews {
-            applyRasterScale(scale, to: subview)
-        }
-    }
 
     // MARK: - Native-sharp zoom (permanent supersample)
 
@@ -837,14 +822,14 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
             guard strokeDistance(from: stroke, to: location) <= tolerance else { continue }
             guard let shape = ShapeRecognizer.recognize(stroke) else { return }
             Haptics.selection()
-            // The shape + width are in the canvas's inkScale× space; the editor
-            // overlay works in page coordinates, so hand it page-space values.
+            // Shape + width stay in the canvas's inkScale× space; the editor
+            // overlay maps them with canvasTransform (and a canvas-scaled snap).
             controller.onShapeTapped?(
                 activeIndex,
                 index,
-                shape.scaled(by: 1 / inkScale),
+                shape,
                 stroke.ink,
-                Double(averageWidth(of: stroke) / inkScale),
+                Double(averageWidth(of: stroke)),
                 displayHex(for: stroke.ink)
             )
             return
@@ -915,19 +900,13 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     }
 
     /// Commits the edited shape back into the ink — one drawing write, one undo.
-    /// The editor builds `stroke` in page coordinates; scale it up into the
-    /// canvas's inkScale× space before re-inserting.
+    /// The editor works in the canvas's coordinate space (via canvasTransform),
+    /// so `stroke` is already in canvas coordinates.
     func endStrokeEdit(with stroke: PKStroke) {
         guard let session = editSession else { return }
         editSession = nil
-        var canvasStroke = stroke
-        if inkScale != 1 {
-            var d = PKDrawing(strokes: [stroke])
-            d.transform(using: CGAffineTransform(scaleX: inkScale, y: inkScale))
-            if let first = d.strokes.first { canvasStroke = first }
-        }
         var drawing = canvas.drawing
-        drawing.strokes.insert(canvasStroke, at: min(session.index, drawing.strokes.count))
+        drawing.strokes.insert(stroke, at: min(session.index, drawing.strokes.count))
         canvas.undoManager?.registerUndo(withTarget: canvas) { target in
             target.drawing = session.originalDrawing
         }
