@@ -316,13 +316,8 @@ enum InkWriter {
         }
     }
 
-    // MARK: - Glyph rendering (filled)
+    // MARK: - Glyph rendering (contour)
 
-    /// Glyphs are SOLID, not wireframe: each glyph's outline is both stroked
-    /// (crisp edges) and scanline-filled (the interior packed with short
-    /// horizontal pen strokes, even-odd so counters like the holes in o/e/0
-    /// stay open). Tracing the outline alone left stems as two parallel lines —
-    /// the "hollow" look. The fill makes AI ink read like a real pen.
     private static func glyphStrokes(_ text: String, baselineLeft: CGPoint, font: UIFont, ink: PKInk, width: CGFloat) -> [PKStroke] {
         guard !text.isEmpty else { return [] }
         let attributed = NSAttributedString(string: text, attributes: [.font: font])
@@ -342,54 +337,14 @@ enum InkWriter {
 
             for i in 0..<count {
                 guard let glyphPath = CTFontCreatePathForGlyph(runFont, glyphs[i], nil) else { continue }
-                // All contours of THIS glyph, in page space (y flipped).
-                let contours: [[CGPoint]] = polylines(from: glyphPath).compactMap { poly in
-                    guard poly.count >= 2 else { return nil }
-                    return poly.map { p in
+                for polyline in polylines(from: glyphPath) {
+                    let points = polyline.map { p in
                         CGPoint(x: baselineLeft.x + positions[i].x + p.x, y: baselineLeft.y - p.y)
                     }
-                }
-                guard !contours.isEmpty else { continue }
-                // Crisp edges.
-                for contour in contours { strokes.append(stroke(through: contour, ink: ink, width: width)) }
-                // Solid interior.
-                strokes += fillStrokes(contours: contours, ink: ink, penWidth: width)
-            }
-        }
-        return strokes
-    }
-
-    /// Scanline-fill the region bounded by `contours` (even-odd) with short
-    /// horizontal pen strokes spaced so they overlap into a solid fill.
-    private static func fillStrokes(contours: [[CGPoint]], ink: PKInk, penWidth: CGFloat) -> [PKStroke] {
-        let ys = contours.flatMap { $0.map(\.y) }
-        guard let minY = ys.min(), let maxY = ys.max(), maxY - minY > penWidth else { return [] }
-        let spacing = max(0.9, penWidth * 0.7)
-        var strokes: [PKStroke] = []
-        var y = minY + spacing * 0.5
-        while y < maxY {
-            // x-crossings of the scanline with every edge (incl. closing edge).
-            var xs: [CGFloat] = []
-            for poly in contours {
-                let n = poly.count
-                for k in 0..<n {
-                    let a = poly[k], b = poly[(k + 1) % n]
-                    if (a.y <= y && b.y > y) || (b.y <= y && a.y > y) {
-                        xs.append(a.x + (y - a.y) / (b.y - a.y) * (b.x - a.x))
-                    }
+                    guard points.count >= 2 else { continue }
+                    strokes.append(stroke(through: points, ink: ink, width: width))
                 }
             }
-            xs.sort()
-            var j = 0
-            while j + 1 < xs.count {
-                if xs[j + 1] - xs[j] > 0.2 {
-                    strokes.append(stroke(
-                        through: [CGPoint(x: xs[j], y: y), CGPoint(x: xs[j + 1], y: y)],
-                        ink: ink, width: spacing * 1.3))
-                }
-                j += 2
-            }
-            y += spacing
         }
         return strokes
     }
