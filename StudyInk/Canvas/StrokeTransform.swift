@@ -174,6 +174,7 @@ struct StrokeTransformOverlay: View {
     @State private var rotateStart: Double?
     @State private var dragStart: CGSize?
     @State private var scaleStart: CGFloat?
+    @State private var antsPhase: CGFloat = 0
 
     private let corners: [UnitPoint] = [.topLeading, .topTrailing, .bottomLeading, .bottomTrailing]
 
@@ -193,7 +194,11 @@ struct StrokeTransformOverlay: View {
             Image(uiImage: selection.image)
                 .resizable()
                 .frame(width: size.width, height: size.height)
-                .overlay(Rectangle().strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 1.5, dash: [6, 4])))
+                .overlay(
+                    Rectangle().strokeBorder(
+                        Color.accentColor,
+                        style: StrokeStyle(lineWidth: 1.5, dash: [6, 4], dashPhase: antsPhase))
+                )
                 .overlay {
                     ForEach(corners, id: \.self) { corner in
                         Circle()
@@ -212,6 +217,13 @@ struct StrokeTransformOverlay: View {
                 .simultaneousGesture(twistGesture)  // two fingers rotate
         }
         .coordinateSpace(name: "strokeTransform")
+        .onAppear {
+            // Marching ants: the dash sum is 10, so sliding the phase by -10
+            // loops seamlessly.
+            withAnimation(.linear(duration: 0.5).repeatForever(autoreverses: false)) {
+                antsPhase = -10
+            }
+        }
     }
 
     private var moveGesture: some Gesture {

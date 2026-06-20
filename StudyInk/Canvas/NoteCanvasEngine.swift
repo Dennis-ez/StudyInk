@@ -471,6 +471,11 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
 
     private func updateCurrentIndex() {
         guard !pageFrames.isEmpty, zoomScale > 0 else { return }
+        // Don't re-activate pages mid-zoom: the center-page math is unstable
+        // while the transform is animating, so it can briefly flip to a neighbour
+        // and back — which flashes that page's cached low-res ink bitmap (a gray
+        // "ghost" double-image) over the live canvas on pinch.
+        guard !isZooming, !isZoomBouncing else { return }
         // Don't steal the live canvas while the pen is on the page.
         let drawingState = canvas.drawingGestureRecognizer.state
         guard drawingState != .began, drawingState != .changed else { return }
@@ -916,6 +921,50 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         lastStrokeCount = drawing.strokes.count
         persist(drawing, at: activeIndex)
         DispatchQueue.main.async { [controller] in controller.refreshUndoState() }
+    }
+
+    // MARK: - Lasso selection (lift while transforming)
+
+    /// The drawing as it was before a lasso selection lifted its strokes out, so
+    /// the moving preview isn't shadowed by the originals.
+    private var selectionOriginal: PKDrawing?
+
+    /// Remove the selected strokes from the live canvas — their snapshot rides in
+    /// the transform overlay — so dragging the selection doesn't leave a ghost of
+    /// the originals behind.
+    func liftStrokeSelection(_ indices: [Int]) {
+        guard selectionOriginal == nil else { return }
+        let original = canvas.drawing
+        selectionOriginal = original
+        var lifted = original
+        for index in indices.sorted(by: >) where lifted.strokes.indices.contains(index) {
+            lifted.strokes.remove(at: index)
+        }
+        isProgrammaticChange = true
+        canvas.drawing = lifted
+        isProgrammaticChange = false
+    }
+
+    /// Commit the lasso transform onto the original (un-lifted) strokes.
+    func commitStrokeSelection(rotation: Double, scale: CGFloat, translation: CGSize, selection: StrokeSelection) {
+        guard let original = selectionOriginal else { return }
+        selectionOriginal = nil
+        let transformed = StrokeSelector.applyTransform(
+            rotation: rotation, scale: scale, translation: translation, selection: selection, to: original)
+        canvas.undoManager?.registerUndo(withTarget: canvas) { [original] target in
+            target.drawing = original
+        }
+        canvas.drawing = transformed   // not programmatic → auto-persists via delegate
+    }
+
+    /// Cancel a lasso transform: drop the originals back in unchanged.
+    func cancelStrokeSelection() {
+        guard let original = selectionOriginal else { return }
+        selectionOriginal = nil
+        isProgrammaticChange = true
+        canvas.drawing = original
+        isProgrammaticChange = false
+        lastStrokeCount = original.strokes.count
     }
 
     // MARK: - Pencil interactions

@@ -442,6 +442,7 @@ struct NoteEditorView: View {
                     scale: $strokeScale,
                     onDone: applyStrokeTransform,
                     onCancel: {
+                        canvasController.engine?.cancelStrokeSelection()
                         strokeSelection = nil
                         strokeRotation = 0
                         strokeTranslation = .zero
@@ -668,9 +669,14 @@ struct NoteEditorView: View {
         }
         .onChange(of: colorScheme) { tutor.isDarkMode = colorScheme == .dark }
         .onChange(of: pageIndex) { oldIndex, newIndex in
-            // An open shape edit holds its stroke OUT of the ink — commit it
-            // before the page (and its drawing) is saved and swapped.
+            // An open shape edit or lasso selection holds strokes OUT of the ink —
+            // restore/commit them before the page (and its drawing) is saved and
+            // swapped, so nothing is lost.
             commitOpenShapeEdit()
+            if strokeSelection != nil {
+                applyStrokeTransform()
+                strokeSelection = nil
+            }
             persistOverlays(to: page(at: oldIndex))
             canvasController.engine?.refreshPage(oldIndex)
             loadPage()
@@ -840,6 +846,9 @@ struct NoteEditorView: View {
         ) {
             Haptics.selection()
             strokeSelection = selection
+            // Lift the selected strokes out of the live ink so dragging the
+            // selection doesn't leave a copy at the original position.
+            canvasController.engine?.liftStrokeSelection(selection.strokeIndices)
         } else {
             Haptics.error()
             // Empty loop — go straight back to capturing, no dead end.
@@ -856,20 +865,19 @@ struct NoteEditorView: View {
             strokeScale = 1
             rearmLassoIfActive()
         }
-        guard let selection = strokeSelection, let canvas = canvasController.canvasView,
-              abs(strokeRotation) > 0.5 || strokeTranslation != .zero || abs(strokeScale - 1) > 0.01 else { return }
+        guard let selection = strokeSelection else { return }
+        guard abs(strokeRotation) > 0.5 || strokeTranslation != .zero || abs(strokeScale - 1) > 0.01 else {
+            // No real change — just drop the lifted strokes back where they were.
+            canvasController.engine?.cancelStrokeSelection()
+            return
+        }
         // The overlay drag is in screen points; convert to the canvas's own
         // (inkScale×) coordinate space, where the selected strokes live.
         let zoom = canvasController.canvasTransform(forPage: selection.pageIndex).zoomScale
         let canvasTranslation = CGSize(width: strokeTranslation.width / zoom,
                                        height: strokeTranslation.height / zoom)
-        let old = canvas.drawing
-        canvas.undoManager?.registerUndo(withTarget: canvas) { target in
-            target.drawing = old
-        }
-        canvas.drawing = StrokeSelector.applyTransform(
-            rotation: strokeRotation, scale: strokeScale, translation: canvasTranslation, selection: selection, to: old
-        )
+        canvasController.engine?.commitStrokeSelection(
+            rotation: strokeRotation, scale: strokeScale, translation: canvasTranslation, selection: selection)
         Haptics.success()
     }
 
