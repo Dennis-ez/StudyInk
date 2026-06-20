@@ -967,6 +967,78 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         lastStrokeCount = original.strokes.count
     }
 
+    /// Delete the selection — the strokes are already lifted out, so just make
+    /// that permanent (undoably).
+    func deleteStrokeSelection() {
+        guard let original = selectionOriginal else { return }
+        selectionOriginal = nil
+        let lifted = canvas.drawing   // already without the selected strokes
+        canvas.undoManager?.registerUndo(withTarget: canvas) { target in target.drawing = original }
+        persist(lifted, at: activeIndex)
+        DispatchQueue.main.async { [controller] in controller.refreshUndoState() }
+    }
+
+    /// Duplicate: drop the originals back and add an offset copy, both committed.
+    func duplicateStrokeSelection(_ selection: StrokeSelection) {
+        guard let original = selectionOriginal else { return }
+        selectionOriginal = nil
+        let picked = selection.strokeIndices.compactMap {
+            original.strokes.indices.contains($0) ? original.strokes[$0] : nil
+        }
+        var copies = PKDrawing(strokes: picked)
+        copies.transform(using: CGAffineTransform(translationX: 26 * inkScale, y: 26 * inkScale))
+        canvas.undoManager?.registerUndo(withTarget: canvas) { target in target.drawing = original }
+        canvas.drawing = original.appending(copies)   // not programmatic → persists
+    }
+
+    /// Copy: a screenshot of the page region under the lasso goes to the system
+    /// pasteboard (captures non-ink content too); the editable strokes go to the
+    /// in-app clipboard. The selection is restored (copy doesn't remove).
+    func copyStrokeSelection(_ selection: StrokeSelection) {
+        writeClipboards(selection)
+        cancelStrokeSelection()   // copy keeps the strokes in place
+    }
+
+    /// Cut: copy to the clipboards, then leave the strokes deleted.
+    func cutStrokeSelection(_ selection: StrokeSelection) {
+        writeClipboards(selection)
+        deleteStrokeSelection()
+    }
+
+    private func writeClipboards(_ selection: StrokeSelection) {
+        // Cross-app: render the page crop under the selection (background, media,
+        // PDF, ink) and put it on the system pasteboard.
+        if let snap = controller.snapshotProvider?(activeIndex) {
+            let scale: CGFloat = 3
+            let full = PageRenderer.render(snap, darkMode: displayDark, scale: scale)
+            let page = CGRect(x: selection.bounds.minX / inkScale, y: selection.bounds.minY / inkScale,
+                              width: selection.bounds.width / inkScale, height: selection.bounds.height / inkScale)
+                .insetBy(dx: -8, dy: -8)
+            let px = CGRect(x: page.minX * scale, y: page.minY * scale,
+                            width: page.width * scale, height: page.height * scale)
+                .intersection(CGRect(origin: .zero, size: CGSize(width: full.size.width * scale, height: full.size.height * scale)))
+            if !px.isEmpty, let cg = full.cgImage?.cropping(to: px) {
+                UIPasteboard.general.image = UIImage(cgImage: cg)
+            }
+        }
+        // In-app: the editable strokes (canvas coordinates) for stroke paste.
+        if let original = selectionOriginal {
+            controller.strokeClipboard = selection.strokeIndices.compactMap {
+                original.strokes.indices.contains($0) ? original.strokes[$0] : nil
+            }
+        }
+    }
+
+    /// Paste the in-app stroke clipboard, offset so it's visibly a new copy.
+    func pasteStrokes() {
+        guard let strokes = controller.strokeClipboard, !strokes.isEmpty else { return }
+        var paste = PKDrawing(strokes: strokes)
+        paste.transform(using: CGAffineTransform(translationX: 30 * inkScale, y: 30 * inkScale))
+        let old = canvas.drawing
+        canvas.undoManager?.registerUndo(withTarget: canvas) { target in target.drawing = old }
+        canvas.drawing = old.appending(paste)
+    }
+
     // MARK: - Pencil interactions
 
     func pencilInteractionDidTap(_ interaction: UIPencilInteraction) {

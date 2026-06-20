@@ -443,12 +443,14 @@ struct NoteEditorView: View {
                     onDone: applyStrokeTransform,
                     onCancel: {
                         canvasController.engine?.cancelStrokeSelection()
-                        strokeSelection = nil
-                        strokeRotation = 0
-                        strokeTranslation = .zero
-                        strokeScale = 1
-                        rearmLassoIfActive()
-                    }
+                        clearStrokeSelection()
+                    },
+                    canPaste: canvasController.hasPasteContent,
+                    onCut: { canvasController.engine?.cutStrokeSelection(selection); clearStrokeSelection() },
+                    onCopy: { canvasController.engine?.copyStrokeSelection(selection); clearStrokeSelection() },
+                    onPaste: { canvasController.engine?.pasteStrokes(); clearStrokeSelection() },
+                    onDuplicate: { canvasController.engine?.duplicateStrokeSelection(selection); clearStrokeSelection() },
+                    onDelete: { canvasController.engine?.deleteStrokeSelection(); clearStrokeSelection() }
                 )
             }
 
@@ -888,6 +890,16 @@ struct NoteEditorView: View {
         if canvasController.toolState.kind == .lasso {
             withAnimation { transformLassoActive = true }
         }
+    }
+
+    /// Reset the selection UI after an edit-menu action (the engine has already
+    /// applied it), and re-arm the lasso for the next loop.
+    private func clearStrokeSelection() {
+        strokeSelection = nil
+        strokeRotation = 0
+        strokeTranslation = .zero
+        strokeScale = 1
+        rearmLassoIfActive()
     }
 
     private func sendAsk() {

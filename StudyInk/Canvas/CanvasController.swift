@@ -111,6 +111,12 @@ final class CanvasController: NSObject, ObservableObject {
     var drawingProvider: ((Int) -> PKDrawing)?
     var snapshotProvider: ((Int) -> PageRenderer.Snapshot?)?
 
+    /// Lasso clipboard: strokes copied/cut from a selection (live-canvas, i.e.
+    /// inkScale, coordinates), for in-app paste. Cross-app copy goes to the
+    /// system pasteboard as an image.
+    var strokeClipboard: [PKStroke]?
+    var hasPasteContent: Bool { (strokeClipboard?.isEmpty == false) }
+
     override init() {
         if let data = UserDefaults.standard.data(forKey: "tools.perKind"),
            let saved = try? JSONDecoder().decode([String: ToolState].self, from: data) {

@@ -170,6 +170,13 @@ struct StrokeTransformOverlay: View {
     @Binding var scale: CGFloat
     var onDone: () -> Void
     var onCancel: () -> Void
+    // Apple-style edit actions.
+    var canPaste: Bool = false
+    var onCut: () -> Void = {}
+    var onCopy: () -> Void = {}
+    var onPaste: () -> Void = {}
+    var onDuplicate: () -> Void = {}
+    var onDelete: () -> Void = {}
 
     @State private var rotateStart: Double?
     @State private var dragStart: CGSize?
@@ -215,6 +222,10 @@ struct StrokeTransformOverlay: View {
                 .position(center)
                 .gesture(moveGesture)               // one finger drags
                 .simultaneousGesture(twistGesture)  // two fingers rotate
+
+            // Apple-style edit menu, floating just above the selection.
+            editMenu
+                .position(x: center.x, y: max(46, center.y - size.height / 2 - 30))
         }
         .coordinateSpace(name: "strokeTransform")
         .onAppear {
@@ -224,6 +235,45 @@ struct StrokeTransformOverlay: View {
                 antsPhase = -10
             }
         }
+    }
+
+    // MARK: - Apple-style edit menu
+
+    private var editMenu: some View {
+        HStack(spacing: 0) {
+            menuButton("Cut", action: onCut)
+            menuDivider
+            menuButton("Copy", action: onCopy)
+            if canPaste {
+                menuDivider
+                menuButton("Paste", action: onPaste)
+            }
+            menuDivider
+            menuButton("Duplicate", action: onDuplicate)
+            menuDivider
+            menuButton("Delete", tint: .red, action: onDelete)
+        }
+        .frame(height: 40)
+        .background(.regularMaterial, in: Capsule())
+        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.08)))
+        .shadow(color: .black.opacity(0.18), radius: 10, y: 3)
+        .fixedSize()
+    }
+
+    private func menuButton(_ title: String, tint: Color = .primary, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(verbatim: title)
+                .font(.subheadline)
+                .foregroundStyle(tint)
+                .padding(.horizontal, 14)
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var menuDivider: some View {
+        Rectangle().fill(Color.primary.opacity(0.12)).frame(width: 0.5, height: 22)
     }
 
     private var moveGesture: some Gesture {
