@@ -158,6 +158,12 @@ extension AITutorController {
             topLeft.x = min(topLeft.x, max(margin, pageSize.width - margin - textWidth))
             topLeft.x = max(topLeft.x, margin)
             topLeft.y = max(margin, min(topLeft.y, pageSize.height - margin - InkWriter.lineHeight(fontSize: fontSize) * 4))
+            // Don't land ON the student's work — slide down into a clear band.
+            let lineCount = max(1, answer.components(separatedBy: "\n").count)
+            let blockSize = CGSize(width: textWidth, height: InkWriter.lineHeight(fontSize: fontSize) * CGFloat(lineCount))
+            topLeft = clearSpot(near: topLeft, size: blockSize,
+                                avoiding: canvas.drawing.strokes.map(\.renderBounds),
+                                pageSize: pageSize, margin: margin)
 
             // Adapt the colour the same way the pen does (iOS 26 renders ink
             // colours literally, so the AI ink must already be the DISPLAY
@@ -248,6 +254,29 @@ extension AITutorController {
         guard !strokes.isEmpty else { return }
         appendInkUndoably(strokes, to: canvas)
         Haptics.tap()
+    }
+
+    /// Slides a block down from `topLeft` into the nearest clear vertical band
+    /// (no overlap with existing ink), so AI ink never lands on the student's work.
+    func clearSpot(near topLeft: CGPoint, size: CGSize, avoiding occupied: [CGRect],
+                   pageSize: CGSize, margin: CGFloat) -> CGPoint {
+        let pad: CGFloat = 10
+        let maxY = max(margin, pageSize.height - margin - size.height)
+        func overlaps(_ y: CGFloat) -> Bool {
+            let r = CGRect(x: topLeft.x, y: y, width: size.width, height: size.height).insetBy(dx: -pad, dy: -pad)
+            return occupied.contains { $0.intersects(r) }
+        }
+        func scan(from startY: CGFloat) -> CGFloat? {
+            var y = startY, steps = 0
+            while y <= maxY, steps < 300 {
+                if !overlaps(y) { return y }
+                y += max(8, size.height * 0.2); steps += 1
+            }
+            return nil
+        }
+        if let y = scan(from: topLeft.y) { return CGPoint(x: topLeft.x, y: y) }
+        if let y = scan(from: margin) { return CGPoint(x: topLeft.x, y: y) }  // wrap to top
+        return CGPoint(x: topLeft.x, y: min(topLeft.y, maxY))                 // give up
     }
 
     /// Appends AI strokes to the canvas as a single undoable (and redoable) edit,
