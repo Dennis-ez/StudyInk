@@ -295,17 +295,15 @@ struct NoteGridView: View {
                 .scrollContentBackground(.hidden)
             }
         }
-        // Every note (tapped or freshly created) opens through this one
-        // destination. Clearing the binding on back fires onNoteClosed at the
-        // START of the pop, so the library sidebar re-expands immediately instead
-        // of a beat after the pop finishes.
-        .navigationDestination(isPresented: Binding(
+        // Full-screen (window-level) presentation: the editor covers everything,
+        // so it's never constrained to the content-column width (which caused the
+        // desk to flash on the right during entry). No sidebar collapse needed.
+        .fullScreenCover(isPresented: Binding(
             get: { autoOpenNote != nil },
-            set: { if !$0 { autoOpenNote = nil; onNoteClosed() } }
+            set: { if !$0 { autoOpenNote = nil } }
         )) {
             if let note = autoOpenNote {
                 NoteEditorContainer(note: note)
-                    .onAppear(perform: onNoteOpened)
             }
         }
         .onChange(of: section) {
@@ -410,12 +408,10 @@ struct NoteGridView: View {
             .padding(6)
     }
 
-    /// Collapse the sidebar first, then push the editor on the NEXT runloop — so
-    /// the content column has reflowed to full width before the editor enters,
-    /// otherwise the cream desk flashes in a strip on the right.
     private func openNote(_ note: Note) {
-        onNoteOpened()
-        DispatchQueue.main.async { autoOpenNote = note }
+        // The editor is presented full-screen (window level), so it's independent
+        // of the content-column width — no sidebar-collapse dance, no desk strip.
+        autoOpenNote = note
     }
 
     private func commitNoteRename() {

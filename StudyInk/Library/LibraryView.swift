@@ -117,16 +117,14 @@ struct LibraryView: View {
                 .fileImporter(isPresented: $importingPDF, allowedContentTypes: [.pdf]) { result in
                     if case .success(let url) = result { importPDFAsNote(from: url) }
                 }
-                // The toolbar's New Note goes straight into the editor. Expand the
-                // sidebar at the START of the back gesture (binding setter), not
-                // after the pop finishes, so it never flashes missing on return.
-                .navigationDestination(isPresented: Binding(
+                // The toolbar's New Note opens the editor full-screen (window
+                // level) — same as tapping a note — so no sidebar collapse needed.
+                .fullScreenCover(isPresented: Binding(
                     get: { autoOpenNote != nil },
-                    set: { if !$0 { autoOpenNote = nil; sidebarCollapsed = false } }
+                    set: { if !$0 { autoOpenNote = nil } }
                 )) {
                     if let note = autoOpenNote {
                         NoteEditorContainer(note: note)
-                            .onAppear { sidebarCollapsed = true }
                     }
                 }
             }
