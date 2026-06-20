@@ -97,7 +97,7 @@ struct ToolState: Codable, Equatable {
             // Constant-width inks (monoline = pressure-off pens) render at the FULL
             // nominal width, which reads much heavier than the tapered pressure pens
             // at the same size. Scale them down so the sizes feel consistent.
-            let typeFactor: CGFloat = type == .monoline ? 0.55 : 1
+            let typeFactor: CGFloat = type == .monoline ? 0.38 : 1
             return PKInkingTool(type, color: color, width: width * typeFactor)
         }
     }

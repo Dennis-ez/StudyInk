@@ -187,12 +187,9 @@ struct FloatingToolbar: View {
             // Undo / redo moved to the top-right header (always visible there).
             toolsSection
             // Eraser + lasso are pinned here — always visible, never paged off.
-            Divider().frame(maxHeight: 22).frame(maxWidth: 22)
+            // No divider — flows straight into the AI pen + accessories.
             ForEach(pinnedTools) { kind in
                 toolButton(kind)
-            }
-            if !enabledAccessories.isEmpty {
-                Divider().frame(maxHeight: 22).frame(maxWidth: 22)
             }
             if enabledAccessories.contains("ruler") {
                 Button(action: { controller.isRulerActive.toggle() }) {
@@ -293,7 +290,10 @@ struct FloatingToolbar: View {
     }
 
     private var grip: some View {
+        // Vertical dots for a vertical bar; rotate to horizontal dots when the
+        // bar is docked horizontally.
         Lucide("grip-vertical", size: 18)
+            .rotationEffect(.degrees(dock.isHorizontal ? 90 : 0))
             .foregroundStyle(.tertiary)
             // Full button-sized hit target — the bare glyph was ~16pt and
             // nearly impossible to grab.

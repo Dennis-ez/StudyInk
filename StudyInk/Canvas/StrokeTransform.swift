@@ -197,6 +197,7 @@ struct StrokeTransformOverlay: View {
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
                 .onTapGesture(perform: onDone)
+                .simultaneousGesture(moveGesture)   // drag anywhere to move
                 .simultaneousGesture(twistGesture)
                 .simultaneousGesture(pinchGesture)
 

@@ -723,7 +723,11 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         if controller.snapToGrid,
            let snapshot = controller.snapshotProvider?(activeIndex),
            let metrics = SnapMetrics.metrics(for: snapshot.template, spacing: snapshot.templateSpacing) {
-            shape = ShapeRecognizer.snapped(shape, to: metrics)
+            // rawPoints (and `shape`) are in the canvas's inkScale× space, so the
+            // page-space grid metrics must be scaled to match.
+            let canvasMetrics = SnapMetrics(stepX: metrics.stepX.map { $0 * inkScale },
+                                            stepY: metrics.stepY.map { $0 * inkScale })
+            shape = ShapeRecognizer.snapped(shape, to: canvasMetrics)
         }
         guard let inkingTool = controller.toolState.pkTool(darkMode: controller.isDarkMode) as? PKInkingTool else { return }
 
@@ -747,7 +751,8 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
                 // renders heavier than pressure-modulated handwriting, so
                 // take it down to handwriting weight.
                 replaced.strokes.append(ShapeRecognizer.idealStroke(
-                    for: shape, ink: inkingTool.ink, width: CGFloat(controller.toolState.width) * 0.7
+                    for: shape, ink: inkingTool.ink,
+                    width: CGFloat(controller.toolState.width) * 0.7 * inkScale
                 ))
             }
             self.canvas.undoManager?.registerUndo(withTarget: self.canvas) { target in
