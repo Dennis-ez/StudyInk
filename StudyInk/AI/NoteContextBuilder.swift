@@ -71,19 +71,37 @@ enum NoteContextBuilder {
         if pages.indices.contains(currentPageIndex) {
             let anchor = focusAnchor ?? focusRegion.map { CGPoint(x: $0.midX, y: $0.midY) }
             let lines = await ocrLines(for: pages[currentPageIndex])
+            // The question (e.g. "1.A") is often on an EARLIER page (commonly the
+            // first) while the answer is written here. Pull the printed/pasted
+            // question text from earlier media-bearing pages so the model has it.
+            var earlierProblem = ""
+            for index in 0..<currentPageIndex where !pages[index].mediaItems.isEmpty {
+                let p = problemText(from: await ocrLines(for: pages[index]), page: pages[index])
+                if !p.isEmpty { earlierProblem += "\n[page \(index + 1)] " + p }
+            }
             let orient = orientation(page: pages[currentPageIndex], pageIndex: currentPageIndex,
-                                     lines: lines, focusAnchor: anchor)
+                                     lines: lines, focusAnchor: anchor, earlierProblem: earlierProblem)
             if !orient.isEmpty { blocks.insert(.text(orient), at: 0) }
         }
 
         return Context(blocks: blocks)
     }
 
+    /// The printed/pasted question text on a page (OCR lines inside media frames).
+    @MainActor
+    private static func problemText(from lines: [OCRLine], page: Page) -> String {
+        let frames = page.mediaItems.map(\.frame)
+        let text = lines.filter { l in frames.contains { $0.intersects(l.rect) } }
+            .map(\.text).joined(separator: " ")
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     /// Builds the orientation summary from the current page's OCR + the student's
     /// focus point: the problem statement, the labelled sub-questions, and which
     /// one the student is currently working on.
     @MainActor
-    private static func orientation(page: Page, pageIndex: Int, lines: [OCRLine], focusAnchor: CGPoint?) -> String {
+    private static func orientation(page: Page, pageIndex: Int, lines: [OCRLine],
+                                    focusAnchor: CGPoint?, earlierProblem: String) -> String {
         let mediaFrames = page.mediaItems.map(\.frame)
         let inMedia: (OCRLine) -> Bool = { line in mediaFrames.contains { $0.intersects(line.rect) } }
         func clean(_ s: String) -> String { s.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -96,19 +114,25 @@ enum NoteContextBuilder {
         let headers = work.filter { clean($0.text).hasSuffix(":") || clean($0.text).hasSuffix("：") }
 
         var s = "STUDENT CONTEXT — orient yourself with this before answering (figure out WHICH problem/sub-question and WHERE the student is, so you don't need to be told):\n"
-        let problemText = [problem, typed].filter { !$0.isEmpty }.joined(separator: " | ")
+        let problemText = [problem, typed, clean(earlierProblem)].filter { !$0.isEmpty }.joined(separator: " | ")
         if !problemText.isEmpty {
-            s += "• THE PROBLEM/TASK (from the printed/pasted question): \"\(problemText.prefix(700))\"\n"
+            s += "• THE PROBLEM/TASK (from the printed/pasted question, which may be on an earlier page): \"\(problemText.prefix(900))\"\n"
         } else {
-            s += "• No explicit problem statement was OCR'd on this page — read it from the page image (it may be a pasted screenshot or on an earlier page).\n"
+            s += "• No explicit problem statement was OCR'd — read it from the page images (it may be a pasted screenshot or on an earlier page).\n"
+        }
+        // The student often answers a numbered/lettered sub-question (1.A, סעיף א,
+        // ב., q2…) written next to their answer — possibly far from the question.
+        if let label = subQuestionLabel(in: work, near: focusAnchor) {
+            s += "• The student appears to be answering sub-question \"\(label)\" — its FULL text is in the problem/page images (often the first page). Match their answer to THAT sub-question and grade/answer against it.\n"
+        } else {
+            s += "• The student may be answering a specific sub-question (e.g. 1.A / סעיף א) labelled near their work; the full question may be on an earlier page — find which part they're answering and use it.\n"
         }
         if !headers.isEmpty {
-            s += "• Sub-questions the student has labelled (top→bottom): \(headers.map { clean($0.text) }.joined(separator: " · "))\n"
+            s += "• Sub-questions the student has labelled here (top→bottom): \(headers.map { clean($0.text) }.joined(separator: " · "))\n"
         }
         if let anchor = focusAnchor, !work.isEmpty {
             let nearest = work.min { hypot($0.rect.midX - anchor.x, $0.rect.midY - anchor.y)
                                    < hypot($1.rect.midX - anchor.x, $1.rect.midY - anchor.y) }
-            // The labelled sub-question the focus sits under (nearest header above).
             let headerAbove = headers.filter { $0.rect.midY <= anchor.y + 8 }
                 .max { $0.rect.midY < $1.rect.midY }
             s += "• THE STUDENT IS FOCUSED at (x:\(Int(anchor.x)), y:\(Int(anchor.y))) on page \(pageIndex + 1)."
@@ -117,6 +141,27 @@ enum NoteContextBuilder {
             s += " Answer about THIS part of their work unless the question clearly points elsewhere.\n"
         }
         return s
+    }
+
+    private static let labelMatcher = try! NSRegularExpression(
+        pattern: "\\b\\d+\\s*[.\\-)]?\\s*[A-Za-z]\\b|\\([A-Za-z]\\)|\\b\\d+\\.\\d+\\b|סעיף\\s*\\S+|שאלה\\s*\\S+",
+        options: [])
+
+    /// A sub-question label (1.A, (a), 1.1, "סעיף א", "שאלה 2") in the work, picking
+    /// the one nearest the focus when several exist.
+    private static func subQuestionLabel(in work: [OCRLine], near anchor: CGPoint?) -> String? {
+        let candidates = work.sorted {
+            guard let a = anchor else { return false }
+            return hypot($0.rect.midX - a.x, $0.rect.midY - a.y) < hypot($1.rect.midX - a.x, $1.rect.midY - a.y)
+        }
+        for line in candidates {
+            let t = line.text
+            let range = NSRange(t.startIndex..., in: t)
+            if let m = labelMatcher.firstMatch(in: t, range: range), let r = Range(m.range, in: t) {
+                return String(t[r]).trimmingCharacters(in: .whitespaces)
+            }
+        }
+        return nil
     }
 
     /// Fresh OCR lines for the current page, used to resolve annotation targets.
