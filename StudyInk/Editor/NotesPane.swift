@@ -69,6 +69,7 @@ struct NotesPane: View {
         // Opaque warm spine behind the rows — the slim sibling of the library
         // sidebar (§1.4 / §3.1). No glass of its own: the editor wraps notes +
         // subjects panes in ONE container so the drawer reads as a single panel.
+        ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 2) {
                 // Smart/section rows, styled like the main screen's sidebar.
@@ -97,6 +98,7 @@ struct NotesPane: View {
 
                 ForEach(visibleNotes, id: \.objectID) { note in
                     noteRow(note)
+                        .id(note.objectID)
                 }
             }
             .padding(.horizontal, DS.Space.sm)
@@ -104,6 +106,16 @@ struct NotesPane: View {
             // top safe area, so the content sat too high).
             .padding(.top, 56)
             .padding(.bottom, DS.Space.md)
+        }
+        // Scroll the pane to the note currently open in the editor.
+        .onAppear {
+            DispatchQueue.main.async {
+                withAnimation(.none) { proxy.scrollTo(currentNote.objectID, anchor: .center) }
+            }
+        }
+        .onChange(of: currentNote.objectID) { _, id in
+            withAnimation { proxy.scrollTo(id, anchor: .center) }
+        }
         }
         .frame(width: 236)
         .frame(maxHeight: .infinity)

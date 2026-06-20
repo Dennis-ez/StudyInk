@@ -27,6 +27,7 @@ struct NoteGridView: View {
 
     @State private var renamingNote: Note?
     @State private var renameText = ""
+    @FocusState private var noteRenameFocused: Bool
     @State private var autoOpenNote: Note?
     @State private var selectedIDs: Set<NSManagedObjectID> = []
     /// Pending delete awaiting the user's confirmation.
@@ -307,19 +308,6 @@ struct NoteGridView: View {
                     .onAppear(perform: onNoteOpened)
             }
         }
-        .alert(Text("library.renameNote"), isPresented: renamingBinding) {
-            TextField("library.noteTitle", text: $renameText)
-            Button("action.cancel", role: .cancel) { renamingNote = nil }
-            Button("action.done") {
-                let trimmed = renameText.trimmingCharacters(in: .whitespaces)
-                if !trimmed.isEmpty {
-                    renamingNote?.title = trimmed
-                    renamingNote?.touch()
-                    PersistenceController.shared.save()
-                }
-                renamingNote = nil
-            }
-        }
         .onChange(of: section) {
             selecting = false
             selectedIDs = []
@@ -422,8 +410,35 @@ struct NoteGridView: View {
             .padding(6)
     }
 
-    private var renamingBinding: Binding<Bool> {
-        Binding(get: { renamingNote != nil }, set: { if !$0 { renamingNote = nil } })
+    private func commitNoteRename() {
+        guard let note = renamingNote else { return }
+        let trimmed = renameText.trimmingCharacters(in: .whitespaces)
+        if !trimmed.isEmpty {
+            note.title = trimmed
+            note.touch()
+            PersistenceController.shared.save()
+        }
+        renamingNote = nil
+    }
+
+    /// The note's title — an inline editable field while renaming (no popup),
+    /// otherwise plain text.
+    @ViewBuilder
+    private func noteTitleView(_ note: Note, font: Font) -> some View {
+        if renamingNote == note {
+            TextField("library.noteTitle", text: $renameText)
+                .font(font)
+                .focused($noteRenameFocused)
+                .submitLabel(.done)
+                .onSubmit(commitNoteRename)
+                .onAppear { DispatchQueue.main.async { noteRenameFocused = true } }
+                .onChange(of: noteRenameFocused) { _, focused in if !focused { commitNoteRename() } }
+        } else {
+            Text(verbatim: note.title ?? "")
+                .font(font)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+        }
     }
 
     private func createNote() {
@@ -453,7 +468,7 @@ struct NoteGridView: View {
             // re-expand at the START of the back gesture — see the shared
             // navigationDestination below — instead of after the pop completes.
             Button {
-                autoOpenNote = note
+                if renamingNote != note { autoOpenNote = note }
             } label: {
                 gridCellLabel(note)
             }
@@ -485,10 +500,7 @@ struct NoteGridView: View {
             // Footer on the card's paper: name + subject dot, then date.
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 7) {
-                    Text(verbatim: note.title ?? "")
-                        .font(.callout.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
+                    noteTitleView(note, font: .callout.weight(.semibold))
                     Spacer(minLength: 2)
                     if let subject = note.subject {
                         Circle()
@@ -524,7 +536,7 @@ struct NoteGridView: View {
             .buttonStyle(.plain)
         } else {
             Button {
-                autoOpenNote = note
+                if renamingNote != note { autoOpenNote = note }
             } label: {
                 listRowLabel(note)
             }
@@ -543,8 +555,7 @@ struct NoteGridView: View {
                     .frame(width: 56, height: 74)
             }
             VStack(alignment: .leading, spacing: 3) {
-                Text(verbatim: note.title ?? "")
-                    .font(.body.weight(.medium))
+                noteTitleView(note, font: .body.weight(.medium))
                 HStack(spacing: 8) {
                     Text("library.created \(dateString(note.createdAt))")
                     Text("library.modified \(dateString(note.modifiedAt))")

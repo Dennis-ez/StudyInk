@@ -80,7 +80,7 @@ struct ToolState: Codable, Equatable {
         let width = self.width * widthScale
         switch kind {
         case .eraserPixel: return PKEraserTool(.bitmap, width: width)
-        case .eraserObject: return PKEraserTool(.vector)
+        case .eraserObject: return PKEraserTool(.vector, width: width)
         case .lasso: return PKLassoTool()
         // Drawing is disabled while the hand tool is active; the tool itself is inert.
         case .hand: return PKLassoTool()

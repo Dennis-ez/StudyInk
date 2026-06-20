@@ -116,9 +116,7 @@ struct SettingsView: View {
                     .font(.fraunces(20, weight: .semibold, relativeTo: .headline))
                     .foregroundStyle(.primary)
             }
-            ToolbarItem(placement: .confirmationAction) {
-                Button("action.done") { dismiss() }
-            }
+            // Done lives on the detail pane only (removed from the sidebar).
         }
     }
 

@@ -544,14 +544,14 @@ private struct EraserOptionsStrip: View {
             modeButton(.eraserPixel)
             modeButton(.eraserObject)
 
-            if controller.toolState.kind == .eraserPixel {
-                Divider().frame(
-                    maxWidth: horizontal ? nil : 22,
-                    maxHeight: horizontal ? 22 : nil
-                )
-                ForEach(Self.widths, id: \.self) { width in
-                    sizeDot(width)
-                }
+            // Both erasers are resizable now (pixel = erase radius, object =
+            // hit radius for whole-stroke erase).
+            Divider().frame(
+                maxWidth: horizontal ? nil : 22,
+                maxHeight: horizontal ? 22 : nil
+            )
+            ForEach(Self.widths, id: \.self) { width in
+                sizeDot(width)
             }
         }
         .padding(.horizontal, horizontal ? 12 : 6)

@@ -191,12 +191,14 @@ struct StrokeTransformOverlay: View {
         let center = CGPoint(x: base.midX + translation.width, y: base.midY + translation.height)
 
         ZStack {
-            // Tap off the selection to commit, like Apple's lasso.
+            // Tap off the selection to commit, like Apple's lasso. Pinch or
+            // twist ANYWHERE on the page resizes/rotates the selection.
             Color.black.opacity(0.02)
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
                 .onTapGesture(perform: onDone)
                 .simultaneousGesture(twistGesture)
+                .simultaneousGesture(pinchGesture)
 
             Image(uiImage: selection.image)
                 .resizable()
@@ -296,6 +298,17 @@ struct StrokeTransformOverlay: View {
                 let nowDist = hypot(value.location.x - center.x, value.location.y - center.y)
                 let factor = nowDist / max(startDist, 1)
                 scale = min(6, max(0.2, (scaleStart ?? 1) * factor))
+            }
+            .onEnded { _ in scaleStart = nil }
+    }
+
+    /// Pinch anywhere on the page to resize the selection (not just the corner
+    /// handles).
+    private var pinchGesture: some Gesture {
+        MagnifyGesture(minimumScaleDelta: 0.01)
+            .onChanged { value in
+                if scaleStart == nil { scaleStart = scale }
+                scale = min(6, max(0.2, (scaleStart ?? 1) * value.magnification))
             }
             .onEnded { _ in scaleStart = nil }
     }

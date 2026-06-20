@@ -363,6 +363,13 @@ struct LibraryView: View {
                     .onSubmit(commitInlineRename)
             }
             .padding(.leading, CGFloat(depth) * 20)
+            // Same rounded, subject-tinted row background as a normal subject row
+            // — not the default full-bleed white (which bled over Settings below).
+            .listRowBackground(
+                roundedRowBackground((Color(hex: subject.colorHex ?? "#0A84FF") ?? .accentColor).opacity(0.18))
+                    .padding(.leading, CGFloat(depth) * 20)
+            )
+            .listRowSeparator(.hidden)
             // Focus on the next runloop so the field is in the responder chain
             // first — otherwise the keyboard doesn't come up for a just-added
             // subject (the row is still being inserted when onAppear fires).
