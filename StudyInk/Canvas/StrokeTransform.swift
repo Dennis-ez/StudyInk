@@ -9,6 +9,9 @@ struct StrokeSelection {
     var bounds: CGRect
     /// The selected strokes rendered alone, for the live rotation preview.
     var image: UIImage
+    /// The lasso loop the user drew (page space) — drawn as the marching-ants
+    /// outline, Apple-style, instead of a bounding box.
+    var polygon: [CGPoint] = []
 }
 
 enum StrokeSelector {
@@ -37,7 +40,7 @@ enum StrokeSelector {
         traits.performAsCurrent {
             image = PKDrawing(strokes: strokes).image(from: bounds, scale: 2)
         }
-        return StrokeSelection(pageIndex: pageIndex, strokeIndices: indices, bounds: bounds, image: image)
+        return StrokeSelection(pageIndex: pageIndex, strokeIndices: indices, bounds: bounds, image: image, polygon: polygon)
     }
 
     /// Ray-casting point-in-polygon.
@@ -183,7 +186,28 @@ struct StrokeTransformOverlay: View {
     @State private var scaleStart: CGFloat?
     @State private var antsPhase: CGFloat = 0
 
-    private let corners: [UnitPoint] = [.topLeading, .topTrailing, .bottomLeading, .bottomTrailing]
+    /// The marching-ants outline tracing the lasso loop (falling back to the
+    /// bounds), with the live move/rotate/scale baked in.
+    private func antsOutline(base: CGRect) -> Path {
+        let c = CGPoint(x: base.midX, y: base.midY)
+        let rad = rotation * .pi / 180
+        func tf(_ p: CGPoint) -> CGPoint {
+            var q = CGPoint(x: c.x + (p.x - c.x) * scale, y: c.y + (p.y - c.y) * scale)
+            let dx = q.x - c.x, dy = q.y - c.y
+            q = CGPoint(x: c.x + dx * cos(rad) - dy * sin(rad), y: c.y + dx * sin(rad) + dy * cos(rad))
+            return CGPoint(x: q.x + translation.width, y: q.y + translation.height)
+        }
+        let pts: [CGPoint] = selection.polygon.count >= 3
+            ? selection.polygon.map { tf(transform.toScreen($0)) }
+            : [CGPoint(x: base.minX, y: base.minY), CGPoint(x: base.maxX, y: base.minY),
+               CGPoint(x: base.maxX, y: base.maxY), CGPoint(x: base.minX, y: base.maxY)].map(tf)
+        var path = Path()
+        guard let first = pts.first else { return path }
+        path.move(to: first)
+        for p in pts.dropFirst() { path.addLine(to: p) }
+        path.closeSubpath()
+        return path
+    }
 
     var body: some View {
         let base = transform.toScreen(selection.bounds)
@@ -201,30 +225,20 @@ struct StrokeTransformOverlay: View {
                 .simultaneousGesture(twistGesture)
                 .simultaneousGesture(pinchGesture)
 
+            // The selected strokes preview (move/resize/rotate with the gestures).
             Image(uiImage: selection.image)
                 .resizable()
                 .frame(width: size.width, height: size.height)
-                .overlay(
-                    Rectangle().strokeBorder(
-                        Color.accentColor,
-                        style: StrokeStyle(lineWidth: 1.5, dash: [6, 4], dashPhase: antsPhase))
-                )
-                .overlay {
-                    ForEach(corners, id: \.self) { corner in
-                        Circle()
-                            .fill(.white)
-                            .frame(width: 15, height: 15)
-                            .overlay(Circle().strokeBorder(Color.accentColor, lineWidth: 2))
-                            .shadow(color: .black.opacity(0.2), radius: 1)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: Alignment(corner))
-                            .contentShape(Rectangle().size(width: 30, height: 30))
-                            .gesture(resizeGesture(center: center))
-                    }
-                }
                 .rotationEffect(.degrees(rotation))
                 .position(center)
                 .gesture(moveGesture)               // one finger drags
                 .simultaneousGesture(twistGesture)  // two fingers rotate
+
+            // Apple-style marching-ants OUTLINE tracing the lasso loop (not a box,
+            // no corner handles — resize is a pinch). Falls back to the bounds.
+            antsOutline(base: base)
+                .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 1.5, lineJoin: .round, dash: [6, 4], dashPhase: antsPhase))
+                .allowsHitTesting(false)
 
             // Apple-style edit menu, floating just above the selection.
             editMenu
@@ -289,21 +303,7 @@ struct StrokeTransformOverlay: View {
             .onEnded { _ in dragStart = nil }
     }
 
-    /// Uniform resize from a corner: scale by how the drag's distance from the
-    /// selection center changes — works under any rotation.
-    private func resizeGesture(center: CGPoint) -> some Gesture {
-        DragGesture(minimumDistance: 1, coordinateSpace: .named("strokeTransform"))
-            .onChanged { value in
-                if scaleStart == nil { scaleStart = scale }
-                let startDist = hypot(value.startLocation.x - center.x, value.startLocation.y - center.y)
-                let nowDist = hypot(value.location.x - center.x, value.location.y - center.y)
-                let factor = nowDist / max(startDist, 1)
-                scale = min(6, max(0.2, (scaleStart ?? 1) * factor))
-            }
-            .onEnded { _ in scaleStart = nil }
-    }
-
-    /// Pinch anywhere on the page to resize the selection (not just the corner
+    /// Pinch anywhere on the page to resize the selection (Apple-style — no corner
     /// handles).
     private var pinchGesture: some Gesture {
         MagnifyGesture(minimumScaleDelta: 0.01)

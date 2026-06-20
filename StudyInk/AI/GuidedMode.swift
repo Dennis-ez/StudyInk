@@ -123,16 +123,20 @@ final class GuidedModeController: ObservableObject {
         }.value
 
         let hint = """
-        GUIDED MODE: You are passively watching the student write. The image above is the student's CURRENT PAGE — read their handwriting from it (OCR is unreliable). Any OCR/typed text follows for reference.
-        FIRST read any PROBLEM STATEMENT on the page (typed, printed, or a pasted screenshot/photo — possibly Hebrew or another language) that defines the task, and notice WHERE in the solution the student is and whether they seem stuck (an unfinished line, a wrong turn, a long pause).
-        Decide whether ONE genuinely useful, proactive suggestion exists. A good suggestion:
-        - quotes or names the exact expression/line it is about (e.g. "you wrote lim x→0 sin(x)/x — want me to check the evaluation?")
-        - offers a concrete next action (check a step, verify a base case, test an edge case, finish a definition)
-        - is at most ~12 words, in the student's language
-        Do NOT comment on neat/complete work, restate the obvious, or suggest generic "keep going" encouragement.
-        Respond with ONLY a JSON object:
-        {"suggestion": "<the one-sentence suggestion>", "match_string": "<exact string copied verbatim from the page text it refers to — required whenever possible, else null>"}
-        If nothing clears that bar, respond with exactly {}.
+        GUIDED MODE — you are quietly watching the student work. Offer help ONLY when it is genuinely useful; you will be asked again as they keep writing, so stay SILENT when in doubt.
+        The image above is the student's CURRENT PAGE (read the handwriting from it — OCR is unreliable). First understand the PROBLEM / sub-question (typed, printed, or a pasted screenshot/photo; may be Hebrew/another language) and WHERE in the solution the student currently is.
+        Then, silently, WORK OUT the correct next step yourself. Now compare it to the student's LAST lines and decide if exactly one of these is clearly true:
+        - STUCK: an unfinished line they haven't progressed, a long pause, or the same step rewritten/erased.
+        - ERROR: they just made a mistake, or are about to take a wrong turn.
+        - MISSING: a key step or case is skipped.
+        Only then, give ONE concrete hint that:
+        - names the exact line/expression it is about,
+        - points to the next action or the error WITHOUT giving the full answer (a nudge, not the solution),
+        - is ≤12 words, in the student's language.
+        Do NOT comment on correct/complete/neat work, restate the obvious, or give generic encouragement.
+        Reason briefly if you need to, then output ONLY a JSON object (you may fence it in a ```json block):
+        {"suggestion": "<one sentence>", "match_string": "<exact string copied verbatim from the page it refers to, or null>"}
+        If nothing clears that bar, output exactly {}.
 
         OCR/typed text (may be empty or wrong):
         \(content.prefix(3000))
@@ -149,7 +153,7 @@ final class GuidedModeController: ObservableObject {
             let raw = try await AIService.send(
                 system: SystemPrompt.tutor(subjectContext: note.subjectContext ?? "calculus1"),
                 messages: [.user(blocks)],
-                maxTokens: 300
+                maxTokens: 700   // room to work out the next step before deciding
             )
             guard let data = extractJSON(from: raw)?.data(using: .utf8),
                   let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
