@@ -98,6 +98,11 @@ final class AmbientTutorController: ObservableObject {
     private(set) var lastLineRects: [CGRect] = []
     /// Guards the idle auto-trigger so we only suggest once per writing burst.
     private var lastGhostSourceLine: String?
+    /// Memoised check results, per page. Re-running "Check my work" on a page
+    /// whose content hasn't changed re-streams the SAME verdicts instead of
+    /// re-calling the model — so repeated taps are deterministic (vision models
+    /// vary run-to-run even at temperature 0). Keyed by a content signature.
+    private var checkCache: [String: [Verdict]] = [:]
     @AppStorage("ambient.sensitivity") private var sensitivityRaw = AmbientSensitivity.helpful.rawValue
 
     var sensitivity: AmbientSensitivity {
@@ -181,6 +186,19 @@ final class AmbientTutorController: ObservableObject {
             return
         }
 
+        // Deterministic repeats: if nothing on the page has changed since the
+        // last grade, re-stream the cached verdicts rather than re-asking the
+        // (run-to-run variable) model.
+        let signature = "\(pageIndex)#\(page.drawing.strokes.count)#"
+            + lines.map(\.text).joined(separator: "|") + "#" + problem
+        if let cached = checkCache[signature] {
+            await stream(verdicts: cached, lines: lines, pageIndex: pageIndex)
+            if items(onPage: pageIndex).isEmpty {
+                showNotice(String(localized: "ambient.notice.allGood"))
+            }
+            return
+        }
+
         do {
             let context = await NoteContextBuilder.build(
                 note: note, currentPageIndex: pageIndex, darkMode: darkMode
@@ -205,11 +223,10 @@ final class AmbientTutorController: ObservableObject {
                 guard !covered.contains(i) else { return false }
                 let t = line.text.trimmingCharacters(in: .whitespaces)
                 guard !t.hasSuffix(":"), !Self.isOpenLine(t) else { return false }     // header / unfinished
-                let hasMath = t.contains(where: { $0.isNumber || "+-=×÷*/^()√∫π".contains($0) })
-                let words = t.filter(\.isLetter).count
-                // Re-grade an equation OR a substantial worded claim (e.g. a Hebrew
-                // "no critical points" conclusion) — both need a real verdict.
-                return hasMath || words >= 4
+                // Re-grade ANY uncovered region with real content (an equation, a
+                // digit, or a worded claim). Only bare/stray fragments are skipped,
+                // so the page gets fully covered instead of silently dropping lines.
+                return t.contains(where: { $0.isNumber || $0.isLetter || "+-=×÷*/^()√∫π".contains($0) })
             }
             if !missing.isEmpty {
                 let numbered = missing.map { "\($0.offset): \($0.element.text)" }.joined(separator: "\n")
@@ -227,6 +244,9 @@ final class AmbientTutorController: ObservableObject {
                     verdicts += Self.parseVerdicts(raw2).filter { !still.contains($0.line) }
                 }
             }
+            // Cache the completed grade so re-running on this unchanged page is
+            // deterministic (identical glyphs every tap).
+            checkCache[signature] = verdicts
             await stream(verdicts: verdicts, lines: lines, pageIndex: pageIndex)
             // Nothing settled in the lane (e.g. Subtle with no errors): say so,
             // instead of looking like the tap did nothing.

@@ -101,7 +101,7 @@ enum PageRenderer {
 
         // Rasterize the PDF at the destination's actual pixel scale (capped to
         // bound memory) so it stays sharp at retina + zoom, not a soft 2x.
-        let pixelScale = min(max(abs(cg.ctm.a), 2), 3)
+        let pixelScale = min(max(abs(cg.ctm.a), 2), 4)
         if snapshot.template == .customPDF, let data = snapshot.customTemplatePDF,
            let pdfImage = PDFTemplateRenderer.image(from: data, targetWidth: snapshot.pageSize.width * pixelScale, darkMode: darkMode) {
             // Aspect-fit: a PDF must never run wider (or taller) than the page.

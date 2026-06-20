@@ -21,12 +21,15 @@ enum ToolbarDock: String, CaseIterable, Codable {
 struct FloatingToolbar: View {
     @ObservedObject var controller: CanvasController
     @AppStorage("toolbar.dock") private var dockRaw = ToolbarDock.top.rawValue
-    // v2: hand tool added, eraser collapsed to one slot (object/pixel toggles inline).
-    @AppStorage("toolbar.tools.v2") private var enabledToolsRaw = ToolKind.allCases
-        .filter { $0 != .eraserObject }
+    // v3: default to the five core tools that fit the bar without paging —
+    // pen, highlighter, pencil, eraser, lasso. The rest (fountain, monoline,
+    // hand) stay available via Customize.
+    @AppStorage("toolbar.tools.v3") private var enabledToolsRaw =
+        [ToolKind.ballpoint, .highlighter, .pencil, .eraserPixel, .lasso]
         .map(\.rawValue).joined(separator: ",")
-    /// Removable non-tool buttons: ruler, text box, and the editor's extras.
-    @AppStorage("toolbar.accessories") private var enabledAccessoriesRaw = "ruler,textbox,ask-ai,ai-history"
+    /// Removable non-tool buttons. v2: dropped the ruler + text-box defaults so
+    /// eraser/lasso own those slots; both are re-addable via Customize.
+    @AppStorage("toolbar.accessories.v2") private var enabledAccessoriesRaw = "ask-ai,ai-history"
     /// The quick strip (colors/sizes) — opened by re-tapping the active tool.
     @State private var showInlineOptions = false
     @Environment(\.aiAccent) private var aiAccent

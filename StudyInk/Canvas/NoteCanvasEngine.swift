@@ -567,6 +567,20 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
                 renderImage(for: index)
             }
         }
+        // The active page's BACKGROUND (paper/template/PDF) is drawn by the
+        // container's own CGContext — no PencilKit layer tree — so it can render
+        // sharper than the 3x ink ceiling without the ink-breakage risk. PDFs
+        // are vector, so this keeps them crisp deep into zoom instead of going
+        // soft "like an image". Bounded to the single active page for memory.
+        if containers.indices.contains(activeIndex) {
+            let bg = min(max(zoomScale, 1), 4) * UIScreen.main.scale
+            let active = containers[activeIndex]
+            if abs(active.contentScaleFactor - bg) > 0.25 {
+                active.contentScaleFactor = bg
+                active.layer.contentsScale = bg
+                active.setNeedsDisplay()
+            }
+        }
     }
     // NOTE: a "sharp deep-zoom overlay" (rendering the visible ink slice at
     // full zoom resolution over the canvas) was tried here and correlated

@@ -16,7 +16,7 @@ struct NoteEditorView: View {
     @State private var editingBoxID: UUID?
     @State private var selectedMediaID: UUID?
     @State private var distractionFree = false
-    @State private var showPageStrip = true
+    @State private var showPageStrip = false
     /// Debounce for the ambient ghost suggestion (fires when the pen goes idle).
     @State private var ghostIdleTask: Task<Void, Never>?
     /// 0 = closed, 1 = notes pane, 2 = notes pane + subjects sidebar.
@@ -310,32 +310,9 @@ struct NoteEditorView: View {
                                     }
                                 }
                         )
-                    } else {
-                        Button {
-                            Haptics.selection()
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showPageStrip = true }
-                        } label: {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(.secondary)
-                                .frame(width: 22, height: 52)
-                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 9))
-                                .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(SemanticColor.toolbarBorder, lineWidth: 0.5))
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.trailing, 3)
-                        .transition(.move(edge: .trailing).combined(with: .opacity))
-                        .accessibilityLabel(Text("page.showNavigator"))
-                        .gesture(
-                            DragGesture(minimumDistance: 16)
-                                .onEnded { value in
-                                    if value.translation.width < -24 {
-                                        Haptics.selection()
-                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showPageStrip = true }
-                                    }
-                                }
-                        )
                     }
+                    // Hidden by default with no pull-tab; reopen from the header
+                    // pages button (top bar).
                 }
 
                 // Two-stage drawer: first edge swipe shows the notes of the
