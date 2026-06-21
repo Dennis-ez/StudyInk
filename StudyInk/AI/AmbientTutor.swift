@@ -385,13 +385,20 @@ final class AmbientTutorController: ObservableObject {
 
     private static let ghostSystem = "You are a calculus/algebra tutor giving a student the next line of their solution. READ their handwriting from the attached page image (OCR misreads lim/∫/fractions — trust the image). FIRST read any problem statement on the page — typed, printed, or a pasted screenshot/photo, possibly in another language (e.g. Hebrew) — that defines the function/task. Then actually DO THE MATH: work out the genuine next step toward solving THAT problem (e.g. fully simplify a derivative, factor, take a limit), and give the worked-out result — never just re-copy what the student already wrote, never a half-expression. Output a JSON object: {\"next\":\"<that one line as LaTeX: \\\\frac{num}{den}, x^{2}, \\\\sqrt{...}, · for multiply; no $ delimiters, no words>\",\"why\":\"<ONE short sentence, in the student's language, explaining WHY this is the next step (which rule/operation and on what)>\"}. If you can't produce a correct, useful line, output {}."
 
-    /// Pulls the {next, why} out of the ghost response (tolerates fences / prose).
+    /// Pulls the {next, why} out of the ghost response (tolerates fences / prose /
+    /// truncation). Critically, it NEVER falls back to dumping the raw string: a
+    /// response that looks like JSON but won't parse returns empty, so we never
+    /// write `{"next":"…` braces onto the page as ink.
     private static func parseGhost(_ raw: String) -> (String, String?) {
         var src = raw
         if let f = raw.range(of: "```json", options: .caseInsensitive),
            let c = raw.range(of: "```", range: f.upperBound..<raw.endIndex) {
             src = String(raw[f.upperBound..<c.lowerBound])
+        } else if let f = raw.range(of: "```"),
+                  let c = raw.range(of: "```", range: f.upperBound..<raw.endIndex) {
+            src = String(raw[f.upperBound..<c.lowerBound])
         }
+        // 1) Strict JSON object.
         if let s = src.firstIndex(of: "{"), let e = src.lastIndex(of: "}"),
            let data = String(src[s...e]).data(using: .utf8),
            let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -399,18 +406,60 @@ final class AmbientTutorController: ObservableObject {
             let why = (obj["why"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
             return (next, (why?.isEmpty == false) ? why : nil)
         }
-        return (raw, nil)   // not JSON — treat the whole thing as the next line
+        // 2) Regex-extract the string values — survives truncation (a cut-off
+        //    response with no closing brace) and stray escaping.
+        let nextVal = firstCapture(#""next"\s*:\s*"((?:[^"\\]|\\.)*)""#, in: src).map(unescapeJSON)
+        let whyVal = firstCapture(#""why"\s*:\s*"((?:[^"\\]|\\.)*)""#, in: src).map(unescapeJSON)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let nextVal, !nextVal.isEmpty {
+            return (nextVal, (whyVal?.isEmpty == false) ? whyVal : nil)
+        }
+        // 3) It tried to be JSON but we couldn't recover a value → render nothing
+        //    rather than spilling braces/keys onto the page.
+        if src.contains("\"next\"") || src.contains("\"why\"") || src.contains("{") {
+            return ("", nil)
+        }
+        // 4) Genuinely plain text — treat the whole thing as the next line.
+        return (raw, nil)
+    }
+
+    /// First capture group of `pattern` in `s`, or nil.
+    private static func firstCapture(_ pattern: String, in s: String) -> String? {
+        guard let re = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators]),
+              let m = re.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)),
+              m.numberOfRanges > 1, let r = Range(m.range(at: 1), in: s) else { return nil }
+        return String(s[r])
+    }
+
+    /// Minimal JSON-string unescape: `\"`→`"`, `\\`→`\` (keeping LaTeX commands
+    /// like `\frac` intact). Newlines collapse to spaces.
+    private static func unescapeJSON(_ s: String) -> String {
+        s.replacingOccurrences(of: "\\\"", with: "\"")
+            .replacingOccurrences(of: "\\\\", with: "\\")
+            .replacingOccurrences(of: "\\n", with: " ")
+            .replacingOccurrences(of: "\\/", with: "/")
     }
 
     private static func cleanGhost(_ raw: String) -> String {
         let lines = raw.split(whereSeparator: \.isNewline).map { String($0) }
         guard var text = lines.first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) else { return "" }
+        // \text{…}/\mathrm{…} wrap a worded/Hebrew conclusion — unwrap to the inner
+        // text (InkWriter has no \text layout; the braces would render literally).
+        for cmd in ["text", "mathrm", "mbox", "operatorname"] {
+            text = text.replacingOccurrences(
+                of: "\\\\\(cmd)\\s*\\{([^{}]*)\\}", with: "$1",
+                options: .regularExpression)
+        }
         // Keep LaTeX (\frac, ^, _) — InkWriter lays it out as 2D ink. Strip $…$
         // math delimiters and a leading '='.
         text = text
             .replacingOccurrences(of: "*", with: "·")
             .replacingOccurrences(of: "$", with: "")
             .trimmingCharacters(in: CharacterSet(charactersIn: " `'\"="))
+        // Any JSON skeleton that slipped through (a stray key/brace) → reject.
+        if text.contains("\"next\"") || text.contains("\"why\"") || text.hasPrefix("{") {
+            return ""
+        }
         return text
     }
 
@@ -499,8 +548,15 @@ final class AmbientTutorController: ObservableObject {
     discontinuities, a monotonicity/asymptote claim). Judge a worded conclusion by \
     comparing it to what YOU computed (e.g. if f'(x)=0 has a solution in the domain, \
     "no critical points" is WRONG).
+    GRADE THE EXACT VALUE SHOWN. Compare the student's sign, number, and variable to \
+    YOUR computed value digit-for-digit. Do NOT give benefit of the doubt: if the \
+    image shows "x≠1" but the true exclusion is x=−1, that is WRONG — never assume OCR \
+    or the student dropped a minus sign or swapped a value. The most common real \
+    mistakes are exactly these — a wrong sign, a wrong root, an off-by-one. Marking \
+    wrong work "correct" is the worst failure here; when the value you see does not \
+    equal the value you computed, it is "wrong".
     Classify EVERY region index, in order:
-    - "correct"   — you VERIFIED it matches your solution. If you can't verify it, or you are unsure, do NOT mark correct — use "wrong" or a low conf.
+    - "correct"   — the value shown EQUALS what you computed, exactly. If you can't read it, can't verify it, or are unsure, do NOT mark correct — use "wrong" or a low conf.
     - "wrong"     — a mistake or false claim. "note": one short sentence (words go HERE). "fix": ONLY the corrected line as bare LaTeX math — NO words, NO leading "=" — e.g. "-2(x+2)/(x+1)^{3} = 0" or "x = 3" (\\frac{num}{den}, x^{2}, \\sqrt{...}, · for multiply; no $). For a worded conclusion with no formula, omit "fix". "conf": 0.0–1.0.
     - "unfinished"— it LITERALLY ends with '=' or an operator with nothing after it.
     - "skip"      — ONLY a header/label/stray mark. NEVER "skip" real work or a real answer just because its OCR looks garbled — read the image and grade it.
