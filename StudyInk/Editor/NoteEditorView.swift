@@ -60,6 +60,9 @@ struct NoteEditorView: View {
     /// Armed after a short delay so the content loader only shows for a SLOW load —
     /// a fast note switch shouldn't flash it (that read as a hiccup).
     @State private var loaderArmed = false
+    /// Apple-style "Insert Space" drag session + its live inserted amount.
+    @State private var insertSpaceSession: InsertSpaceSession?
+    @State private var insertSpaceDrag: CGFloat = 0
     @State private var strokeSelection: StrokeSelection?
     @State private var strokeRotation: Double = 0
     @State private var strokeTranslation: CGSize = .zero
@@ -291,6 +294,18 @@ struct NoteEditorView: View {
             if let preview = warpTunnel.preview {
                 WarpTunnelPanel(preview: preview, onDismiss: { warpTunnel.dismiss() })
                     .zIndex(55)
+            }
+
+            // Insert Space: Apple-style drag-to-open-a-gap.
+            if let session = insertSpaceSession {
+                InsertSpaceOverlay(
+                    session: session,
+                    transform: transform,
+                    dragPage: $insertSpaceDrag,
+                    onCommit: commitInsertSpace,
+                    onCancel: { withAnimation(.easeOut(duration: 0.2)) { insertSpaceSession = nil } }
+                )
+                .zIndex(58)
             }
 
             if tutor.isThinking || ambient.isChecking || ambient.isSuggesting || guidedMode.isWatching || ghostWitness.isFitting {
@@ -598,8 +613,8 @@ struct NoteEditorView: View {
                         pasteMenuDivider
                     }
                     pasteMenuItem("media.insertSpace") {
-                        canvasController.engine?.insertSpace(belowPageY: pt.y - 20, amount: 110)
-                        dismissPasteMenu()
+                        startInsertSpace(atPageY: pt.y)
+                        withAnimation { pastePoint = nil }
                     }
                 }
                 .background(.regularMaterial, in: Capsule())
@@ -1689,6 +1704,32 @@ extension NoteEditorView {
 
     private var pasteMenuDivider: some View {
         Rectangle().fill(Color.primary.opacity(0.12)).frame(width: 1, height: 22)
+    }
+
+    // MARK: - Insert Space (Apple-style drag)
+
+    private func startInsertSpace(atPageY y: CGFloat) {
+        guard let page = currentPage else { return }
+        let pageSize = page.canvasSize
+        let line = max(0, min(y, pageSize.height - 20))
+        let snapshot = PageRenderer.Snapshot(page: page)
+        let dark = colorScheme == .dark
+        let full = PageRenderer.render(snapshot, darkMode: dark, scale: 2)
+        let s = full.scale
+        let cropPx = CGRect(x: 0, y: line * s, width: pageSize.width * s, height: (pageSize.height - line) * s)
+        guard let cg = full.cgImage?.cropping(to: cropPx) else { return }
+        let belowImage = UIImage(cgImage: cg, scale: s, orientation: .up)
+        insertSpaceDrag = 0
+        withAnimation(.easeOut(duration: 0.2)) {
+            insertSpaceSession = InsertSpaceSession(lineYPage: line, belowImage: belowImage, pageSize: pageSize)
+        }
+    }
+
+    private func commitInsertSpace() {
+        if let session = insertSpaceSession, insertSpaceDrag > 1 {
+            canvasController.engine?.insertSpace(belowPageY: session.lineYPage, amount: insertSpaceDrag)
+        }
+        withAnimation(.easeOut(duration: 0.2)) { insertSpaceSession = nil }
     }
 
     /// Paste the system-clipboard image as a media item at the tap.
