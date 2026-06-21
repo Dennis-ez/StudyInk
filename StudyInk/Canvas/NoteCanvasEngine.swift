@@ -1,6 +1,19 @@
 import SwiftUI
 import PencilKit
 
+/// PKCanvasView that suppresses the system "Select All / Insert Space / Paste"
+/// edit menu — the app provides its own themed finger-tap paste menu, so the
+/// built-in one (which pastes a screenshot, not ink) must not appear.
+final class InkCanvasView: PKCanvasView {
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        false
+    }
+    override func buildMenu(with builder: any UIMenuBuilder) {
+        builder.remove(menu: .standardEdit)
+        super.buildMenu(with: builder)
+    }
+}
+
 /// The document engine: one vertical UIScrollView containing every page of the
 /// note, stitched with small gaps — continuous scrolling across page
 /// boundaries, Notability-style. Pages stay separate entities: the page under
@@ -16,7 +29,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     private var layoutSignature = ""
     private let pageGap: CGFloat = 0
 
-    let canvas = PKCanvasView()
+    let canvas = InkCanvasView()
     private var activeIndex = 0
     private var isProgrammaticChange = false
     /// True once the active page's real drawing has been loaded into the live
@@ -1117,9 +1130,11 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     }
 
     /// Paste the in-app stroke clipboard. With a page point (finger-tap paste) the
-    /// clipboard is centred there; otherwise it's nudged off the original.
-    func pasteStrokes(at pagePoint: CGPoint? = nil) {
-        guard let strokes = controller.strokeClipboard, !strokes.isEmpty else { return }
+    /// clipboard is centred there; otherwise it's nudged off the original. Returns
+    /// the pasted strokes' bounds (CANVAS space) so the editor can select them.
+    @discardableResult
+    func pasteStrokes(at pagePoint: CGPoint? = nil) -> CGRect? {
+        guard let strokes = controller.strokeClipboard, !strokes.isEmpty else { return nil }
         var paste = PKDrawing(strokes: strokes)
         if let pagePoint {
             let target = CGPoint(x: pagePoint.x * inkScale, y: pagePoint.y * inkScale)
@@ -1131,6 +1146,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         let old = canvas.drawing
         canvas.undoManager?.registerUndo(withTarget: canvas) { target in target.drawing = old }
         canvas.drawing = old.appending(paste)
+        return paste.bounds
     }
 
     // MARK: - Pencil interactions

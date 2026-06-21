@@ -565,11 +565,22 @@ struct NoteEditorView: View {
             // Finger-tap paste menu (our theme): tap empty space with something
             // pasteable → Paste (ink) · Paste image · Insert space, right there.
             if let pt = pastePoint {
-                let screen = canvasController.canvasTransform(forPage: pageIndex).toScreen(pt)
+                // pastePoint is PAGE space, so map it through the PAGE transform —
+                // canvasTransform (inkScale× space) put the pill ~4× off the finger.
+                let screen = transform.toScreen(pt)
                 HStack(spacing: 0) {
                     if canvasController.hasPasteContent {
                         pasteMenuItem("media.paste") {
-                            canvasController.engine?.pasteStrokes(at: pt); dismissPasteMenu()
+                            // Paste the ink, then select it (transform mode) so it
+                            // can be moved/resized right away.
+                            if let bounds = canvasController.engine?.pasteStrokes(at: pt) {
+                                let r = bounds.insetBy(dx: -6, dy: -6)
+                                beginStrokeTransform(with: [
+                                    CGPoint(x: r.minX, y: r.minY), CGPoint(x: r.maxX, y: r.minY),
+                                    CGPoint(x: r.maxX, y: r.maxY), CGPoint(x: r.minX, y: r.maxY),
+                                ])
+                            }
+                            dismissPasteMenu()
                         }
                         pasteMenuDivider
                     }
