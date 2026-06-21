@@ -120,7 +120,6 @@ struct TransformLassoOverlay: View {
                     onEnded: { complete() },
                     onTap: { reset() }
                 )
-                .ignoresSafeArea()
 
                 if rectangular {
                     if let marquee {
@@ -137,6 +136,10 @@ struct TransformLassoOverlay: View {
                     .stroke(SemanticColor.aiCircleStroke, style: antsStyle)
                 }
             }
+            // Whole overlay ignores the safe area so the UIKit catcher's touch
+            // coordinates and the SwiftUI Path / transform.toPage all share ONE
+            // full-screen space — otherwise the lasso drew offset below the pen.
+            .ignoresSafeArea()
             .onAppear {
                 // Scroll one dash+gap (12pt) forever → marching ants.
                 withAnimation(.linear(duration: 0.5).repeatForever(autoreverses: false)) {
