@@ -92,7 +92,17 @@ private struct MediaItemView: View {
         }
         .onTapGesture(perform: onSelect)
         .gesture(isSelected && !cropMode ? dragGesture.simultaneously(with: twoFingerRotation) : nil)
-        .task(id: item.fileName) { image = MediaStore.image(named: item.fileName) }
+        .task(id: item.fileName) {
+            image = MediaStore.image(named: item.fileName)
+            // Resilience against the "gray shadow rectangle": if the first load
+            // missed, retry briefly instead of leaving the placeholder forever.
+            var tries = 0
+            while image == nil, tries < 5, !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 200_000_000)
+                image = MediaStore.image(named: item.fileName)
+                tries += 1
+            }
+        }
         .accessibilityLabel(Text(item.kind == .sticker ? "media.sticker" : "media.image"))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         // Only a SELECTED image is interactive; an unselected one lets touches

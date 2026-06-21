@@ -51,6 +51,8 @@ struct NoteEditorView: View {
     @State private var askLassoActive = false
     @State private var showGuidedLog = false
     @State private var transformLassoActive = false
+    /// Page-space point of a pending finger-tap "Paste" affordance (ink clipboard).
+    @State private var pastePoint: CGPoint?
     @State private var strokeSelection: StrokeSelection?
     @State private var strokeRotation: Double = 0
     @State private var strokeTranslation: CGSize = .zero
@@ -495,6 +497,28 @@ struct NoteEditorView: View {
                 )
             }
 
+            // Finger-tap "Paste" affordance: tap empty space with ink on the
+            // clipboard → a Paste chip appears there; tap it to drop the ink.
+            if let pt = pastePoint, canvasController.hasPasteContent {
+                let screen = canvasController.canvasTransform(forPage: pageIndex).toScreen(pt)
+                Button {
+                    canvasController.engine?.pasteStrokes(at: pt)
+                    Haptics.tap()
+                    withAnimation { pastePoint = nil }
+                } label: {
+                    Label("media.paste", systemImage: "doc.on.clipboard")
+                        .font(.subheadline.weight(.medium))
+                        .padding(.horizontal, 14).padding(.vertical, 9)
+                        .background(.regularMaterial, in: Capsule())
+                        .overlay(Capsule().strokeBorder(SemanticColor.separator))
+                        .shadow(color: .black.opacity(0.18), radius: 8, y: 2)
+                }
+                .buttonStyle(.plain)
+                .position(x: screen.x, y: max(40, screen.y - 28))
+                .transition(.scale(scale: 0.8).combined(with: .opacity))
+                .zIndex(40)
+            }
+
             // Guided-mode bottom suggestion card (auto-dismisses after 8s).
             if let suggestion = guidedMode.suggestion {
                 VStack {
@@ -607,6 +631,7 @@ struct NoteEditorView: View {
         .onChange(of: canvasController.drawingGestureBeganToken) { _, _ in
             ambient.invalidateGhost()
             scheduleGhostSuggestion()
+            if pastePoint != nil { pastePoint = nil }
         }
         // No system navigation bar — the canvas owns the full screen; actions
         // live in the fixed header + floating toolbar.
@@ -697,8 +722,16 @@ struct NoteEditorView: View {
                 if let hit = mediaItems.last(where: { $0.frame.contains(point) }) {
                     Haptics.selection()
                     selectedMediaID = hit.id
+                    pastePoint = nil
                 } else {
                     selectedMediaID = nil
+                    // Empty-space tap with ink on the clipboard → offer Paste here.
+                    if canvasController.hasPasteContent {
+                        Haptics.selection()
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) { pastePoint = point }
+                    } else {
+                        pastePoint = nil
+                    }
                 }
             }
             // Fresh shapes commit clean and stay unselected — node editing

@@ -245,6 +245,7 @@ struct StrokeTransformOverlay: View {
                 .position(center)
                 .gesture(moveGesture)               // one finger drags
                 .simultaneousGesture(twistGesture)  // two fingers rotate
+                .simultaneousGesture(pinchGesture)  // …and pinch resizes, even from INSIDE the selection
 
             // Apple-style marching-ants OUTLINE tracing the lasso loop (not a box,
             // no corner handles — resize is a pinch). Falls back to the bounds.

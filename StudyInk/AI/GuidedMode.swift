@@ -192,14 +192,26 @@ final class GuidedModeController: ObservableObject {
 
     /// Pins the nudge to the work it's about: resolves the matched text to its OCR
     /// rect and drops a "?" hint glyph beside that line (tappable → explanation).
+    /// The model often omits a usable match_string, so when it does, fall back to
+    /// the lowest line of work — the watcher almost always comments on the most
+    /// recent step — instead of silently placing no glyph.
     private func placeMarginHint(for suggestion: GuidedSuggestion, page: Page) async {
-        guard let ambient, let tutor,
-              let match = suggestion.matchString, !match.isEmpty else { return }
+        guard let ambient, let tutor else { return }
         let lines = await NoteContextBuilder.ocrLines(for: page)
-        var probe = AIAnnotationModel(kind: .highlight, matchString: match, colorToken: "aiHighlightBlue")
-        probe = AIResponseParser.resolve(annotations: [probe], against: lines).first ?? probe
-        guard let rect = probe.rect else { return }
-        ambient.placeHint(pageIndex: tutor.currentPageIndex, anchorRect: rect, body: suggestion.text)
+        var rect: CGRect?
+        if let match = suggestion.matchString, !match.isEmpty {
+            var probe = AIAnnotationModel(kind: .highlight, matchString: match, colorToken: "aiHighlightBlue")
+            probe = AIResponseParser.resolve(annotations: [probe], against: lines).first ?? probe
+            rect = probe.rect
+        }
+        // Fallback: the most recent (lowest) line with real content.
+        if rect == nil {
+            rect = lines
+                .filter { $0.text.trimmingCharacters(in: .whitespaces).count > 1 }
+                .max(by: { $0.rect.maxY < $1.rect.maxY })?.rect
+        }
+        guard let anchor = rect else { return }
+        ambient.placeHint(pageIndex: tutor.currentPageIndex, anchorRect: anchor, body: suggestion.text)
     }
 
     /// Student tapped the card → open a real bubble anchored at the referenced text.

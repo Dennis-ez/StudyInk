@@ -1099,11 +1099,18 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         }
     }
 
-    /// Paste the in-app stroke clipboard, offset so it's visibly a new copy.
-    func pasteStrokes() {
+    /// Paste the in-app stroke clipboard. With a page point (finger-tap paste) the
+    /// clipboard is centred there; otherwise it's nudged off the original.
+    func pasteStrokes(at pagePoint: CGPoint? = nil) {
         guard let strokes = controller.strokeClipboard, !strokes.isEmpty else { return }
         var paste = PKDrawing(strokes: strokes)
-        paste.transform(using: CGAffineTransform(translationX: 30 * inkScale, y: 30 * inkScale))
+        if let pagePoint {
+            let target = CGPoint(x: pagePoint.x * inkScale, y: pagePoint.y * inkScale)
+            let b = paste.bounds
+            paste.transform(using: CGAffineTransform(translationX: target.x - b.midX, y: target.y - b.midY))
+        } else {
+            paste.transform(using: CGAffineTransform(translationX: 30 * inkScale, y: 30 * inkScale))
+        }
         let old = canvas.drawing
         canvas.undoManager?.registerUndo(withTarget: canvas) { target in target.drawing = old }
         canvas.drawing = old.appending(paste)
