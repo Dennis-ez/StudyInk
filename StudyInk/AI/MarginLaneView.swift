@@ -136,6 +136,16 @@ struct GhostInkLayer: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel(Text("ambient.why"))
                 }
+                // Explicit dismiss — for when you don't want the suggestion (no
+                // need to flick it away).
+                Button(action: onDismiss) {
+                    Circle().fill(SemanticColor.surface)
+                        .frame(width: 22, height: 22)
+                        .overlay(Lucide("x", size: 11).foregroundStyle(SemanticColor.textMutedColor))
+                        .overlay(Circle().strokeBorder(SemanticColor.separator))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text("ai.dismiss"))
             }
             if showWhy, let why = ghost.why {
                 Text(verbatim: why)

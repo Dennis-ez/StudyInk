@@ -57,6 +57,9 @@ struct NoteEditorView: View {
     @State private var pastePoint: CGPoint?
     /// Smart Collapse: folded regions on the current page (session-scoped).
     @State private var foldedBlocks: [FoldedBlock] = []
+    /// Armed after a short delay so the content loader only shows for a SLOW load —
+    /// a fast note switch shouldn't flash it (that read as a hiccup).
+    @State private var loaderArmed = false
     @State private var strokeSelection: StrokeSelection?
     @State private var strokeRotation: Double = 0
     @State private var strokeTranslation: CGSize = .zero
@@ -154,15 +157,21 @@ struct NoteEditorView: View {
             // stroke-group index crash.
             .allowsHitTesting(selectedMediaID == nil && strokeSelection == nil && !transformLassoActive && editingShape == nil && canvasController.toolState.kind != .lasso)
 
-            // Loader over the canvas until the page's content (ink/PDF) is up.
-            // Also masks the brief stale-ink flash when rebuilding for a new note.
+            // Loader over the canvas until the page's content (ink/PDF) is up — but
+            // only after a short delay (loaderArmed), so a fast note switch doesn't
+            // flash it (that flash read as a hiccup). Still masks the stale-ink flash.
+            let showLoader = !canvasController.isContentReady && loaderArmed
             themeDesk
                 .ignoresSafeArea()
-                .overlay { ProgressView().controlSize(.large).tint(.secondary) }
-                .opacity(canvasController.isContentReady ? 0 : 1)
-                .allowsHitTesting(!canvasController.isContentReady)
-                .animation(.easeOut(duration: 0.3), value: canvasController.isContentReady)
+                .overlay { if showLoader { ProgressView().controlSize(.large).tint(.secondary) } }
+                .opacity(showLoader ? 1 : 0)
+                .allowsHitTesting(showLoader)
+                .animation(.easeOut(duration: 0.25), value: showLoader)
                 .zIndex(50)
+                .task {
+                    try? await Task.sleep(nanoseconds: 230_000_000)
+                    if !canvasController.isContentReady { loaderArmed = true }
+                }
 
             // Tap-anywhere catcher to drop the current media/text selection.
             if selectedMediaID != nil || editingBoxID != nil {
