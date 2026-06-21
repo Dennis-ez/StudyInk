@@ -148,6 +148,10 @@ enum InkWriter {
                 let a = parseGroup(sc); let b = parseGroup(sc); return .frac(a, b)
             case "sqrt":
                 return .sqrt(parseGroup(sc))
+            case "text", "mathrm", "mbox", "operatorname", "mathit", "mathbf", "mathsf":
+                // Render the wrapped words as-is — don't spill "text{ and" onto the
+                // page when the model emits \text{ and } inside a fix.
+                return parseGroup(sc)
             default:
                 return .text(symbol(cmd))
             }
