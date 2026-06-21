@@ -159,12 +159,26 @@ final class GuidedModeController: ObservableObject {
             let raw = try await AIService.send(
                 system: SystemPrompt.guidedWatcher,
                 messages: [.user(blocks)],
-                maxTokens: 700   // room to work out the next step before deciding
+                // Generous: Gemini 2.5 spends "thinking" tokens that count against
+                // this budget, so a tight cap (700) starved the actual output and
+                // truncated the {suggestion,…} JSON mid-string → nothing showed.
+                maxTokens: 2500
             )
-            guard let data = extractJSON(from: raw)?.data(using: .utf8),
-                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let text = object["suggestion"] as? String, !text.isEmpty else { return }
-            let new = GuidedSuggestion(text: text, matchString: object["match_string"] as? String)
+            // Parse the watcher reply, tolerating a TRUNCATED JSON (a thinking model
+            // can cut it off mid-string): fall back to a regex on the values.
+            var suggestion: String?
+            var match: String?
+            if let data = extractJSON(from: raw)?.data(using: .utf8),
+               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                suggestion = object["suggestion"] as? String
+                match = object["match_string"] as? String
+            }
+            if suggestion?.isEmpty != false {
+                suggestion = Self.regexCapture(#""suggestion"\s*:\s*"((?:[^"\\]|\\.)*)""#, in: raw)
+                match = match ?? Self.regexCapture(#""match_string"\s*:\s*"((?:[^"\\]|\\.)*)""#, in: raw)
+            }
+            guard let text = suggestion, !text.isEmpty else { return }
+            let new = GuidedSuggestion(text: text, matchString: (match?.isEmpty == false && match != "null") ? match : nil)
             show(new)
             await placeMarginHint(for: new, page: page)
         } catch {
@@ -231,6 +245,15 @@ final class GuidedModeController: ObservableObject {
             }
             await tutor.ask(question: suggestion.text, anchor: anchor)
         }
+    }
+
+    /// First capture group of `pattern` in `s` (used to recover values from a
+    /// truncated JSON reply).
+    private static func regexCapture(_ pattern: String, in s: String) -> String? {
+        guard let re = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators]),
+              let m = re.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)),
+              m.numberOfRanges > 1, let r = Range(m.range(at: 1), in: s) else { return nil }
+        return String(s[r])
     }
 
     /// Tolerates fenced code blocks and surrounding prose around the JSON object.

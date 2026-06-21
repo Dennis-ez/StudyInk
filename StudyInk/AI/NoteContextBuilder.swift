@@ -30,18 +30,28 @@ enum NoteContextBuilder {
         // Snapshot pages on the main actor (cheap), render off it (expensive) —
         // asking the AI must never freeze the canvas or keyboard.
         let snapshots = pages.map(PageRenderer.Snapshot.init)
-        let images = await Task.detached(priority: .userInitiated) {
-            snapshots.enumerated().map { index, snapshot in
-                // The current page is rendered at 2× so the model can READ small
-                // handwritten notation (stacked fractions, limit subscripts,
-                // exponents) — at 1× it can't and silently skips them. Other
-                // pages stay light (0.5×) since they're only background context.
-                PageRenderer.render(snapshot, darkMode: darkMode, scale: index == currentPageIndex ? 2.0 : 0.5)
+        // Only send images for the pages the model actually needs: the CURRENT
+        // page (2×, so small handwriting reads), plus the page(s) likely holding
+        // the problem statement — page 1, and any page carrying a pasted question
+        // image (media). Sending all 13 page images was a big token cost for no
+        // gain. Every page's OCR text still goes into the summary below.
+        let imageIndices: Set<Int> = {
+            var s: Set<Int> = [currentPageIndex]
+            if !snapshots.isEmpty { s.insert(0) }
+            for (i, snap) in snapshots.enumerated() where !snap.mediaItems.isEmpty { s.insert(i) }
+            return s
+        }()
+        let images: [Int: UIImage] = await Task.detached(priority: .userInitiated) {
+            var result: [Int: UIImage] = [:]
+            for index in imageIndices where snapshots.indices.contains(index) {
+                result[index] = PageRenderer.render(snapshots[index], darkMode: darkMode,
+                                                    scale: index == currentPageIndex ? 2.0 : 0.5)
             }
+            return result
         }.value
 
         for (index, page) in pages.enumerated() {
-            if images.indices.contains(index), let block = AIContent.image(images[index]) {
+            if let image = images[index], let block = AIContent.image(image) {
                 blocks.append(.text("Page \(index + 1) image:"))
                 blocks.append(block)
             }

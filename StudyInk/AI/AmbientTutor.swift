@@ -422,7 +422,9 @@ final class AmbientTutorController: ObservableObject {
                 : "The student's LAST handwritten line reads roughly: \"\(lastText)\". Give the SINGLE most useful next line toward solving the problem — continue from there, do NOT jump back to an earlier step. LaTeX (\\frac{num}{den}, x^{2}, \\sqrt{...}, · for multiply). Output ONLY the expression — no $ delimiters, no words. ALWAYS give your best next step; output nothing ONLY if the page is blank or truly unreadable."
             blocks.append(.text(instruction))
             blocks.append(.text("Write the \"why\" sentence in \(SystemPrompt.languageTarget)."))
-            let raw = try await AIService.send(system: Self.ghostSystem, messages: [.user(blocks)], maxTokens: 600)
+            // Headroom for Gemini 2.5 thinking tokens (which count against the cap)
+            // so the {next,why} JSON isn't truncated mid-string.
+            let raw = try await AIService.send(system: Self.ghostSystem, messages: [.user(blocks)], maxTokens: 1500)
             let (nextRaw, why) = Self.parseGhost(raw)
             let text = Self.cleanGhost(nextRaw)
             guard !text.isEmpty, text.count < 140 else { return }
