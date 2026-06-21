@@ -64,26 +64,42 @@ enum ShapeRecognizer {
             return lineFit(points, diagonal: diagonal)
         }
 
-        // Corners via Ramer–Douglas–Peucker; a smooth loop yields many corners,
-        // a deliberate polygon yields 3–6.
+        // 1) Axis-aligned rectangle / square: if every sample hugs the bounding
+        // box, snap straight to it. A circle bulges away from the box corners and
+        // fails this, so it's never mistaken for a box — and a wobbly square no
+        // longer RDP's into a stray pentagon/"octagon".
+        let aabb = [
+            CGPoint(x: box.minX, y: box.minY), CGPoint(x: box.maxX, y: box.minY),
+            CGPoint(x: box.maxX, y: box.maxY), CGPoint(x: box.minX, y: box.maxY),
+        ]
+        if box.width > 16, box.height > 16,
+           hugsPolygon(points, corners: aabb, tolerance: max(10, diagonal * 0.06)) {
+            return .polygon(aabb)
+        }
+
+        // Corners via Ramer–Douglas–Peucker; a smooth loop yields many shallow
+        // corners, a deliberate polygon yields 3–4 sharp ones.
         let epsilon = max(7, diagonal * 0.05)
         var corners = ramerDouglasPeucker(points, epsilon: epsilon)
         if corners.count > 1, distance(corners[0], corners[corners.count - 1]) < epsilon * 2 {
             corners.removeLast()
         }
+
+        // A CLEAN triangle/quad (3–4 corners that tightly hug their outline) stays
+        // a polygon — even a tilted square. Everything else that's roundish is an
+        // ellipse, tried BEFORE the many-corner polygon path: hand-drawn circles
+        // wobble, and were turning into hexagons because the polygon test won
+        // first and the old ellipse test (0.12) was far too strict.
+        let cleanPolygon = (3...4).contains(corners.count)
+            && hugsPolygon(points, corners: corners, tolerance: epsilon * 1.4)
+        if !cleanPolygon, let ellipse = ellipseFit(points, box: box, maxError: 0.24) {
+            return ellipse
+        }
         if (3...6).contains(corners.count),
            hugsPolygon(points, corners: corners, tolerance: epsilon * 1.6) {
-            // A circle RDPs into 4–6 shallow pseudo-corners that still hug
-            // their own outline, so it used to win as a polygon. When the
-            // points also fit an ellipse tightly, the ellipse is what the
-            // user meant — real rectangles/triangles fail this fit by a mile.
-            if corners.count >= 4, let ellipse = ellipseFit(points, box: box, maxError: 0.12) {
-                return ellipse
-            }
             return .polygon(snapCorners(corners))
         }
-
-        return ellipseFit(points, box: box)
+        return ellipseFit(points, box: box, maxError: 0.3)
     }
 
     /// Aligns recognized geometry with the page's template lines/grid.
