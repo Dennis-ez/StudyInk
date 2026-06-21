@@ -9,8 +9,14 @@ struct KaTeXView: UIViewRepresentable {
     @Binding var contentHeight: CGFloat
     @Environment(\.colorScheme) private var colorScheme
 
+    /// One shared web-content process for ALL KaTeX views. Without it every math
+    /// bubble spun up its OWN WebContent process (each ~2–4s to launch, and they
+    /// leaked on teardown). Sharing the pool collapses that to a single process.
+    private static let sharedPool = WKProcessPool()
+
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
+        config.processPool = Self.sharedPool
         config.userContentController.add(context.coordinator, name: "height")
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.isOpaque = false

@@ -198,7 +198,9 @@ final class GuidedModeController: ObservableObject {
         }
         dismissTask?.cancel()
         dismissTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(8))
+            // Linger: the watcher fires at most once per ~30s and the AI call takes
+            // ~10s, so a quick 8s card was easy to miss entirely.
+            try? await Task.sleep(for: .seconds(15))
             guard !Task.isCancelled else { return }
             withAnimation { self?.suggestion = nil }
         }
