@@ -304,14 +304,16 @@ final class AmbientTutorController: ObservableObject {
             // A header/label (ends with ':') is a section title, not work — no glyph.
             if text.hasSuffix(":") || text.hasSuffix("：") { continue }
             let rect = lines[v.line].rect
-            // Dedup: a stacked equation (fraction numerator + denominator) can
-            // arrive as two rows with only a thin gap between them — don't stamp a
-            // second glyph almost on top of the first. Uses the vertical GAP (so a
-            // tight stack dedups but consecutive equations, a full line apart,
-            // don't), and needs horizontal overlap so separate columns both show.
+            // Dedup ONLY a near-touching duplicate (e.g. a fraction's numerator and
+            // denominator that OCR split into two rows). The gap must be tiny — two
+            // distinct statements the student stacked (x≠1 over x≠-3) sit a real
+            // fraction of a line apart and BOTH deserve a glyph, so they must NOT
+            // collapse here. Requires strong horizontal overlap too.
             if placed.contains(where: { p in
                 let gap = max(p.minY, rect.minY) - min(p.maxY, rect.maxY)
-                return gap < 0.8 * min(p.height, rect.height) && p.minX < rect.maxX && rect.minX < p.maxX
+                let overlap = min(p.maxX, rect.maxX) - max(p.minX, rect.minX)
+                return gap < 0.25 * min(p.height, rect.height)
+                    && overlap > 0.5 * min(p.width, rect.width)
             }) { continue }
             placed.append(rect)
             if v.ok {
@@ -582,9 +584,13 @@ final class AmbientTutorController: ObservableObject {
     mistakes are exactly these — a wrong sign, a wrong root, an off-by-one. Marking \
     wrong work "correct" is the worst failure here; when the value you see does not \
     equal the value you computed, it is "wrong".
+    If the student lists SEVERAL values/conditions on separate lines (e.g. two
+    domain exclusions "x≠1" then "x≠-3", or several critical points), grade EACH
+    line on its own — a later line being wrong does not excuse an earlier one, and
+    a correct line below does not cover a wrong one above.
     Classify EVERY region index, in order:
     - "correct"   — the value shown EQUALS what you computed, exactly. If you can't read it, can't verify it, or are unsure, do NOT mark correct — use "wrong" or a low conf.
-    - "wrong"     — a mistake or false claim. "note": one short sentence (words go HERE). "fix": ONLY the corrected line as bare LaTeX math — NO words, NO leading "=" — e.g. "-2(x+2)/(x+1)^{3} = 0" or "x = 3" (\\frac{num}{den}, x^{2}, \\sqrt{...}, · for multiply; no $). For a worded conclusion with no formula, omit "fix". "conf": 0.0–1.0.
+    - "wrong"     — a mistake or false claim. "note": one short sentence (words go HERE). "fix": the corrected line as bare LaTeX math — NO words, NO leading "=" — e.g. "-2(x+2)/(x+1)^{3} = 0" or "x = 3" (\\frac{num}{den}, x^{2}, \\sqrt{...}, · for multiply; no $). ALWAYS include "fix" whenever a concrete corrected value or formula exists — INCLUDING when the student's claim was worded: if they wrote "no critical points" but there is one at x=-2, set "fix":"x = -2"; if they wrote "x≠-3" but the exclusion is x=-1, set "fix":"x = -1". Omit "fix" ONLY when the correction is purely conceptual with no value/formula to write. "conf": 0.0–1.0.
     - "unfinished"— it LITERALLY ends with '=' or an operator with nothing after it.
     - "skip"      — ONLY a header/label/stray mark. NEVER "skip" real work or a real answer just because its OCR looks garbled — read the image and grade it.
     Return one entry for EVERY region index, in order — never drop a line.

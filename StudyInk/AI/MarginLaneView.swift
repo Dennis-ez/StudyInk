@@ -235,14 +235,19 @@ struct MarginNoteView: View {
             }
 
             HStack(spacing: 10) {
-                Button(action: onFixIt) {
-                    Text("ambient.fixIt")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 13).padding(.vertical, 6)
-                        .background(SemanticColor.success, in: Capsule())
+                // "Fix it" writes the corrected line as ink — only offer it when we
+                // actually have a correction to write (a conceptual-only note has
+                // nothing to land on the page, so the button would do nothing).
+                if let result = item.result, !result.isEmpty {
+                    Button(action: onFixIt) {
+                        Text("ambient.fixIt")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 13).padding(.vertical, 6)
+                            .background(SemanticColor.success, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
                 Button(action: onShowWhy) {
                     Text("ambient.showWhy")
                         .font(.caption.weight(.semibold))
