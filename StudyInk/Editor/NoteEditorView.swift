@@ -54,6 +54,8 @@ struct NoteEditorView: View {
     @State private var transformLassoActive = false
     /// Page-space point of a pending finger-tap "Paste" affordance (ink clipboard).
     @State private var pastePoint: CGPoint?
+    /// Smart Collapse: folded regions on the current page (session-scoped).
+    @State private var foldedBlocks: [FoldedBlock] = []
     @State private var strokeSelection: StrokeSelection?
     @State private var strokeRotation: Double = 0
     @State private var strokeTranslation: CGSize = .zero
@@ -520,8 +522,30 @@ struct NoteEditorView: View {
                         canvasController.engine?.duplicateStrokeSelection(rotation: t.0, scale: t.1, translation: t.2, selection: selection)
                         clearStrokeSelection()
                     },
-                    onDelete: { canvasController.engine?.deleteStrokeSelection(); clearStrokeSelection() }
+                    onDelete: { canvasController.engine?.deleteStrokeSelection(); clearStrokeSelection() },
+                    onCollapse: {
+                        // Keep the strokes (cancel restores the lifted ones); a cover
+                        // hides them. selection.bounds is canvas (inkScale×) space.
+                        let s = canvasController.inkScale
+                        let b = selection.bounds
+                        let pageRect = CGRect(x: b.minX / s, y: b.minY / s, width: b.width / s, height: b.height / s)
+                        canvasController.engine?.cancelStrokeSelection()
+                        withAnimation(.easeOut(duration: 0.25)) {
+                            foldedBlocks.append(FoldedBlock(rect: pageRect, count: selection.strokeIndices.count))
+                        }
+                        clearStrokeSelection()
+                    }
                 )
+            }
+
+            // Smart Collapse covers — hide folded blocks; tap to expand.
+            ForEach(foldedBlocks) { block in
+                FoldedBlockCover(
+                    block: block,
+                    transform: canvasController.canvasTransform(forPage: pageIndex),
+                    onExpand: { withAnimation(.easeOut(duration: 0.2)) { foldedBlocks.removeAll { $0.id == block.id } } }
+                )
+                .zIndex(30)
             }
 
             // Finger-tap "Paste" affordance: tap empty space with ink on the
@@ -1580,6 +1604,7 @@ extension NoteEditorView {
         mediaItems = currentPage?.mediaItems ?? []
         editingBoxID = nil
         selectedMediaID = nil
+        foldedBlocks = []   // folds are session/per-page-view scoped for now
     }
 
     /// Typing in a text box mutates state on every keystroke; encoding JSON,

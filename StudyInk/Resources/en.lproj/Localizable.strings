@@ -278,6 +278,8 @@
 "ai.fitSketch" = "Fit My Sketch";
 "ai.ghost.dismiss" = "Clear guides";
 "ai.ghost.none" = "No sketch found to fit on this page.";
+"collapse.collapsed" = "Collapsed";
+"collapse.expand" = "Expand collapsed block";
 "ai.quiz.failed" = "Couldn't generate a quiz from this note yet — try adding more content.";
 "quiz.title" = "Quiz";
 "quiz.loading" = "Writing questions from your note…";

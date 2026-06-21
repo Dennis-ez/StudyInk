@@ -278,6 +278,8 @@
 "ai.fitSketch" = "התאם את השרטוט שלי";
 "ai.ghost.dismiss" = "נקה קווי עזר";
 "ai.ghost.none" = "לא נמצא שרטוט להתאמה בעמוד הזה.";
+"collapse.collapsed" = "מקופל";
+"collapse.expand" = "פתח בלוק מקופל";
 "ai.quiz.failed" = "עדיין אי אפשר ליצור בוחן מהמחברת הזו — נסו להוסיף עוד תוכן.";
 "quiz.title" = "בוחן";
 "quiz.loading" = "כותב שאלות מהמחברת…";
