@@ -108,6 +108,10 @@ final class AmbientTutorController: ObservableObject {
     /// re-calling the model — so repeated taps are deterministic (vision models
     /// vary run-to-run even at temperature 0). Keyed by a content signature.
     private var checkCache: [String: [Verdict]] = [:]
+    /// Signature of the most recent check. Re-tapping Check on the SAME page is
+    /// read as "regrade — you got it wrong", which bypasses the cache for a fresh
+    /// pass instead of replaying the same (possibly wrong) verdicts.
+    private var lastCheckSignature: String?
     @AppStorage("ambient.sensitivity") private var sensitivityRaw = AmbientSensitivity.helpful.rawValue
 
     var sensitivity: AmbientSensitivity {
@@ -237,7 +241,12 @@ final class AmbientTutorController: ObservableObject {
         // cache and surface different verdicts for the same work.
         let inkHash = page.drawing.dataRepresentation().hashValue
         let signature = "\(pageIndex)#\(page.drawing.strokes.count)#\(inkHash)#\(page.mediaItems.count)"
-        if let cached = checkCache[signature] {
+        // A first check (or one after edits / on another page) replays the cache
+        // for consistency; an immediate RE-TAP on the same unchanged page forces a
+        // fresh grade so a wrong verdict isn't sticky.
+        let forceFresh = (signature == lastCheckSignature)
+        lastCheckSignature = signature
+        if !forceFresh, let cached = checkCache[signature] {
             await stream(verdicts: cached, lines: lines, pageIndex: pageIndex)
             if items(onPage: pageIndex).isEmpty {
                 showNotice(String(localized: "ambient.notice.allGood"))
