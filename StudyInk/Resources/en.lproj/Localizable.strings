@@ -112,6 +112,8 @@
 "media.copy" = "Copy";
 "media.cut" = "Cut";
 "media.crop" = "Crop";
+"media.pasteImage" = "Paste Image";
+"media.insertSpace" = "Insert Space";
 "settings.ai.lang" = "Response language";
 "settings.ai.lang.device" = "App language";
 "settings.ai.lang.context" = "Language of the work";

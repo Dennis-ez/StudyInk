@@ -562,26 +562,31 @@ struct NoteEditorView: View {
                 .zIndex(30)
             }
 
-            // Finger-tap "Paste" affordance: tap empty space with ink on the
-            // clipboard → a Paste chip appears there; tap it to drop the ink.
-            if let pt = pastePoint, canvasController.hasPasteContent {
+            // Finger-tap paste menu (our theme): tap empty space with something
+            // pasteable → Paste (ink) · Paste image · Insert space, right there.
+            if let pt = pastePoint {
                 let screen = canvasController.canvasTransform(forPage: pageIndex).toScreen(pt)
-                Button {
-                    canvasController.engine?.pasteStrokes(at: pt)
-                    Haptics.tap()
-                    withAnimation { pastePoint = nil }
-                } label: {
-                    // iOS-default paste-pill look: plain "Paste", neutral material.
-                    Text("media.paste")
-                        .font(.subheadline)
-                        .foregroundStyle(.primary)
-                        .padding(.horizontal, 16).padding(.vertical, 8)
-                        .background(.regularMaterial, in: Capsule())
-                        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.08)))
-                        .shadow(color: .black.opacity(0.16), radius: 8, y: 2)
+                HStack(spacing: 0) {
+                    if canvasController.hasPasteContent {
+                        pasteMenuItem("media.paste") {
+                            canvasController.engine?.pasteStrokes(at: pt); dismissPasteMenu()
+                        }
+                        pasteMenuDivider
+                    }
+                    if UIPasteboard.general.hasImages {
+                        pasteMenuItem("media.pasteImage") { pasteImage(at: pt); dismissPasteMenu() }
+                        pasteMenuDivider
+                    }
+                    pasteMenuItem("media.insertSpace") {
+                        canvasController.engine?.insertSpace(belowPageY: pt.y - 20, amount: 110)
+                        dismissPasteMenu()
+                    }
                 }
-                .buttonStyle(.plain)
-                .position(x: screen.x, y: max(40, screen.y - 26))
+                .background(.regularMaterial, in: Capsule())
+                .overlay(Capsule().strokeBorder(Color.primary.opacity(0.08)))
+                .shadow(color: .black.opacity(0.16), radius: 8, y: 2)
+                .fixedSize()
+                .position(x: screen.x, y: max(44, screen.y - 28))
                 .transition(.scale(scale: 0.8).combined(with: .opacity))
                 .zIndex(40)
             }
@@ -805,8 +810,9 @@ struct NoteEditorView: View {
                     pastePoint = nil
                 } else {
                     selectedMediaID = nil
-                    // Empty-space tap with ink on the clipboard → offer Paste here.
-                    if canvasController.hasPasteContent {
+                    // Empty-space tap with something pasteable (ink or an image on
+                    // the system clipboard) → our themed paste menu here.
+                    if canvasController.hasPasteContent || UIPasteboard.general.hasImages {
                         Haptics.selection()
                         withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) { pastePoint = point }
                     } else {
@@ -1641,6 +1647,41 @@ extension NoteEditorView {
         } else if let data = try? JSONEncoder().encode(foldedBlocks) {
             UserDefaults.standard.set(data, forKey: key)
         }
+    }
+
+    // MARK: - Finger-tap paste menu
+
+    private func dismissPasteMenu() {
+        Haptics.tap()
+        withAnimation { pastePoint = nil }
+    }
+
+    private func pasteMenuItem(_ key: LocalizedStringKey, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(key)
+                .font(.subheadline)
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 14).padding(.vertical, 9)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var pasteMenuDivider: some View {
+        Rectangle().fill(Color.primary.opacity(0.12)).frame(width: 1, height: 22)
+    }
+
+    /// Paste the system-clipboard image as a media item at the tap.
+    private func pasteImage(at pagePoint: CGPoint) {
+        guard let image = UIPasteboard.general.image,
+              let data = image.pngData() ?? image.jpegData(compressionQuality: 0.9),
+              let name = MediaStore.save(data) else { return }
+        let w = min(image.size.width, 320)
+        let h = w * (image.size.height / max(image.size.width, 1))
+        let item = MediaItemModel(fileName: name, x: pagePoint.x - w / 2, y: pagePoint.y - h / 2, width: w, height: h)
+        mediaItems.append(item)
+        persistOverlays()
+        selectedMediaID = item.id
     }
 
     /// Typing in a text box mutates state on every keystroke; encoding JSON,

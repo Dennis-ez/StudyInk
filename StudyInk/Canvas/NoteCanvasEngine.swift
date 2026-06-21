@@ -1099,6 +1099,23 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         }
     }
 
+    /// Shifts every stroke BELOW `pageY` down by `amount` (page points) — the
+    /// "Insert Space" action, undoable.
+    func insertSpace(belowPageY pageY: CGFloat, amount: CGFloat) {
+        let yCanvas = pageY * inkScale
+        let dy = amount * inkScale
+        var strokes = canvas.drawing.strokes
+        var changed = false
+        for i in strokes.indices where strokes[i].renderBounds.minY > yCanvas {
+            strokes[i].transform = strokes[i].transform.concatenating(CGAffineTransform(translationX: 0, y: dy))
+            changed = true
+        }
+        guard changed else { return }
+        let old = canvas.drawing
+        canvas.undoManager?.registerUndo(withTarget: canvas) { $0.drawing = old }
+        canvas.drawing = PKDrawing(strokes: strokes)
+    }
+
     /// Paste the in-app stroke clipboard. With a page point (finger-tap paste) the
     /// clipboard is centred there; otherwise it's nudged off the original.
     func pasteStrokes(at pagePoint: CGPoint? = nil) {

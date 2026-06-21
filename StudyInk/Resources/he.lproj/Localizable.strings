@@ -112,6 +112,8 @@
 "media.copy" = "העתקה";
 "media.cut" = "גזירה";
 "media.crop" = "חיתוך";
+"media.pasteImage" = "הדבק תמונה";
+"media.insertSpace" = "הוסף רווח";
 "settings.ai.lang" = "שפת התשובה";
 "settings.ai.lang.device" = "שפת האפליקציה";
 "settings.ai.lang.context" = "שפת העבודה";
