@@ -521,7 +521,8 @@ struct NoteEditorView: View {
                 .zIndex(40)
             }
 
-            // Guided-mode bottom suggestion card (auto-dismisses after 8s).
+            // Guided-mode bottom suggestion card. High zIndex so nothing (AI overlay,
+            // margin lane) can sit over it.
             if let suggestion = guidedMode.suggestion {
                 VStack {
                     Spacer()
@@ -533,6 +534,7 @@ struct NoteEditorView: View {
                     .padding(.bottom, 64)
                 }
                 .transition(.move(edge: .bottom).combined(with: .opacity))
+                .zIndex(60)
             }
 
             // Guided-mode status: transient banner on activation + a persistent
@@ -634,6 +636,16 @@ struct NoteEditorView: View {
             ambient.invalidateGhost()
             scheduleGhostSuggestion()
             if pastePoint != nil { pastePoint = nil }
+        }
+        // When the watcher produces a nudge, drop its "?" glyph at the student's
+        // LAST pen location (where they're working = what the nudge is about). The
+        // OCR is too garbled to text-match the model's clean match_string, so the
+        // pen position is the reliable anchor.
+        .onChange(of: guidedMode.suggestion) { _, suggestion in
+            guard let suggestion else { return }
+            let anchor = lastStrokeAnchor ?? CGPoint(x: 120, y: 160)
+            let rect = CGRect(x: anchor.x - 24, y: anchor.y - 14, width: 48, height: 28)
+            ambient.placeHint(pageIndex: pageIndex, anchorRect: rect, body: suggestion.text)
         }
         // No system navigation bar — the canvas owns the full screen; actions
         // live in the fixed header + floating toolbar.

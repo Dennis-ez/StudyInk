@@ -180,7 +180,8 @@ final class GuidedModeController: ObservableObject {
             guard let text = suggestion, !text.isEmpty else { return }
             let new = GuidedSuggestion(text: text, matchString: (match?.isEmpty == false && match != "null") ? match : nil)
             show(new)
-            await placeMarginHint(for: new, page: page)
+            // The glyph is placed by the editor at the student's last pen location
+            // (the OCR is too garbled to text-match the model's clean match_string).
         } catch {
             // Don't fail silently and don't alert every 10s: surface the error
             // once and switch guided mode off so the user can fix the cause.
@@ -204,30 +205,6 @@ final class GuidedModeController: ObservableObject {
             guard !Task.isCancelled else { return }
             withAnimation { self?.suggestion = nil }
         }
-    }
-
-    /// Pins the nudge to the work it's about: resolves the matched text to its OCR
-    /// rect and drops a "?" hint glyph beside that line (tappable → explanation).
-    /// The model often omits a usable match_string, so when it does, fall back to
-    /// the lowest line of work — the watcher almost always comments on the most
-    /// recent step — instead of silently placing no glyph.
-    private func placeMarginHint(for suggestion: GuidedSuggestion, page: Page) async {
-        guard let ambient, let tutor else { return }
-        let lines = await NoteContextBuilder.ocrLines(for: page)
-        var rect: CGRect?
-        if let match = suggestion.matchString, !match.isEmpty {
-            var probe = AIAnnotationModel(kind: .highlight, matchString: match, colorToken: "aiHighlightBlue")
-            probe = AIResponseParser.resolve(annotations: [probe], against: lines).first ?? probe
-            rect = probe.rect
-        }
-        // Fallback: the most recent (lowest) line with real content.
-        if rect == nil {
-            rect = lines
-                .filter { $0.text.trimmingCharacters(in: .whitespaces).count > 1 }
-                .max(by: { $0.rect.maxY < $1.rect.maxY })?.rect
-        }
-        guard let anchor = rect else { return }
-        ambient.placeHint(pageIndex: tutor.currentPageIndex, anchorRect: anchor, body: suggestion.text)
     }
 
     /// Student tapped the card → open a real bubble anchored at the referenced text.
