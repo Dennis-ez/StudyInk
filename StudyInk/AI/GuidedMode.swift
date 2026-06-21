@@ -258,7 +258,7 @@ struct GuidedSuggestionCard: View {
         HStack(spacing: 10) {
             Image(systemName: "lightbulb.fill")
                 .foregroundStyle(SemanticColor.aiCircleStroke)
-            Text(suggestion.text)
+            Text(suggestion.text.mathToUnicode())
                 .font(.subheadline)
                 .multilineTextAlignment(isRTL ? .trailing : .leading)
             Spacer(minLength: 6)
@@ -299,7 +299,7 @@ struct GuidedLogView: View {
                         guidedMode.accept(item)
                     } label: {
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(item.text)
+                            Text(item.text.mathToUnicode())
                                 .font(.subheadline)
                                 .multilineTextAlignment(item.text.isMostlyRTL ? .trailing : .leading)
                                 .frame(maxWidth: .infinity, alignment: item.text.isMostlyRTL ? .trailing : .leading)

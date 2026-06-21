@@ -123,6 +123,22 @@ struct KaTeXView: UIViewRepresentable {
     }
 }
 
+extension String {
+    /// Inline LaTeX ($...$) → readable unicode (x^3 → x³, \neq → ≠ …), for plain
+    /// `Text` labels that can't host a KaTeX WebView — e.g. the guided-mode card.
+    func mathToUnicode() -> String {
+        guard contains("$") else { return self }
+        var s = self
+        if let re = try? NSRegularExpression(pattern: "\\$([^$]*)\\$") {
+            for m in re.matches(in: s, range: NSRange(s.startIndex..., in: s)).reversed() {
+                guard let full = Range(m.range, in: s), let inner = Range(m.range(at: 1), in: s) else { continue }
+                s.replaceSubrange(full, with: InkWriter.plainText(from: String(s[inner])))
+            }
+        }
+        return s.replacingOccurrences(of: "$", with: "")
+    }
+}
+
 /// Drop-in rich text view: plain SwiftUI Text normally, KaTeX WebView when the
 /// content carries LaTeX. Handles RTL alignment for Hebrew responses.
 struct AIRichText: View {
