@@ -42,17 +42,20 @@ enum ShapeRecognizer {
 
     // MARK: - Recognition
 
-    static func recognize(_ stroke: PKStroke) -> Shape? {
-        recognize(points: sample(stroke))
+    static func recognize(_ stroke: PKStroke, minDiagonal: CGFloat = 40) -> Shape? {
+        recognize(points: sample(stroke), minDiagonal: minDiagonal)
     }
 
     /// Core recognizer over raw points — also used for in-flight (pencil still
-    /// touching) detection where no PKStroke exists yet.
-    static func recognize(points: [CGPoint]) -> Shape? {
+    /// touching) detection where no PKStroke exists yet. `minDiagonal` is the
+    /// smallest stroke (in the caller's coordinate space) worth snapping: set it
+    /// above handwriting size so letters/digits drawn while writing are never
+    /// converted to a line/box. Defaults to a permissive value for other callers.
+    static func recognize(points: [CGPoint], minDiagonal: CGFloat = 40) -> Shape? {
         guard points.count >= 10 else { return nil }
         let box = boundingBox(points)
         let diagonal = hypot(box.width, box.height)
-        guard diagonal > 40 else { return nil }
+        guard diagonal > minDiagonal else { return nil }
 
         let gapToClose = distance(points[0], points[points.count - 1])
         let closed = gapToClose < max(24, diagonal * 0.18)

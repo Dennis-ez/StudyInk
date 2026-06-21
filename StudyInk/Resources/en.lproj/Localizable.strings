@@ -238,6 +238,7 @@
 "ambient.notice.empty" = "Nothing to check yet — write something first.";
 "ambient.notice.unreadable" = "Couldn't read this page clearly. Try again.";
 "ambient.notice.allGood" = "Looks all good ✓";
+"ambient.notice.noSuggestion" = "No next step to suggest here.";
 "ai.menu" = "AI Tutor Menu";
 "ai.ask" = "Ask AI";
 "ai.pen" = "AI pen";

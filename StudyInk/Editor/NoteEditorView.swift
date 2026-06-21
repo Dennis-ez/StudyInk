@@ -141,7 +141,22 @@ struct NoteEditorView: View {
             // is what closes the drawer, and it lives INSIDE the canvas's
             // UIKit hierarchy. Disabling hit-testing here starved it and made
             // the drawer unclosable.
-            .allowsHitTesting(selectedMediaID == nil && strokeSelection == nil && !transformLassoActive && editingShape == nil)
+            // Also OFF whenever the lasso tool is active: our TransformLassoOverlay
+            // owns selection, so the PencilKit canvas must never receive those
+            // touches — otherwise its built-in PKLassoTool fires a SECOND (native)
+            // selection over ours, which spawned the system edit menu and a
+            // stroke-group index crash.
+            .allowsHitTesting(selectedMediaID == nil && strokeSelection == nil && !transformLassoActive && editingShape == nil && canvasController.toolState.kind != .lasso)
+
+            // Loader over the canvas until the page's content (ink/PDF) is up.
+            // Also masks the brief stale-ink flash when rebuilding for a new note.
+            themeDesk
+                .ignoresSafeArea()
+                .overlay { ProgressView().controlSize(.large).tint(.secondary) }
+                .opacity(canvasController.isContentReady ? 0 : 1)
+                .allowsHitTesting(!canvasController.isContentReady)
+                .animation(.easeOut(duration: 0.3), value: canvasController.isContentReady)
+                .zIndex(50)
 
             // Tap-anywhere catcher to drop the current media/text selection.
             if selectedMediaID != nil || editingBoxID != nil {
@@ -638,6 +653,8 @@ struct NoteEditorView: View {
                 }
             }
             loadPage()
+            // Safety net: never let the loader stick if the ready signal is missed.
+            Task { try? await Task.sleep(nanoseconds: 1_500_000_000); canvasController.markReady() }
             tutor.attach(note: note)
             tutor.isDarkMode = colorScheme == .dark
             guidedMode.tutor = tutor
@@ -1337,6 +1354,8 @@ extension NoteEditorView {
                 Task {
                     canvasController.commitPendingInk()
                     await ambient.suggestNext(note: note, pageIndex: pageIndex, darkMode: colorScheme == .dark)
+                    // Manual press should never look like it did nothing.
+                    if ambient.ghost == nil { ambient.showNotice(String(localized: "ambient.notice.noSuggestion")) }
                 }
             } label: { Label("ambient.suggest", systemImage: "wand.and.rays") }
             Picker(selection: Binding(get: { ambient.sensitivity }, set: {

@@ -263,6 +263,10 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
             lastStrokeCount = drawing.strokes.count
             seededActiveDrawing = true
         }
+        // Active page's content (cached render incl. ink) is up → drop the loader.
+        if containers.indices.contains(activeIndex), containers[activeIndex].snapshot != nil {
+            DispatchQueue.main.async { [controller] in controller.markReady() }
+        }
     }
 
     /// Re-render one page's cached image + template (after template/page edits).
@@ -698,7 +702,9 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
 
         let work = DispatchWorkItem { [weak self, weak canvas] in
             guard let self, let canvas, canvas.drawing.strokes.count == count else { return }
-            guard var shape = ShapeRecognizer.recognize(last) else { return }
+            // ~60pt (page) floor so handwriting-sized strokes are never snapped —
+            // only deliberate, larger shapes. inkScale converts page→canvas space.
+            guard var shape = ShapeRecognizer.recognize(last, minDiagonal: 60 * self.inkScale) else { return }
             // Align the clean shape with the page's lines/grid.
             if self.controller.snapToGrid,
                let snapshot = self.controller.snapshotProvider?(self.activeIndex),
@@ -730,7 +736,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     /// in-flight PencilKit stroke, and lay down the clean shape immediately.
     private func handleHoldSnap(rawPoints: [CGPoint]) {
         guard controller.autoShapes, controller.toolState.kind.isInking else { return }
-        guard var shape = ShapeRecognizer.recognize(points: rawPoints) else { return }
+        guard var shape = ShapeRecognizer.recognize(points: rawPoints, minDiagonal: 60 * inkScale) else { return }
         if controller.snapToGrid,
            let snapshot = controller.snapshotProvider?(activeIndex),
            let metrics = SnapMetrics.metrics(for: snapshot.template, spacing: snapshot.templateSpacing) {

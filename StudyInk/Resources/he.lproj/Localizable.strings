@@ -238,6 +238,7 @@
 "ambient.notice.empty" = "אין מה לבדוק עדיין — כתוב משהו קודם.";
 "ambient.notice.unreadable" = "לא הצלחתי לקרוא את הדף. נסה שוב.";
 "ambient.notice.allGood" = "הכול נראה תקין ✓";
+"ambient.notice.noSuggestion" = "אין צעד הבא להציע כאן.";
 "ai.menu" = "תפריט מורה AI";
 "ai.ask" = "שאלו את ה-AI";
 "ai.pen" = "עט AI";

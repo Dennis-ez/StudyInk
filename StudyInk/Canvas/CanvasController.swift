@@ -50,6 +50,12 @@ final class CanvasController: NSObject, ObservableObject {
     /// Lasso capture shape: false = freeform loop, true = drag a rectangle.
     @Published var lassoRectangular = false
 
+    /// False until the active page's content (snapshot + ink) is up. The editor
+    /// shows a loader over the canvas until then — which also masks the brief
+    /// stale-ink flash when rebuilding for a different note.
+    @Published var isContentReady = false
+    func markReady() { if !isContentReady { isContentReady = true } }
+
     var isDarkMode = false {
         didSet {
             applyTool()
