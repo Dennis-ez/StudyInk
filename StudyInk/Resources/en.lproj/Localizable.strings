@@ -275,6 +275,9 @@
 "ai.explainPage" = "Explain This Page";
 "ai.explainPage.question" = "Explain this page: summarize it and point out the key concepts.";
 "ai.quizMe" = "Quiz Me";
+"ai.fitSketch" = "Fit My Sketch";
+"ai.ghost.dismiss" = "Clear guides";
+"ai.ghost.none" = "No sketch found to fit on this page.";
 "ai.quiz.failed" = "Couldn't generate a quiz from this note yet — try adding more content.";
 "quiz.title" = "Quiz";
 "quiz.loading" = "Writing questions from your note…";

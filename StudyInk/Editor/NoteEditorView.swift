@@ -39,6 +39,7 @@ struct NoteEditorView: View {
     @State private var overlaySaveTask: Task<Void, Never>?
     @StateObject private var tutor = AITutorController()
     @StateObject private var guidedMode = GuidedModeController()
+    @StateObject private var ghostWitness = GhostWitnessController()
     @StateObject private var quiz = QuizController()
     /// Ambient Tutor — the margin lane + glyphs (Marginalia design).
     @StateObject private var ambient = AmbientTutorController()
@@ -248,13 +249,39 @@ struct NoteEditorView: View {
             // ANY AI work — Check my work, Circle & Ask, Explain, Answer in Ink —
             // shows one breathing sparkle in the top corner so "the AI is
             // thinking" (replaces the old 'Checking your work…' pill).
-            if tutor.isThinking || ambient.isChecking || ambient.isSuggesting || guidedMode.isWatching {
+            // Ghost Witness: faint dashed guide lines fitted over the sketch.
+            if let g = ghostWitness.geometry, g.pageIndex == pageIndex {
+                GhostWitnessOverlay(
+                    geometry: g,
+                    transform: canvasController.canvasTransform(forPage: pageIndex),
+                    onDismiss: { ghostWitness.dismiss() }
+                )
+                .zIndex(35)
+            }
+            if let notice = ghostWitness.notice {
+                VStack {
+                    Text(notice)
+                        .font(.subheadline)
+                        .padding(.horizontal, 16).padding(.vertical, 10)
+                        .background(.regularMaterial, in: Capsule())
+                        .overlay(Capsule().strokeBorder(SemanticColor.separator))
+                        .shadow(color: .black.opacity(0.15), radius: 8, y: 2)
+                        .padding(.top, 100)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity)
+                .transition(.opacity)
+                .allowsHitTesting(false)
+                .zIndex(36)
+            }
+
+            if tutor.isThinking || ambient.isChecking || ambient.isSuggesting || guidedMode.isWatching || ghostWitness.isFitting {
                 AIThinkingBadge()
                     .padding(.top, 84)
                     .padding(.trailing, showPageStrip ? 120 : 22)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                     .allowsHitTesting(false)
-                    .animation(.spring(response: 0.35, dampingFraction: 0.85), value: tutor.isThinking || ambient.isChecking || ambient.isSuggesting || guidedMode.isWatching)
+                    .animation(.spring(response: 0.35, dampingFraction: 0.85), value: tutor.isThinking || ambient.isChecking || ambient.isSuggesting || guidedMode.isWatching || ghostWitness.isFitting)
             }
 
             // Note title + creation time in the desk gutter above the first
@@ -698,6 +725,7 @@ struct NoteEditorView: View {
             tutor.isDarkMode = colorScheme == .dark
             guidedMode.tutor = tutor
             guidedMode.ambient = ambient
+            ghostWitness.tutor = tutor
             // Guided Mode (proactive watching) is folded into the sensitivity:
             // Helpful watches, Subtle/Off don't.
             guidedMode.isEnabled = (ambient.sensitivity == .helpful)
@@ -1418,6 +1446,9 @@ extension NoteEditorView {
             Button {
                 Task { await tutor.explainCurrentPage() }
             } label: { Label("ai.explainPage", systemImage: "doc.text.magnifyingglass") }
+            Button {
+                Task { await ghostWitness.fit(note: note, pageIndex: pageIndex, darkMode: colorScheme == .dark) }
+            } label: { Label("ai.fitSketch", systemImage: "scribble.variable") }
             Button {
                 Task { await quiz.start(note: note, pageIndex: pageIndex, darkMode: colorScheme == .dark) }
             } label: { Label("ai.quizMe", systemImage: "questionmark.app") }
