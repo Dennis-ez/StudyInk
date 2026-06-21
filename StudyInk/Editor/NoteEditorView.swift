@@ -195,6 +195,13 @@ struct NoteEditorView: View {
                     ambient.dismiss()
                     Task { await tutor.ask(question: "Explain why: \(item.body)", anchor: askAnchor) }
                 },
+                onOpenHint: { item in
+                    // A watcher's "?" — open the full explanation anchored at the
+                    // line it flagged, then retire the glyph.
+                    ambient.removeHint(item.id)
+                    let anchor = CGPoint(x: item.anchorRect.midX, y: item.anchorRect.midY)
+                    Task { await tutor.ask(question: item.body, anchor: anchor) }
+                },
                 onAcceptGhost: { g in
                     ambient.dismissGhost()
                     // Write where the preview was. Inline completions centre on the
@@ -219,13 +226,13 @@ struct NoteEditorView: View {
             // ANY AI work — Check my work, Circle & Ask, Explain, Answer in Ink —
             // shows one breathing sparkle in the top corner so "the AI is
             // thinking" (replaces the old 'Checking your work…' pill).
-            if tutor.isThinking || ambient.isChecking {
+            if tutor.isThinking || ambient.isChecking || ambient.isSuggesting || guidedMode.isWatching {
                 AIThinkingBadge()
                     .padding(.top, 84)
                     .padding(.trailing, showPageStrip ? 120 : 22)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                     .allowsHitTesting(false)
-                    .animation(.spring(response: 0.35, dampingFraction: 0.85), value: tutor.isThinking || ambient.isChecking)
+                    .animation(.spring(response: 0.35, dampingFraction: 0.85), value: tutor.isThinking || ambient.isChecking || ambient.isSuggesting || guidedMode.isWatching)
             }
 
             // Note title + creation time in the desk gutter above the first
@@ -629,6 +636,7 @@ struct NoteEditorView: View {
             tutor.attach(note: note)
             tutor.isDarkMode = colorScheme == .dark
             guidedMode.tutor = tutor
+            guidedMode.ambient = ambient
             // Guided Mode (proactive watching) is folded into the sensitivity:
             // Helpful watches, Subtle/Off don't.
             guidedMode.isEnabled = (ambient.sensitivity == .helpful)

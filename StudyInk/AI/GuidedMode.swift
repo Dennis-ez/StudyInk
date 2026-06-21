@@ -20,10 +20,14 @@ final class GuidedModeController: ObservableObject {
     @Published var suggestion: GuidedSuggestion?
     /// Transient, non-tappable status text (e.g. "guided mode is watching").
     @Published var banner: String?
+    /// True while the watcher is evaluating the page — drives the breathing badge.
+    @Published var isWatching = false
     /// Every suggestion made this session, newest first (tappable later).
     @Published var log: [GuidedSuggestion] = []
 
     weak var tutor: AITutorController?
+    /// The margin lane — so a nudge can drop a "?" glyph at the line it's about.
+    weak var ambient: AmbientTutorController?
     private var penPauseTask: Task<Void, Never>?
     private var dismissTask: Task<Void, Never>?
     private var bannerTask: Task<Void, Never>?
@@ -53,6 +57,7 @@ final class GuidedModeController: ObservableObject {
         stopTasks()
         suggestion = nil
         banner = nil
+        ambient?.clearHints()
     }
 
     /// Called for every new stroke: (re)arms the pen-pause timer so evaluation
@@ -112,7 +117,8 @@ final class GuidedModeController: ObservableObject {
         lastSeenText = signature
         lastRequestAt = Date()
         inFlight = true
-        defer { inFlight = false }
+        isWatching = true
+        defer { inFlight = false; isWatching = false }
 
         // Render the page so the model can read handwriting visually, not just OCR.
         let snapshot = PageRenderer.Snapshot(page: page)
@@ -158,7 +164,9 @@ final class GuidedModeController: ObservableObject {
             guard let data = extractJSON(from: raw)?.data(using: .utf8),
                   let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let text = object["suggestion"] as? String, !text.isEmpty else { return }
-            show(GuidedSuggestion(text: text, matchString: object["match_string"] as? String))
+            let new = GuidedSuggestion(text: text, matchString: object["match_string"] as? String)
+            show(new)
+            await placeMarginHint(for: new, page: page)
         } catch {
             // Don't fail silently and don't alert every 10s: surface the error
             // once and switch guided mode off so the user can fix the cause.
@@ -180,6 +188,18 @@ final class GuidedModeController: ObservableObject {
             guard !Task.isCancelled else { return }
             withAnimation { self?.suggestion = nil }
         }
+    }
+
+    /// Pins the nudge to the work it's about: resolves the matched text to its OCR
+    /// rect and drops a "?" hint glyph beside that line (tappable → explanation).
+    private func placeMarginHint(for suggestion: GuidedSuggestion, page: Page) async {
+        guard let ambient, let tutor,
+              let match = suggestion.matchString, !match.isEmpty else { return }
+        let lines = await NoteContextBuilder.ocrLines(for: page)
+        var probe = AIAnnotationModel(kind: .highlight, matchString: match, colorToken: "aiHighlightBlue")
+        probe = AIResponseParser.resolve(annotations: [probe], against: lines).first ?? probe
+        guard let rect = probe.rect else { return }
+        ambient.placeHint(pageIndex: tutor.currentPageIndex, anchorRect: rect, body: suggestion.text)
     }
 
     /// Student tapped the card → open a real bubble anchored at the referenced text.

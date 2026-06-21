@@ -378,14 +378,21 @@ enum InkWriter {
         for k in 0..<(bw * bh) { grid[k] = px[k] > 100 }
 
         zhangSuenThin(&grid, bw, bh)
-        let polys = traceSkeleton(grid, bw, bh)
+        // Stitch the skeleton fragments that meet at junctions into few long,
+        // pen-like polylines — so a glyph is ~1–2 strokes, not a dozen tiny ones
+        // (which made the eraser need many passes to clear).
+        let polys = stitch(traceSkeleton(grid, bw, bh))
         guard !polys.isEmpty else { return outlineFallback(for: path, glyphOrigin: glyphOrigin, ink: ink, width: width) }
 
         var strokes: [PKStroke] = []
         for poly in polys where poly.count >= 3 {   // drop tiny thinning spurs
             let pts = poly.map { (bx, by) -> CGPoint in
+                // The fill context is y-up (CG origin bottom-left) but the grid is
+                // indexed top-down (row 0 = top scanline), so invert the row back
+                // to drawing space — otherwise every glyph renders vertically
+                // mirrored (the "flipped ink").
                 let gx = (CGFloat(bx) - CGFloat(pad)) / s + box.minX
-                let gy = (CGFloat(by) - CGFloat(pad)) / s + box.minY
+                let gy = (CGFloat(bh - 1 - by) - CGFloat(pad)) / s + box.minY
                 return CGPoint(x: glyphOrigin.x + gx, y: glyphOrigin.y - gy)
             }
             strokes.append(stroke(through: pts, ink: ink, width: width))
@@ -459,6 +466,44 @@ enum InkWriter {
             if line.count >= 2 { lines.append(line) }
         }
         return lines
+    }
+
+    /// Greedily joins polylines that meet end-to-end (sharing a junction pixel)
+    /// into longer continuous strokes. The skeleton tracer breaks a glyph into a
+    /// fragment per branch; chaining them back means a character is 1–2 pen
+    /// strokes that the object eraser removes in a single pass (instead of needing
+    /// to scrub over each tiny fragment), and the ink reads more like a real hand.
+    private static func stitch(_ polys: [[(Int, Int)]]) -> [[(Int, Int)]] {
+        func d2(_ a: (Int, Int), _ b: (Int, Int)) -> Int {
+            let dx = a.0 - b.0, dy = a.1 - b.1; return dx * dx + dy * dy
+        }
+        let tol = 3   // ≤ ~1.7px — adjacent/diagonal skeleton pixels at a junction
+        var pool = polys.filter { $0.count >= 2 }
+        var out: [[(Int, Int)]] = []
+        while let start = pool.popLast() {
+            var chain = start
+            var extended = true
+            while extended {
+                extended = false
+                let tail = chain.last!
+                if let j = pool.firstIndex(where: { d2($0.first!, tail) <= tol || d2($0.last!, tail) <= tol }) {
+                    var seg = pool.remove(at: j)
+                    if d2(seg.last!, tail) <= tol { seg.reverse() }   // near end first
+                    chain.append(contentsOf: seg.dropFirst())          // skip the shared pixel
+                    extended = true
+                    continue
+                }
+                let head = chain.first!
+                if let j = pool.firstIndex(where: { d2($0.first!, head) <= tol || d2($0.last!, head) <= tol }) {
+                    var seg = pool.remove(at: j)
+                    if d2(seg.first!, head) <= tol { seg.reverse() }   // its far end becomes the new head
+                    chain.insert(contentsOf: seg.dropLast(), at: 0)
+                    extended = true
+                }
+            }
+            out.append(chain)
+        }
+        return out
     }
 
     /// Horizontal rule (fraction bar) as a single stroke.

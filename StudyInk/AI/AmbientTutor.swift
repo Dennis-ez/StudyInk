@@ -91,6 +91,9 @@ final class AmbientTutorController: ObservableObject {
     @Published var items: [MarginItem] = []
     @Published var openItemID: UUID?
     @Published var isChecking = false
+    /// True while a MANUAL "Suggest next step" is in flight — drives the same
+    /// breathing badge as a check (auto/idle suggestions stay silent).
+    @Published var isSuggesting = false
     /// Transient banner shown after a check (an error, or "nothing to check").
     @Published var notice: String?
     /// The next-step ghost suggestion, if any.
@@ -145,6 +148,28 @@ final class AmbientTutorController: ObservableObject {
             else { items.removeAll() }
             openItemID = nil
         }
+    }
+
+    /// Pins a proactive-watcher nudge to the line it's about: a "?" hint glyph in
+    /// the margin next to `anchorRect`, tappable to open the full explanation.
+    /// Only one live hint per page (a newer nudge replaces the older).
+    func placeHint(pageIndex: Int, anchorRect: CGRect, body: String) {
+        withAnimation(.easeOut(duration: 0.3)) {
+            items.removeAll { $0.pageIndex == pageIndex && $0.glyph == .hint }
+            items.append(MarginItem(pageIndex: pageIndex, anchorRect: anchorRect,
+                                    glyph: .hint, tone: .teaching, label: "", body: body))
+        }
+        Haptics.selection()
+    }
+
+    /// Removes a placed hint (it's been opened / addressed).
+    func removeHint(_ id: UUID) {
+        withAnimation(.easeOut(duration: 0.2)) { items.removeAll { $0.id == id } }
+    }
+
+    /// Removes every watcher hint (e.g. when the watcher is switched off).
+    func clearHints() {
+        withAnimation(.easeOut(duration: 0.2)) { items.removeAll { $0.glyph == .hint } }
     }
 
     // MARK: - Check my work (triggered)
@@ -356,6 +381,8 @@ final class AmbientTutorController: ObservableObject {
               last.text != lastGhostSourceLine else { return }
         let isOpen = openLine != nil || lowestShortIncomplete
 
+        if !auto { isSuggesting = true }
+        defer { if !auto { isSuggesting = false } }
         do {
             let context = await NoteContextBuilder.build(note: note, currentPageIndex: pageIndex, darkMode: darkMode)
             var blocks = context.blocks

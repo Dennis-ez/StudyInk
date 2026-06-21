@@ -12,6 +12,7 @@ struct MarginLaneView: View {
     var trailingInset: CGFloat = 0
     var onFixIt: (MarginItem) -> Void = { _ in }
     var onShowWhy: (MarginItem) -> Void = { _ in }
+    var onOpenHint: (MarginItem) -> Void = { _ in }
     var onAcceptGhost: (GhostSuggestion) -> Void = { _ in }
 
     /// Smallest page-space x a glyph may sit at (keeps it on the page for a
@@ -38,7 +39,9 @@ struct MarginLaneView: View {
                     AmbientGlyphView(glyph: item.glyph)
                         .frame(width: 44, height: 44)
                         .contentShape(Circle())
-                        .onTapGesture { ambient.open(item.id) }
+                        // A watcher hint opens the full explanation bubble; a
+                        // check glyph unfolds its margin note.
+                        .onTapGesture { item.glyph == .hint ? onOpenHint(item) : ambient.open(item.id) }
                         .accessibilityLabel(Text(item.glyph == .correct ? "ambient.glyph.correct" : "ambient.glyph.attend"))
                         .transition(.scale(scale: 0.4).combined(with: .opacity))
                         .position(x: p.x, y: p.y)
