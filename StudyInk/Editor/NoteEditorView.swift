@@ -327,6 +327,14 @@ struct NoteEditorView: View {
                     }
             }
 
+            // Lasso CAPTURE overlay (freeform/marquee). Rendered BELOW the toolbar
+            // chrome (which follows) so the toolbar stays tappable during a lasso —
+            // otherwise this full-screen catcher ate the toolbar tap and re-armed a
+            // new lasso instead of opening the free/square options.
+            TransformLassoOverlay(isActive: $transformLassoActive, transform: canvasController.canvasTransform(forPage: pageIndex), rectangular: canvasController.lassoRectangular, penOnly: canvasController.pencilOnly) { polygon in
+                beginStrokeTransform(with: polygon)
+            }
+
             if !distractionFree {
                 FloatingToolbar(
                     controller: canvasController,
@@ -469,11 +477,6 @@ struct NoteEditorView: View {
                 circleAskRegion = region
             }
 
-            // Select & rotate: lasso capture (freeform or marquee, switchable
-            // inline), then live rotation preview.
-            TransformLassoOverlay(isActive: $transformLassoActive, transform: canvasController.canvasTransform(forPage: pageIndex), rectangular: canvasController.lassoRectangular) { polygon in
-                beginStrokeTransform(with: polygon)
-            }
             // Node editing for freshly created shapes.
             if editingShape != nil {
                 ShapeNodeOverlay(

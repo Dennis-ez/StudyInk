@@ -183,8 +183,11 @@ final class GuidedModeController: ObservableObject {
             // The glyph is placed by the editor at the student's last pen location
             // (the OCR is too garbled to text-match the model's clean match_string).
         } catch {
-            // Don't fail silently and don't alert every 10s: surface the error
-            // once and switch guided mode off so the user can fix the cause.
+            // A request superseded by newer writing is CANCELLED — that's the
+            // debounce working, not a failure. Keep watching.
+            if (error as? URLError)?.code == .cancelled || error is CancellationError { return }
+            // A real error (bad key, network): surface once and switch off so the
+            // user can fix the cause, rather than alerting every 10s.
             tutor.errorMessage = error.localizedDescription
             isEnabled = false
         }

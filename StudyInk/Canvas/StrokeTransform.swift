@@ -35,9 +35,12 @@ enum StrokeSelector {
         let strokes = indices.map { drawing.strokes[$0] }
         let bounds = strokes.dropFirst().reduce(strokes[0].renderBounds) { $0.union($1.renderBounds) }
         guard bounds.width > 0, bounds.height > 0 else { return nil }
-        let traits = UITraitCollection(userInterfaceStyle: darkMode ? .dark : .light)
+        // The canvas strokes are already DISPLAY-mapped (near-white on a dark page).
+        // Render them in a FIXED LIGHT trait so iOS 26 doesn't re-adapt them — a
+        // .dark trait inverted the near-white ink to black (invisible / "turns
+        // black" in dark mode). Matches PageRenderer.inkImage.
         var image = UIImage()
-        traits.performAsCurrent {
+        UITraitCollection(userInterfaceStyle: .light).performAsCurrent {
             image = PKDrawing(strokes: strokes).image(from: bounds, scale: 2)
         }
         return StrokeSelection(pageIndex: pageIndex, strokeIndices: indices, bounds: bounds, image: image, polygon: polygon)
@@ -83,10 +86,13 @@ struct TransformLassoOverlay: View {
     let transform: CanvasTransform
     /// false = freeform loop; true = drag-a-rectangle marquee (from the toolbar).
     let rectangular: Bool
+    /// Pencil-only (like the other tools) unless the user turned pencil-only off.
+    var penOnly: Bool = false
     var onComplete: ([CGPoint]) -> Void
 
     @State private var points: [CGPoint] = []
     @State private var marquee: CGRect?
+    @State private var dragStart: CGPoint?
     /// Marching-ants: the dash phase scrolls continuously while selecting.
     @State private var antsPhase: CGFloat = 0
 
@@ -97,7 +103,25 @@ struct TransformLassoOverlay: View {
     var body: some View {
         if isActive {
             ZStack {
-                Color.black.opacity(0.04).ignoresSafeArea()
+                // Pen-aware capture: a UIKit pan that honours pen-only (a finger
+                // won't start a lasso unless pencil-only is off), like the pens.
+                LassoTouchCatcher(
+                    penOnly: penOnly,
+                    onChanged: { p in
+                        if dragStart == nil { dragStart = p }
+                        if rectangular {
+                            let s = dragStart ?? p
+                            marquee = CGRect(x: min(s.x, p.x), y: min(s.y, p.y),
+                                             width: abs(p.x - s.x), height: abs(p.y - s.y))
+                        } else {
+                            points.append(p)
+                        }
+                    },
+                    onEnded: { complete() },
+                    onTap: { reset() }
+                )
+                .ignoresSafeArea()
+
                 if rectangular {
                     if let marquee {
                         Path(marquee)
@@ -119,47 +143,8 @@ struct TransformLassoOverlay: View {
                     antsPhase = -12
                 }
             }
-            .contentShape(Rectangle())
-            // A plain tap (no loop) cancels — e.g. tapping off the page or on UI.
-            .onTapGesture { points = []; marquee = nil; isActive = false }
-            .gesture(
-                DragGesture(minimumDistance: 2)
-                    .onChanged { value in
-                        if rectangular {
-                            marquee = CGRect(
-                                x: min(value.startLocation.x, value.location.x),
-                                y: min(value.startLocation.y, value.location.y),
-                                width: abs(value.location.x - value.startLocation.x),
-                                height: abs(value.location.y - value.startLocation.y)
-                            )
-                        } else {
-                            points.append(value.location)
-                        }
-                    }
-                    .onEnded { _ in
-                        let polygon: [CGPoint]
-                        if let rect = marquee, rectangular {
-                            polygon = [
-                                CGPoint(x: rect.minX, y: rect.minY),
-                                CGPoint(x: rect.maxX, y: rect.minY),
-                                CGPoint(x: rect.maxX, y: rect.maxY),
-                                CGPoint(x: rect.minX, y: rect.maxY),
-                            ].map(transform.toPage)
-                        } else {
-                            polygon = points.map(transform.toPage)
-                        }
-                        points = []
-                        marquee = nil
-                        isActive = false
-                        onComplete(polygon)
-                    }
-            )
             .overlay(alignment: .topTrailing) {
-                Button {
-                    points = []
-                    marquee = nil
-                    isActive = false
-                } label: {
+                Button(action: reset) {
                     Image(systemName: "xmark.circle.fill")
                         .font(.title2)
                         .foregroundStyle(.secondary)
@@ -169,6 +154,76 @@ struct TransformLassoOverlay: View {
             }
             .transition(.opacity)
         }
+    }
+
+    private func reset() {
+        points = []; marquee = nil; dragStart = nil; isActive = false
+    }
+
+    private func complete() {
+        let polygon: [CGPoint]
+        if let rect = marquee, rectangular {
+            polygon = [
+                CGPoint(x: rect.minX, y: rect.minY),
+                CGPoint(x: rect.maxX, y: rect.minY),
+                CGPoint(x: rect.maxX, y: rect.maxY),
+                CGPoint(x: rect.minX, y: rect.maxY),
+            ].map(transform.toPage)
+        } else {
+            polygon = points.map(transform.toPage)
+        }
+        reset()
+        onComplete(polygon)
+    }
+}
+
+/// A full-screen UIKit touch catcher for the lasso. A `UIPanGestureRecognizer`
+/// reports the drag points and a `UITapGestureRecognizer` reports a plain tap —
+/// both gated to PENCIL touches when `penOnly`, so a resting finger can't start a
+/// lasso (matching the pen tools' pencil-only behaviour).
+private struct LassoTouchCatcher: UIViewRepresentable {
+    var penOnly: Bool
+    var onChanged: (CGPoint) -> Void
+    var onEnded: () -> Void
+    var onTap: () -> Void
+
+    private var allowed: [NSNumber] {
+        penOnly
+            ? [NSNumber(value: UITouch.TouchType.pencil.rawValue)]
+            : [NSNumber(value: UITouch.TouchType.pencil.rawValue), NSNumber(value: UITouch.TouchType.direct.rawValue)]
+    }
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.backgroundColor = UIColor.black.withAlphaComponent(0.04)
+        let pan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.pan(_:)))
+        pan.maximumNumberOfTouches = 1
+        pan.allowedTouchTypes = allowed
+        let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.tap(_:)))
+        tap.allowedTouchTypes = allowed
+        view.addGestureRecognizer(pan)
+        view.addGestureRecognizer(tap)
+        context.coordinator.parent = self
+        return view
+    }
+
+    func updateUIView(_ view: UIView, context: Context) {
+        context.coordinator.parent = self
+        for gr in view.gestureRecognizers ?? [] { gr.allowedTouchTypes = allowed }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    final class Coordinator: NSObject {
+        var parent: LassoTouchCatcher?
+        @objc func pan(_ g: UIPanGestureRecognizer) {
+            switch g.state {
+            case .began, .changed: parent?.onChanged(g.location(in: g.view))
+            case .ended, .cancelled, .failed: parent?.onEnded()
+            default: break
+            }
+        }
+        @objc func tap(_ g: UITapGestureRecognizer) { parent?.onTap() }
     }
 }
 

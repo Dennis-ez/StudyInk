@@ -130,7 +130,11 @@ enum AIService {
             log(response, failed: false)
             return response
         } catch {
-            log("ERROR: \(error.localizedDescription)", failed: true)
+            // A cancelled request (superseded by newer input) is debounce noise,
+            // not a failure — don't clutter the debug log with it.
+            if (error as? URLError)?.code != .cancelled && !(error is CancellationError) {
+                log("ERROR: \(error.localizedDescription)", failed: true)
+            }
             throw error
         }
     }
