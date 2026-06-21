@@ -412,7 +412,7 @@ final class AmbientTutorController: ObservableObject {
                 ? "The student's LAST handwritten line reads roughly: \"\(lastText)\" and is UNFINISHED. Continue from THERE — give the single next line that directly follows it: do the algebra and write the COMPLETE result that belongs after the '=' (e.g. if they wrote '2x =' give the value of x; if a derivative, the fully simplified form combining ALL factors). Never restate the left side, never jump back to an earlier step, never a partial fragment. LaTeX: fractions \\frac{num}{den} (NOT a/b), x^{2}, x_{0}, \\sqrt{...}, · for multiply. Output ONLY that expression — no $ delimiters, no words. If you genuinely can't, output nothing."
                 : "The student's LAST handwritten line reads roughly: \"\(lastText)\". Give the SINGLE most useful next line toward solving the problem — continue from there, do NOT jump back to an earlier step. LaTeX (\\frac{num}{den}, x^{2}, \\sqrt{...}, · for multiply). Output ONLY the expression — no $ delimiters, no words. ALWAYS give your best next step; output nothing ONLY if the page is blank or truly unreadable."
             blocks.append(.text(instruction))
-            blocks.append(.text("Write the \"why\" sentence in \(SystemPrompt.deviceLanguage)."))
+            blocks.append(.text("Write the \"why\" sentence in \(SystemPrompt.languageTarget)."))
             let raw = try await AIService.send(system: Self.ghostSystem, messages: [.user(blocks)], maxTokens: 600)
             let (nextRaw, why) = Self.parseGhost(raw)
             let text = Self.cleanGhost(nextRaw)
@@ -645,7 +645,7 @@ final class AmbientTutorController: ObservableObject {
         for the real content):
         \(numbered)
         Return a status for EVERY region index 0…\(lines.count - 1).
-        Write every "note" in \(SystemPrompt.deviceLanguage).
+        Write every "note" in \(SystemPrompt.languageTarget).
         """
     }
 

@@ -112,6 +112,9 @@
 "media.copy" = "העתקה";
 "media.cut" = "גזירה";
 "media.crop" = "חיתוך";
+"settings.ai.lang" = "שפת התשובה";
+"settings.ai.lang.device" = "שפת האפליקציה";
+"settings.ai.lang.context" = "שפת העבודה";
 
 /* ספרייה */
 "library.allNotes" = "כל המחברות";

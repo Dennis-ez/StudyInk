@@ -17,6 +17,7 @@ struct SettingsView: View {
     @AppStorage("settings.autoBackup") private var autoBackup = true
     @AppStorage("settings.iCloudSync") private var iCloudSync = false
     @AppStorage("settings.ai.provider") private var providerRaw = AIProvider.claude.rawValue
+    @AppStorage("settings.ai.replyLanguage") private var replyLanguageRaw = AIReplyLanguage.device.rawValue
     @AppStorage("settings.defaultTemplate") private var defaultTemplate = "wideRuled"
     @AppStorage("settings.defaultTemplateSpacing") private var defaultSpacing = 1.0
     @Environment(\.dismiss) private var dismiss
@@ -392,6 +393,20 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: DS.Space.sm) {
                 cardCaption(String(localized: "settings.ai.model"))
                 card { aiModelContent }
+            }
+
+            // Which language the AI answers in.
+            VStack(alignment: .leading, spacing: DS.Space.sm) {
+                cardCaption(String(localized: "settings.ai.lang"))
+                card {
+                    Picker("settings.ai.lang", selection: $replyLanguageRaw) {
+                        ForEach(AIReplyLanguage.allCases) { lang in
+                            Text(lang.labelKey).tag(lang.rawValue)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                }
             }
 
             // Developer: inspect the real prompts / OCR / responses.

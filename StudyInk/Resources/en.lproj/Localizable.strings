@@ -112,6 +112,9 @@
 "media.copy" = "Copy";
 "media.cut" = "Cut";
 "media.crop" = "Crop";
+"settings.ai.lang" = "Response language";
+"settings.ai.lang.device" = "App language";
+"settings.ai.lang.context" = "Language of the work";
 
 /* Library */
 "library.allNotes" = "All Notes";

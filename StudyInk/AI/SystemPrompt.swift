@@ -1,11 +1,45 @@
 import Foundation
+import SwiftUI
+
+/// Which language the AI writes its answers in.
+enum AIReplyLanguage: String, CaseIterable, Identifiable {
+    case device   // the iPad/app language
+    case context  // whatever language the student's work is written in
+    var id: String { rawValue }
+    var labelKey: LocalizedStringKey {
+        switch self {
+        case .device: return "settings.ai.lang.device"
+        case .context: return "settings.ai.lang.context"
+        }
+    }
+}
 
 enum SystemPrompt {
-    /// The device/app language, by display name (e.g. "English", "Hebrew") — the
-    /// AI replies in THIS regardless of the language the student wrote in.
+    /// The device/app language, by display name (e.g. "English", "Hebrew").
     static var deviceLanguage: String {
         let code = Locale.current.language.languageCode?.identifier ?? "en"
         return Locale.current.localizedString(forLanguageCode: code)?.capitalized ?? "English"
+    }
+
+    /// User preference (Settings → AI): reply in the device language, or in the
+    /// language of the student's work. Defaults to device.
+    static var replyLanguage: AIReplyLanguage {
+        AIReplyLanguage(rawValue: UserDefaults.standard.string(forKey: "settings.ai.replyLanguage") ?? "") ?? .device
+    }
+
+    /// Short phrase naming the target language, for "write … in X" instructions.
+    static var languageTarget: String {
+        replyLanguage == .device ? deviceLanguage : "the same language the student wrote in"
+    }
+
+    /// Full LANGUAGE block for the tutor system prompt.
+    static var languageDirective: String {
+        switch replyLanguage {
+        case .device:
+            return "Reply in \(deviceLanguage). Write ALL prose in \(deviceLanguage) no matter what language the student's handwriting is in (math stays in LaTeX); read their work in whatever language it's written."
+        case .context:
+            return "Reply in the SAME language the student wrote their work in — read the handwriting/context to determine it (e.g. Hebrew work → Hebrew reply). Math stays in LaTeX."
+        }
     }
 
     /// Tutor persona + structured-output contract. `subjectContext` narrows the
@@ -42,7 +76,7 @@ enum SystemPrompt {
         Accuracy first, then brevity: responses must fit a canvas bubble — aim for under 120 words unless a full step-by-step is explicitly requested. Lead with the single most useful thing (the next step, or the precise error), one step at a time, and end with a short nudge or question rather than dumping the whole solution.
 
         LANGUAGE
-        Reply in the device's language: \(deviceLanguage). Write ALL prose in \(deviceLanguage) no matter what language the student's handwriting is in (math stays in LaTeX). Read their work in whatever language they wrote it, but answer in \(deviceLanguage).
+        \(languageDirective)
 
         FORMATTING
         Render all math in LaTeX: $...$ inline, $$...$$ display. Never escape the dollar delimiters (write $x^2$, NOT \\$x^2\\$). Keep prose to plain text, **bold**, and simple * bullets.
