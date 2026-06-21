@@ -133,7 +133,7 @@ final class GuidedModeController: ObservableObject {
         The image above is the student's CURRENT PAGE (read the handwriting from it — OCR is unreliable). First understand the PROBLEM / sub-question (typed, printed, or a pasted screenshot/photo; may be Hebrew/another language) and WHERE in the solution the student currently is.
         Then, silently, WORK OUT the correct next step yourself. Now compare it to the student's LAST lines and decide if exactly one of these is clearly true:
         - STUCK: an unfinished line they haven't progressed, a long pause, or the same step rewritten/erased.
-        - ERROR: they just made a mistake, or are about to take a wrong turn.
+        - ERROR: they just made a mistake, or are about to take a wrong turn. Judge the EXACT value they wrote (sign, number, variable) against YOUR own solution — never excuse a wrong sign or root.
         - MISSING: a key step or case is skipped.
         Only then, give ONE concrete hint that:
         - names the exact line/expression it is about,

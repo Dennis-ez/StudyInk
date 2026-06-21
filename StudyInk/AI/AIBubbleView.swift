@@ -373,7 +373,11 @@ struct AIBubbleView: View {
     }
 
     private var dragGesture: some Gesture {
-        DragGesture(minimumDistance: 6)
+        // Measure translation in GLOBAL space, not the bubble's own (moving) frame.
+        // A local DragGesture reads translation relative to the view it's on — but
+        // that view moves as we drag it, so the reference frame shifts under the
+        // finger and the bubble vibrates. Global space is stable.
+        DragGesture(minimumDistance: 6, coordinateSpace: .global)
             .onChanged { value in
                 if dragStart == nil { dragStart = CGPoint(x: bubble.x, y: bubble.y) }
                 guard let start = dragStart else { return }

@@ -167,6 +167,23 @@ final class AmbientTutorController: ObservableObject {
         withAnimation(.easeOut(duration: 0.2)) { items.removeAll { $0.id == id } }
     }
 
+    /// A transient highlight band drawn over a line when its hint is opened, so the
+    /// student sees WHAT the tutor is talking about before the answer streams in.
+    struct FocusHighlight: Equatable { var id = UUID(); var pageIndex: Int; var rect: CGRect }
+    @Published var focusHighlight: FocusHighlight?
+    private var focusClearTask: Task<Void, Never>?
+
+    func focus(on item: MarginItem) {
+        focusClearTask?.cancel()
+        withAnimation(.easeOut(duration: 0.2)) {
+            focusHighlight = FocusHighlight(pageIndex: item.pageIndex, rect: item.anchorRect)
+        }
+        focusClearTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 7_000_000_000)
+            await MainActor.run { withAnimation(.easeOut(duration: 0.4)) { self?.focusHighlight = nil } }
+        }
+    }
+
     /// Removes every watcher hint (e.g. when the watcher is switched off).
     func clearHints() {
         withAnimation(.easeOut(duration: 0.2)) { items.removeAll { $0.glyph == .hint } }
@@ -570,6 +587,11 @@ final class AmbientTutorController: ObservableObject {
     (critical points) and the sign of f', asymptotes, limits — whatever the \
     sub-questions need. This step is REQUIRED: it is how you avoid calling wrong work \
     "correct". Show this working.
+    Also SANITY-CHECK THE FORM of each answer, not only its value: the derivative of a \
+    non-constant rational/polynomial function is NOT a constant (so "f'(x)=6" for \
+    f=((x+2)/(x+1))² is wrong on its face); a domain exclusion must make a denominator \
+    zero (or a log/√ argument invalid); an extremum must satisfy f'(x)=0 and lie in the \
+    domain. If the FORM is impossible, mark it wrong even before computing exactly.
 
     STEP 3 — GRADE EACH REGION against YOUR OWN solution. An ANSWER is anything the \
     student wrote as a result — an equation, a step, a value, or a worded conclusion \
@@ -665,7 +687,12 @@ final class AmbientTutorController: ObservableObject {
         if let n = d["i"] as? NSNumber { index = n.intValue }
         else if let s = d["i"] as? String, let i = Int(s) { index = i }
         else { return nil }
-        let status = (d["status"] as? String ?? (d["ok"] as? Bool == false ? "wrong" : "correct")).lowercased()
+        // Never fabricate a ✓ from a missing verdict: only an explicit "correct"
+        // (or ok:true) is correct; an omitted status becomes "skip" (no glyph).
+        let status: String
+        if let s = d["status"] as? String { status = s.lowercased() }
+        else if let ok = d["ok"] as? Bool { status = ok ? "correct" : "wrong" }
+        else { status = "skip" }
         return Verdict(
             line: index,
             ok: status == "correct",

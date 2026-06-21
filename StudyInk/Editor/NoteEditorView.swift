@@ -158,7 +158,9 @@ struct NoteEditorView: View {
             MediaLayer(items: $mediaItems, transform: transform, selectedItemID: $selectedMediaID, snap: snapMetrics)
             TextBoxLayer(boxes: $textBoxes, transform: transform, editingBoxID: $editingBoxID, snap: snapMetrics)
 
+            // Above the margin glyphs — a chat bubble must never sit under a ✓/~/?.
             aiOverlays
+                .zIndex(1)
 
             // The Ambient Tutor's margin lane: glyphs anchored to the lines of
             // work, and the note that unfolds from a tapped glyph.
@@ -196,9 +198,12 @@ struct NoteEditorView: View {
                     Task { await tutor.ask(question: "Explain why: \(item.body)", anchor: askAnchor) }
                 },
                 onOpenHint: { item in
-                    // A watcher's "?" — open the full explanation anchored at the
-                    // line it flagged, then retire the glyph.
-                    ambient.removeHint(item.id)
+                    // A watcher's "?" — highlight the line it flagged RIGHT AWAY (so
+                    // the student sees what it's about before the answer streams in),
+                    // then open the full explanation there. The glyph PERSISTS: only a
+                    // new nudge, a check, or switching the watcher off clears it —
+                    // opening it does not.
+                    ambient.focus(on: item)
                     let anchor = CGPoint(x: item.anchorRect.midX, y: item.anchorRect.midY)
                     Task { await tutor.ask(question: item.body, anchor: anchor) }
                 },

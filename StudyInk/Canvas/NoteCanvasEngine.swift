@@ -687,9 +687,13 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         let count = canvas.drawing.strokes.count
         defer { lastStrokeCount = count }
         shapeWorkItem?.cancel()
+        // Only recognise a SINGLE just-finished hand stroke. A bulk insert (AI ink
+        // writes a whole expression — many strokes — in one drawing change) jumps
+        // the count by more than one, and must never be snapped to a shape (that's
+        // why an AI "1" was turning into a line).
         guard controller.autoShapes,
               controller.toolState.kind.isInking,
-              count > lastStrokeCount,
+              count == lastStrokeCount + 1,
               let last = canvas.drawing.strokes.last else { return }
 
         let work = DispatchWorkItem { [weak self, weak canvas] in

@@ -30,6 +30,19 @@ struct MarginLaneView: View {
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .topLeading) {
+                // Transient highlight over the line a just-opened hint is about.
+                if let f = ambient.focusHighlight, f.pageIndex == pageIndex {
+                    let tl = transform.toScreen(CGPoint(x: f.rect.minX, y: f.rect.minY))
+                    let br = transform.toScreen(CGPoint(x: f.rect.maxX, y: f.rect.maxY))
+                    let w = max(24, br.x - tl.x), h = max(14, br.y - tl.y)
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(AppTheme.current.aiAccent.opacity(0.16))
+                        .frame(width: w + 18, height: h + 10)
+                        .position(x: (tl.x + br.x) / 2, y: (tl.y + br.y) / 2)
+                        .allowsHitTesting(false)
+                        .transition(.opacity)
+                }
+
                 // Glyphs just left of each line's equation.
                 ForEach(pageItems) { item in
                     let p = transform.toScreen(CGPoint(x: glyphPageX(for: item), y: item.anchorRect.midY))
@@ -168,7 +181,9 @@ struct AmbientGlyphView: View {
                 .stroke(glyph.color, style: StrokeStyle(lineWidth: 2.6, lineCap: .round))
                 .frame(width: 38, height: 16)
         case .hint:
-            Circle().strokeBorder(glyph.color.opacity(0.55), style: StrokeStyle(lineWidth: 1.5, dash: [3, 2.5]))
+            // Same family as the ✓ — a soft tinted disc with a hand-weight mark,
+            // not the odd-one-out dashed ring.
+            Circle().fill(glyph.color.opacity(0.14))
                 .frame(width: 24, height: 24)
                 .overlay(Text(verbatim: "?").font(.system(size: 13, weight: .bold)).foregroundStyle(glyph.color))
         case .note:

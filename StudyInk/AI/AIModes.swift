@@ -178,7 +178,7 @@ extension AITutorController {
                 topLeft: topLeft,
                 fontSize: fontSize,
                 ink: ink,
-                strokeWidth: max(2.4, fontSize * 0.135)
+                strokeWidth: max(1.8, fontSize * 0.105)
             )
             guard !strokes.isEmpty else {
                 errorMessage = String(localized: "ai.draw.failed")
