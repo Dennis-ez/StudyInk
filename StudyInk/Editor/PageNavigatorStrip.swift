@@ -265,6 +265,10 @@ struct PageThumbnailView: View {
             resolved = true   // empty page — show the template, never spin
             return
         }
+        // Wait for the real cell size before rendering — otherwise we'd render a
+        // tiny 0.2× raster and resolve INSTANTLY (the loader never gets seen), then
+        // re-render. Keep the loader up until the actual thumbnail is ready.
+        guard displayWidth > 1 else { return }
         // Pixels-per-page-point that fills the actual cell on this screen.
         let renderScale = min(2, max(0.2, displayWidth * UIScreen.main.scale / max(snapshot.pageSize.width, 1)))
         // Follow appearance — PageRenderer maps ink storage→display so a dark

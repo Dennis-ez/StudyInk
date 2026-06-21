@@ -29,7 +29,9 @@ enum SystemPrompt {
 
     /// Short phrase naming the target language, for "write … in X" instructions.
     static var languageTarget: String {
-        replyLanguage == .device ? deviceLanguage : "the same language the student wrote in"
+        replyLanguage == .device
+            ? deviceLanguage
+            : "the language of the student's WRITTEN WORDS / problem statement (e.g. Hebrew if their headers/problem are Hebrew — NOT the math)"
     }
 
     /// System prompt for the proactive watcher. Deliberately MINIMAL: it must NOT
@@ -48,7 +50,7 @@ enum SystemPrompt {
         case .device:
             return "Reply in \(deviceLanguage). Write ALL prose in \(deviceLanguage) no matter what language the student's handwriting is in (math stays in LaTeX); read their work in whatever language it's written."
         case .context:
-            return "Reply in the SAME language the student wrote their work in — read the handwriting/context to determine it (e.g. Hebrew work → Hebrew reply). Math stays in LaTeX."
+            return "Reply in the language of the student's WRITTEN WORDS — their prose, headers, and the problem statement — NOT the math (math symbols are language-neutral and must not decide the language). Most of the page is math, so look at the WORDS: if the headers/problem are Hebrew (e.g. \"ת.ה\", \"נקודות קיצון\"), reply ENTIRELY in Hebrew; if English, English. When unsure, follow the problem statement / note title language. Math itself stays in LaTeX."
         }
     }
 
