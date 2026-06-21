@@ -39,6 +39,11 @@ final class AIDebugLog: ObservableObject {
     @Published private(set) var entries: [Entry] = []
     private let cap = 40
 
+    /// All captured round-trips as one blob, for "Copy all".
+    var allTranscripts: String {
+        entries.map(\.transcript).joined(separator: "\n\n════════════════════════\n\n")
+    }
+
     func record(system: String, user: String, images: Int, response: String, failed: Bool, ms: Int) {
         let entry = Entry(system: system, user: user, images: images, response: response, failed: failed, ms: ms)
         entries.insert(entry, at: 0)
@@ -60,6 +65,7 @@ final class AIDebugLog: ObservableObject {
 /// copyable transcript (system prompt + sent text/OCR + response) to share.
 struct AIDebugView: View {
     @ObservedObject private var log = AIDebugLog.shared
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         List {
@@ -88,9 +94,20 @@ struct AIDebugView: View {
             }
         }
         .navigationTitle(Text(verbatim: "AI debug log"))
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button("action.done") { dismiss() }
+            }
             ToolbarItem(placement: .topBarTrailing) {
-                Button(role: .destructive) { log.clear() } label: { Image(systemName: "trash") }
+                Menu {
+                    Button {
+                        UIPasteboard.general.string = log.allTranscripts
+                    } label: { Label(title: { Text(verbatim: "Copy all") }, icon: { Image(systemName: "doc.on.doc") }) }
+                    Button(role: .destructive) { log.clear() } label: {
+                        Label(title: { Text(verbatim: "Clear") }, icon: { Image(systemName: "trash") })
+                    }
+                } label: { Image(systemName: "ellipsis.circle") }
                     .disabled(log.entries.isEmpty)
             }
         }

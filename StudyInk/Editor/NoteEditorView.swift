@@ -506,15 +506,17 @@ struct NoteEditorView: View {
                     Haptics.tap()
                     withAnimation { pastePoint = nil }
                 } label: {
-                    Label("media.paste", systemImage: "doc.on.clipboard")
-                        .font(.subheadline.weight(.medium))
-                        .padding(.horizontal, 14).padding(.vertical, 9)
+                    // iOS-default paste-pill look: plain "Paste", neutral material.
+                    Text("media.paste")
+                        .font(.subheadline)
+                        .foregroundStyle(.primary)
+                        .padding(.horizontal, 16).padding(.vertical, 8)
                         .background(.regularMaterial, in: Capsule())
-                        .overlay(Capsule().strokeBorder(SemanticColor.separator))
-                        .shadow(color: .black.opacity(0.18), radius: 8, y: 2)
+                        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.08)))
+                        .shadow(color: .black.opacity(0.16), radius: 8, y: 2)
                 }
                 .buttonStyle(.plain)
-                .position(x: screen.x, y: max(40, screen.y - 28))
+                .position(x: screen.x, y: max(40, screen.y - 26))
                 .transition(.scale(scale: 0.8).combined(with: .opacity))
                 .zIndex(40)
             }

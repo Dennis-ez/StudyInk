@@ -31,6 +31,7 @@ struct SettingsView: View {
         .dotGrid, .squareGrid, .isometricGrid, .cornell, .musicStaff,
     ]
 
+    @State private var showAIDebug = false
     @State private var models: [String] = []
     @State private var loadingModels = false
     @State private var customModel = ""
@@ -409,17 +410,28 @@ struct SettingsView: View {
                 }
             }
 
-            // Developer: inspect the real prompts / OCR / responses.
+            // Developer: inspect the real prompts / OCR / responses. Presented as a
+            // sheet (its own NavigationStack) so Back/Done always work — a push in
+            // the split-view detail column was leaving it with no way out.
             VStack(alignment: .leading, spacing: DS.Space.sm) {
                 cardCaption("Developer")
                 card {
-                    NavigationLink {
-                        AIDebugView()
+                    Button {
+                        showAIDebug = true
                     } label: {
-                        Label(title: { Text(verbatim: "AI debug log") },
-                              icon: { Image(systemName: "ladybug") })
+                        HStack {
+                            Label(title: { Text(verbatim: "AI debug log") },
+                                  icon: { Image(systemName: "ladybug") })
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.footnote).foregroundStyle(.tertiary)
+                        }
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
                 }
+            }
+            .sheet(isPresented: $showAIDebug) {
+                NavigationStack { AIDebugView() }
             }
         }
     }
