@@ -3,14 +3,38 @@ import PencilKit
 
 /// PKCanvasView that suppresses the system "Select All / Insert Space / Paste"
 /// edit menu — the app provides its own themed finger-tap paste menu, so the
-/// built-in one (which pastes a screenshot, not ink) must not appear.
+/// built-in one (which pastes a screenshot, not ink) must not appear. PencilKit's
+/// menu rides a UIEditMenuInteraction that ignores canPerformAction, so we strip
+/// the interaction outright (and keep re-stripping, since PencilKit re-adds it).
 final class InkCanvasView: PKCanvasView {
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
         false
     }
-    override func buildMenu(with builder: any UIMenuBuilder) {
-        builder.remove(menu: .standardEdit)
-        super.buildMenu(with: builder)
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        stripEditMenuInteractions()
+    }
+
+    override func addInteraction(_ interaction: any UIInteraction) {
+        // Drop the edit-menu interaction the moment PencilKit tries to add it.
+        if interaction is UIEditMenuInteraction { return }
+        super.addInteraction(interaction)
+    }
+
+    override func didAddSubview(_ subview: UIView) {
+        super.didAddSubview(subview)
+        stripEditMenuInteractions()
+    }
+
+    private func stripEditMenuInteractions() {
+        func strip(_ view: UIView) {
+            for interaction in view.interactions where interaction is UIEditMenuInteraction {
+                view.removeInteraction(interaction)
+            }
+            view.subviews.forEach(strip)
+        }
+        strip(self)
     }
 }
 

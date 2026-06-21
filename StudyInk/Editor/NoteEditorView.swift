@@ -845,13 +845,13 @@ struct NoteEditorView: View {
                     pastePoint = nil
                 } else {
                     selectedMediaID = nil
-                    // Empty-space tap with something pasteable (ink or an image on
-                    // the system clipboard) → our themed paste menu here.
-                    if canvasController.hasPasteContent || UIPasteboard.general.hasImages {
+                    if pastePoint != nil {
+                        // Menu already up → a tap elsewhere just dismisses it.
+                        withAnimation { pastePoint = nil }
+                    } else if canvasController.hasPasteContent || UIPasteboard.general.hasImages {
+                        // Empty-space tap with something pasteable → our paste menu.
                         Haptics.selection()
                         withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) { pastePoint = point }
-                    } else {
-                        pastePoint = nil
                     }
                 }
             }

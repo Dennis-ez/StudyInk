@@ -8,22 +8,21 @@ import SwiftUI
 // No web processes, instant, no leaks.
 
 extension String {
-    /// LaTeX ($…$, $$…$$) → readable unicode for plain-text rendering.
-    /// Tolerates the markdown-escaped `\$` / fullwidth `￥` delimiters models emit.
+    /// LaTeX → readable unicode for plain-text rendering. Handles delimited math
+    /// ($…$, $$…$$, \(…\), \[…\]) AND the bare \cdot / \int / x^{2} the model often
+    /// emits undelimited, via InkWriter's LaTeX parser (symbols, \frac, scripts).
     func mathToUnicode() -> String {
+        // Unescape the markdown-escaped \$ / fullwidth ￥ delimiters models emit,
+        // then drop ALL math delimiters so the parser sees clean LaTeX.
         var s = replacingOccurrences(of: "\\$", with: "$")
             .replacingOccurrences(of: "￥", with: "$")
-        guard s.contains("$") else { return s }
-        // $$…$$ (display, may span lines) first, then $…$ (inline, single line).
-        for pattern in ["\\$\\$([\\s\\S]*?)\\$\\$", "\\$([^$\\n]*?)\\$"] {
-            guard let re = try? NSRegularExpression(pattern: pattern) else { continue }
-            for m in re.matches(in: s, range: NSRange(s.startIndex..., in: s)).reversed() {
-                guard let full = Range(m.range, in: s),
-                      let inner = Range(m.range(at: 1), in: s) else { continue }
-                s.replaceSubrange(full, with: InkWriter.plainText(from: String(s[inner])))
-            }
+        guard s.contains("$") || s.contains("\\") else { return s }
+        for delimiter in ["$$", "$", "\\(", "\\)", "\\[", "\\]"] {
+            s = s.replacingOccurrences(of: delimiter, with: " ")
         }
-        return s.replacingOccurrences(of: "$", with: "")
+        // Convert the whole thing (prose passes through untouched; only LaTeX
+        // commands/braces/scripts are interpreted).
+        return InkWriter.plainText(from: s)
     }
 }
 
