@@ -7,9 +7,9 @@ import SwiftUI
 // (no data-loss risk) — the cover just hides them. Session-scoped for now (folds
 // clear on page change); durable folding is a later step.
 
-/// One folded region, in PAGE coordinates.
-struct FoldedBlock: Identifiable, Equatable {
-    let id = UUID()
+/// One folded region, in PAGE coordinates. Codable so folds persist per page.
+struct FoldedBlock: Identifiable, Equatable, Codable {
+    var id = UUID()
     var rect: CGRect
     var count: Int
 }

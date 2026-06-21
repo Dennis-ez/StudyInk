@@ -280,6 +280,9 @@
 "ai.ghost.none" = "לא נמצא שרטוט להתאמה בעמוד הזה.";
 "collapse.collapsed" = "מקופל";
 "collapse.expand" = "פתח בלוק מקופל";
+"ai.showQuestion" = "הצג את השאלה";
+"warp.question" = "שאלה · עמוד %lld";
+"warp.none" = "לא נמצא עמוד שאלה נפרד.";
 "ai.quiz.failed" = "עדיין אי אפשר ליצור בוחן מהמחברת הזו — נסו להוסיף עוד תוכן.";
 "quiz.title" = "בוחן";
 "quiz.loading" = "כותב שאלות מהמחברת…";

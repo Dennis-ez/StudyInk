@@ -40,6 +40,7 @@ struct NoteEditorView: View {
     @StateObject private var tutor = AITutorController()
     @StateObject private var guidedMode = GuidedModeController()
     @StateObject private var ghostWitness = GhostWitnessController()
+    @StateObject private var warpTunnel = WarpTunnelController()
     @StateObject private var quiz = QuizController()
     /// Ambient Tutor — the margin lane + glyphs (Marginalia design).
     @StateObject private var ambient = AmbientTutorController()
@@ -260,7 +261,7 @@ struct NoteEditorView: View {
                 )
                 .zIndex(35)
             }
-            if let notice = ghostWitness.notice {
+            if let notice = ghostWitness.notice ?? warpTunnel.notice {
                 VStack {
                     Text(notice)
                         .font(.subheadline)
@@ -275,6 +276,12 @@ struct NoteEditorView: View {
                 .transition(.opacity)
                 .allowsHitTesting(false)
                 .zIndex(36)
+            }
+
+            // Warp Tunnel: slide-up preview of the question page.
+            if let preview = warpTunnel.preview {
+                WarpTunnelPanel(preview: preview, onDismiss: { warpTunnel.dismiss() })
+                    .zIndex(55)
             }
 
             if tutor.isThinking || ambient.isChecking || ambient.isSuggesting || guidedMode.isWatching || ghostWitness.isFitting {
@@ -533,6 +540,7 @@ struct NoteEditorView: View {
                         withAnimation(.easeOut(duration: 0.25)) {
                             foldedBlocks.append(FoldedBlock(rect: pageRect, count: selection.strokeIndices.count))
                         }
+                        saveFolds()
                         clearStrokeSelection()
                     }
                 )
@@ -543,7 +551,10 @@ struct NoteEditorView: View {
                 FoldedBlockCover(
                     block: block,
                     transform: canvasController.canvasTransform(forPage: pageIndex),
-                    onExpand: { withAnimation(.easeOut(duration: 0.2)) { foldedBlocks.removeAll { $0.id == block.id } } }
+                    onExpand: {
+                        withAnimation(.easeOut(duration: 0.2)) { foldedBlocks.removeAll { $0.id == block.id } }
+                        saveFolds()
+                    }
                 )
                 .zIndex(30)
             }
@@ -1474,6 +1485,9 @@ extension NoteEditorView {
                 Task { await ghostWitness.fit(note: note, pageIndex: pageIndex, darkMode: colorScheme == .dark) }
             } label: { Label("ai.fitSketch", systemImage: "scribble.variable") }
             Button {
+                Task { await warpTunnel.showQuestion(note: note, currentPageIndex: pageIndex, darkMode: colorScheme == .dark) }
+            } label: { Label("ai.showQuestion", systemImage: "arrow.up.left.and.arrow.down.right.rectangle") }
+            Button {
                 Task { await quiz.start(note: note, pageIndex: pageIndex, darkMode: colorScheme == .dark) }
             } label: { Label("ai.quizMe", systemImage: "questionmark.app") }
             Button {
@@ -1604,7 +1618,26 @@ extension NoteEditorView {
         mediaItems = currentPage?.mediaItems ?? []
         editingBoxID = nil
         selectedMediaID = nil
-        foldedBlocks = []   // folds are session/per-page-view scoped for now
+        foldedBlocks = loadFolds(pageIndex)
+    }
+
+    // MARK: - Smart Collapse persistence (per note + page, in UserDefaults)
+
+    private func foldsKey(_ index: Int) -> String? {
+        guard let id = note.id?.uuidString else { return nil }
+        return "folds.\(id).\(index)"
+    }
+    private func loadFolds(_ index: Int) -> [FoldedBlock] {
+        guard let key = foldsKey(index), let data = UserDefaults.standard.data(forKey: key) else { return [] }
+        return (try? JSONDecoder().decode([FoldedBlock].self, from: data)) ?? []
+    }
+    private func saveFolds() {
+        guard let key = foldsKey(pageIndex) else { return }
+        if foldedBlocks.isEmpty {
+            UserDefaults.standard.removeObject(forKey: key)
+        } else if let data = try? JSONEncoder().encode(foldedBlocks) {
+            UserDefaults.standard.set(data, forKey: key)
+        }
     }
 
     /// Typing in a text box mutates state on every keystroke; encoding JSON,
