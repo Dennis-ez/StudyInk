@@ -48,8 +48,28 @@ enum AIContent {
     case imagePNG(Data)
 
     static func image(_ image: UIImage) -> AIContent? {
-        guard let data = image.pngData() else { return nil }
+        // Cap the longest side before encoding. A page render is already ~2x, but
+        // a pasted photo/screenshot can be 3–4k px — sending that raw burns image
+        // tokens and memory for no readability gain. 2048 keeps stacked fractions
+        // legible while bounding the payload.
+        guard let data = image.downsampled(maxDimension: 2048).pngData() else { return nil }
         return .imagePNG(data)
+    }
+}
+
+extension UIImage {
+    /// Scales down so the longest side ≤ `maxDimension` (aspect-preserving; never
+    /// upscales). Returns self when already within bounds.
+    func downsampled(maxDimension: CGFloat) -> UIImage {
+        let longest = max(size.width, size.height)
+        guard longest > maxDimension, longest > 0 else { return self }
+        let factor = maxDimension / longest
+        let newSize = CGSize(width: size.width * factor, height: size.height * factor)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        return UIGraphicsImageRenderer(size: newSize, format: format).image { _ in
+            draw(in: CGRect(origin: .zero, size: newSize))
+        }
     }
 }
 
