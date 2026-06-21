@@ -221,7 +221,13 @@ final class CanvasController: NSObject, ObservableObject {
         canvasView?.tool = toolState.pkTool(darkMode: isDarkMode, widthScale: inkScale)
         // Hand tool: nothing draws, one finger pans regardless of pencil-only.
         let isHand = toolState.kind == .hand
-        canvasView?.drawingGestureRecognizer.isEnabled = !isHand
+        // Lasso: our TransformLassoOverlay owns selection, so the canvas's drawing
+        // gesture must be OFF — otherwise the built-in PKLassoTool starts a SECOND
+        // (native) selection, which spawns the system edit menu and a stroke-group
+        // index crash. Disabling the gesture (not just hit-testing) is the reliable
+        // way to keep the native lasso from ever engaging.
+        let drawingDisabled = isHand || toolState.kind == .lasso
+        canvasView?.drawingGestureRecognizer.isEnabled = !drawingDisabled
         engine?.panGestureRecognizer.minimumNumberOfTouches = (isHand || pencilOnly) ? 1 : 2
     }
 

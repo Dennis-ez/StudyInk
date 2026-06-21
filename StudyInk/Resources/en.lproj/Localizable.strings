@@ -108,6 +108,10 @@
 "media.resize" = "Resize";
 "media.rotate" = "Rotate";
 "media.resetRotation" = "Reset Rotation";
+"media.duplicate" = "Duplicate";
+"media.copy" = "Copy";
+"media.cut" = "Cut";
+"media.crop" = "Crop";
 
 /* Library */
 "library.allNotes" = "All Notes";

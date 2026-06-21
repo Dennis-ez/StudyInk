@@ -87,6 +87,12 @@ struct TransformLassoOverlay: View {
 
     @State private var points: [CGPoint] = []
     @State private var marquee: CGRect?
+    /// Marching-ants: the dash phase scrolls continuously while selecting.
+    @State private var antsPhase: CGFloat = 0
+
+    private var antsStyle: StrokeStyle {
+        StrokeStyle(lineWidth: 2.5, lineCap: .round, dash: [7, 5], dashPhase: antsPhase)
+    }
 
     var body: some View {
         if isActive {
@@ -95,7 +101,7 @@ struct TransformLassoOverlay: View {
                 if rectangular {
                     if let marquee {
                         Path(marquee)
-                            .stroke(SemanticColor.aiCircleStroke, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, dash: [7, 5]))
+                            .stroke(SemanticColor.aiCircleStroke, style: antsStyle)
                             .background(Path(marquee).fill(SemanticColor.aiCircleStroke.opacity(0.06)))
                     }
                 } else {
@@ -104,7 +110,13 @@ struct TransformLassoOverlay: View {
                         path.move(to: first)
                         for point in points.dropFirst() { path.addLine(to: point) }
                     }
-                    .stroke(SemanticColor.aiCircleStroke, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, dash: [7, 5]))
+                    .stroke(SemanticColor.aiCircleStroke, style: antsStyle)
+                }
+            }
+            .onAppear {
+                // Scroll one dash+gap (12pt) forever → marching ants.
+                withAnimation(.linear(duration: 0.5).repeatForever(autoreverses: false)) {
+                    antsPhase = -12
                 }
             }
             .contentShape(Rectangle())

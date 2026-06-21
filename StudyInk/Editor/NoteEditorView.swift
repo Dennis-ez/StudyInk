@@ -1520,8 +1520,15 @@ extension NoteEditorView {
     private func persistOverlays(to target: Page? = nil) {
         overlaySaveTask?.cancel()
         guard let page = target ?? currentPage else { return }
-        if page.textBoxes != textBoxes { page.textBoxes = textBoxes }
-        if page.mediaItems != mediaItems { page.mediaItems = mediaItems }
+        // Only do the expensive work (rebuild the note's search index + write Core
+        // Data) when an overlay ACTUALLY changed. A plain page turn carries no
+        // change, so this short-circuits — without it, flipping pages quickly hit
+        // the disk and re-scanned every page each time, which is what made fast
+        // navigation stutter.
+        var changed = false
+        if page.textBoxes != textBoxes { page.textBoxes = textBoxes; changed = true }
+        if page.mediaItems != mediaItems { page.mediaItems = mediaItems; changed = true }
+        guard changed else { return }
         note.searchableText = SearchableTextBuilder.build(for: note)
         PersistenceController.shared.save()
     }

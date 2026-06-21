@@ -108,6 +108,10 @@
 "media.resize" = "שינוי גודל";
 "media.rotate" = "סיבוב";
 "media.resetRotation" = "איפוס סיבוב";
+"media.duplicate" = "שכפול";
+"media.copy" = "העתקה";
+"media.cut" = "גזירה";
+"media.crop" = "חיתוך";
 
 /* ספרייה */
 "library.allNotes" = "כל המחברות";

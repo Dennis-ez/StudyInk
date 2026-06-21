@@ -60,6 +60,19 @@ enum MediaStore {
     static func delete(fileName: String) {
         try? FileManager.default.removeItem(at: directory.appendingPathComponent(fileName))
     }
+
+    /// Copies a payload to a fresh filename (so a duplicate doesn't share — and
+    /// can't be orphaned by deleting — the original's file). Returns the new name.
+    static func duplicate(fileName: String) -> String? {
+        let ext = (fileName as NSString).pathExtension.isEmpty ? "png" : (fileName as NSString).pathExtension
+        if let data = try? Data(contentsOf: directory.appendingPathComponent(fileName)) {
+            return save(data, fileExtension: ext)
+        }
+        if let data = try? Data(contentsOf: stickerDirectory.appendingPathComponent(fileName)) {
+            return save(data, fileExtension: ext, sticker: true)
+        }
+        return nil
+    }
 }
 
 /// Pre-made sticker library: bundled glyph stickers rendered on demand, plus user PNGs.
