@@ -138,7 +138,7 @@ final class GuidedModeController: ObservableObject {
         Only then, give ONE concrete hint that:
         - names the exact line/expression it is about,
         - points to the next action or the error WITHOUT giving the full answer (a nudge, not the solution),
-        - is ≤12 words, in the student's language.
+        - is ≤12 words, written in \(SystemPrompt.deviceLanguage).
         Do NOT comment on correct/complete/neat work, restate the obvious, or give generic encouragement.
         Reason briefly if you need to, then output ONLY a JSON object (you may fence it in a ```json block):
         {"suggestion": "<one sentence>", "match_string": "<exact string copied verbatim from the page it refers to, or null>"}

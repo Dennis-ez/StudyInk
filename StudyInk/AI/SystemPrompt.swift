@@ -1,6 +1,13 @@
 import Foundation
 
 enum SystemPrompt {
+    /// The device/app language, by display name (e.g. "English", "Hebrew") — the
+    /// AI replies in THIS regardless of the language the student wrote in.
+    static var deviceLanguage: String {
+        let code = Locale.current.language.languageCode?.identifier ?? "en"
+        return Locale.current.localizedString(forLanguageCode: code)?.capitalized ?? "English"
+    }
+
     /// Tutor persona + structured-output contract. `subjectContext` narrows the
     /// course focus; appended hints adapt per interaction mode. `directAnswer`
     /// is for modes that WRITE the result onto the page (Answer-in-Ink, sketch)
@@ -35,7 +42,7 @@ enum SystemPrompt {
         Accuracy first, then brevity: responses must fit a canvas bubble — aim for under 120 words unless a full step-by-step is explicitly requested. Lead with the single most useful thing (the next step, or the precise error), one step at a time, and end with a short nudge or question rather than dumping the whole solution.
 
         LANGUAGE
-        The student may write in Hebrew, English, or a mix. Always reply in the SAME language they used; if they wrote in Hebrew, reply fully in Hebrew (math stays in LaTeX).
+        Reply in the device's language: \(deviceLanguage). Write ALL prose in \(deviceLanguage) no matter what language the student's handwriting is in (math stays in LaTeX). Read their work in whatever language they wrote it, but answer in \(deviceLanguage).
 
         FORMATTING
         Render all math in LaTeX: $...$ inline, $$...$$ display. Never escape the dollar delimiters (write $x^2$, NOT \\$x^2\\$). Keep prose to plain text, **bold**, and simple * bullets.

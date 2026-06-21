@@ -89,10 +89,29 @@ enum AIService {
     /// passes 0 so the SAME page yields the SAME verdicts every run; creative
     /// asks can leave the default.
     static func send(system: String, messages: [AIMessage], maxTokens: Int = 1500, temperature: Double = 0.3) async throws -> String {
-        switch AIConfig.provider {
-        case .claude: return try await ClaudeService.send(system: system, messages: messages, maxTokens: maxTokens, temperature: temperature)
-        case .gemini: return try await GeminiService.send(system: system, messages: messages, maxTokens: maxTokens, temperature: temperature)
-        case .custom: return try await OpenAICompatService.send(system: system, messages: messages, maxTokens: maxTokens, temperature: temperature)
+        let start = Date()
+        let userText = messages.flatMap(\.content)
+            .compactMap { block -> String? in if case let .text(t) = block { return t } else { return nil } }
+            .joined(separator: "\n")
+        let imageCount = messages.flatMap(\.content).filter { if case .imagePNG = $0 { return true } else { return false } }.count
+        func log(_ response: String, failed: Bool) {
+            let ms = Int(Date().timeIntervalSince(start) * 1000)
+            Task { @MainActor in
+                AIDebugLog.shared.record(system: system, user: userText, images: imageCount, response: response, failed: failed, ms: ms)
+            }
+        }
+        do {
+            let response: String
+            switch AIConfig.provider {
+            case .claude: response = try await ClaudeService.send(system: system, messages: messages, maxTokens: maxTokens, temperature: temperature)
+            case .gemini: response = try await GeminiService.send(system: system, messages: messages, maxTokens: maxTokens, temperature: temperature)
+            case .custom: response = try await OpenAICompatService.send(system: system, messages: messages, maxTokens: maxTokens, temperature: temperature)
+            }
+            log(response, failed: false)
+            return response
+        } catch {
+            log("ERROR: \(error.localizedDescription)", failed: true)
+            throw error
         }
     }
 

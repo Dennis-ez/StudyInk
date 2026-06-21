@@ -388,7 +388,7 @@ private struct InkOptionsStrip: View {
         "#000000", "#FFFFFF", "#0A84FF", "#FF453A", "#30D158",
         "#FFD60A", "#FF9F0A", "#BF5AF2", "#5E5CE6", "#8E8E93",
     ]
-    private static let widths: [Double] = [2, 4, 7, 11, 16]
+    private static let widths: [Double] = [2, 3.5, 7, 11, 16]
 
     var body: some View {
         let layout = horizontal ? AnyLayout(HStackLayout(spacing: 10)) : AnyLayout(VStackLayout(spacing: 10))

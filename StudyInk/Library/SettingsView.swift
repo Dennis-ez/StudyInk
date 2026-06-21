@@ -393,6 +393,19 @@ struct SettingsView: View {
                 cardCaption(String(localized: "settings.ai.model"))
                 card { aiModelContent }
             }
+
+            // Developer: inspect the real prompts / OCR / responses.
+            VStack(alignment: .leading, spacing: DS.Space.sm) {
+                cardCaption("Developer")
+                card {
+                    NavigationLink {
+                        AIDebugView()
+                    } label: {
+                        Label(title: { Text(verbatim: "AI debug log") },
+                              icon: { Image(systemName: "ladybug") })
+                    }
+                }
+            }
         }
     }
 
