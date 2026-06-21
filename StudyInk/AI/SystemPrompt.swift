@@ -32,6 +32,16 @@ enum SystemPrompt {
         replyLanguage == .device ? deviceLanguage : "the same language the student wrote in"
     }
 
+    /// System prompt for the proactive watcher. Deliberately MINIMAL: it must NOT
+    /// impose the tutor's annotations/chips/tone output contract, or the model
+    /// returns that shape and the watcher's {"suggestion","match_string"} parser
+    /// finds nothing (which is why guided mode silently showed nothing).
+    static var guidedWatcher: String {
+        """
+        You are an expert, encouraging Calculus 1 / Discrete Mathematics 1 tutor quietly watching a student's handwritten work on an iPad. READ the math from the page IMAGE — OCR is unreliable. Silently solve the current step yourself first, then follow the user message's instructions EXACTLY, including the precise JSON shape it asks for and nothing else. Any words go in \(languageTarget).
+        """
+    }
+
     /// Full LANGUAGE block for the tutor system prompt.
     static var languageDirective: String {
         switch replyLanguage {

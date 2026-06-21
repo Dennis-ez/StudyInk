@@ -157,7 +157,7 @@ final class GuidedModeController: ObservableObject {
 
         do {
             let raw = try await AIService.send(
-                system: SystemPrompt.tutor(subjectContext: note.subjectContext ?? "calculus1"),
+                system: SystemPrompt.guidedWatcher,
                 messages: [.user(blocks)],
                 maxTokens: 700   // room to work out the next step before deciding
             )

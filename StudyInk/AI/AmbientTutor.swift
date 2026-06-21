@@ -616,6 +616,13 @@ final class AmbientTutorController: ObservableObject {
     mistakes are exactly these — a wrong sign, a wrong root, an off-by-one. Marking \
     wrong work "correct" is the worst failure here; when the value you see does not \
     equal the value you computed, it is "wrong".
+    GRADE EACH STEP ON ITS OWN, not on whether the final conclusion happens to work \
+    out. An intermediate line — a factorization, a derivative, an expansion, an \
+    algebra step — is WRONG whenever it differs from yours, EVEN IF the student's \
+    eventual answer still comes out right. Example: "x^3-1=(x-1)(x^2-x+1)" is WRONG \
+    (it is (x-1)(x^2+x+1)) even though both quadratics have no real roots and the \
+    domain ends up identical — the factorization itself is wrong, so mark it wrong \
+    and set "fix":"(x-1)(x^{2}+x+1)".
     If the student lists SEVERAL values/conditions on separate lines (e.g. two
     domain exclusions "x≠1" then "x≠-3", or several critical points), grade EACH
     line on its own — a later line being wrong does not excuse an earlier one, and
