@@ -70,6 +70,10 @@ struct NoteEditorView: View {
     /// An ink-free lassoed region (image of a PDF/printed chunk) awaiting a
     /// copy / duplicate / delete choice from the pill.
     @State private var regionSelection: RegionSelection?
+    /// Pending page-jump target while rapid-tapping the navigator chevrons; the
+    /// real page change is debounced so it commits once, smoothly.
+    @State private var pageJumpTarget: Int?
+    @State private var pageJumpTask: Task<Void, Never>?
     @State private var editingShape: EditingShape?
     @State private var circleAskRegion: CGRect?
     @Environment(\.managedObjectContext) private var context
@@ -1756,29 +1760,52 @@ extension NoteEditorView {
         .accessibilityLabel(Text("editor.more"))
     }
 
+    /// Debounced page jump: rapid chevron taps accumulate into one target, and
+    /// the heavy page change (overlay swap + animated scroll) runs once it settles.
+    private func jumpPage(by delta: Int) {
+        let count = note.sortedPages.count
+        let base = pageJumpTarget ?? pageIndex
+        let target = max(0, min(count - 1, base + delta))
+        guard target != base else { return }
+        Haptics.tap()
+        pageJumpTarget = target
+        pageJumpTask?.cancel()
+        pageJumpTask = Task {
+            try? await Task.sleep(for: .milliseconds(160))
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                if let t = pageJumpTarget { pageIndex = t }
+                pageJumpTarget = nil
+            }
+        }
+    }
+
     /// Bottom-right: current page out of total, with up/down paging.
     private var pageIndicator: some View {
-        VStack(spacing: 0) {
+        // While the user is rapid-tapping, show the pending target; the actual
+        // page (and its heavy cascade + scroll) commits once the taps settle.
+        let shown = pageJumpTarget ?? pageIndex
+        return VStack(spacing: 0) {
             Button {
-                withAnimation { pageIndex = max(0, pageIndex - 1) }
+                jumpPage(by: -1)
             } label: {
                 Image(systemName: "chevron.up")
                     .frame(width: 34, height: 28)
             }
-            .disabled(pageIndex == 0)
+            .disabled(shown == 0)
             .accessibilityLabel(Text("page.previous"))
 
-            Text(verbatim: "\(pageIndex + 1)/\(note.sortedPages.count)")
+            Text(verbatim: "\(shown + 1)/\(note.sortedPages.count)")
                 .font(.caption2.monospacedDigit())
                 .foregroundStyle(.secondary)
 
             Button {
-                withAnimation { pageIndex = min(note.sortedPages.count - 1, pageIndex + 1) }
+                jumpPage(by: 1)
             } label: {
                 Image(systemName: "chevron.down")
                     .frame(width: 34, height: 28)
             }
-            .disabled(pageIndex >= note.sortedPages.count - 1)
+            .disabled(shown >= note.sortedPages.count - 1)
             .accessibilityLabel(Text("page.next"))
         }
         .font(.system(size: 14, weight: .medium))
