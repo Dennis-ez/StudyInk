@@ -359,13 +359,15 @@ struct NoteEditorView: View {
                     }
             }
 
-            // Lasso CAPTURE overlay (freeform/marquee). Rendered BELOW the toolbar
-            // chrome (which follows) so the toolbar stays tappable during a lasso —
-            // otherwise this full-screen catcher ate the toolbar tap and re-armed a
-            // new lasso instead of opening the free/square options.
-            TransformLassoOverlay(isActive: $transformLassoActive, transform: canvasController.canvasTransform(forPage: pageIndex), rectangular: canvasController.lassoRectangular, penOnly: canvasController.pencilOnly) { polygon in
-                beginStrokeTransform(with: polygon)
-            }
+            // Lasso CAPTURE overlay — draw-only now (the loop is captured by the
+            // engine's pencil gesture, so a finger still scrolls the page). It
+            // reads the live loop points and just renders the marching ants.
+            TransformLassoOverlay(
+                isActive: $transformLassoActive,
+                rectangular: canvasController.lassoRectangular,
+                points: canvasController.lassoPoints,
+                onCancel: { canvasController.select(.ballpoint) }
+            )
 
             if !distractionFree {
                 FloatingToolbar(
@@ -630,7 +632,7 @@ struct NoteEditorView: View {
                 .shadow(color: .black.opacity(0.16), radius: 8, y: 2)
                 .fixedSize()
                 .position(x: screen.x, y: max(44, screen.y - 28))
-                .transition(.scale(scale: 0.8).combined(with: .opacity))
+                .transition(.opacity)
                 .zIndex(40)
             }
 
@@ -639,11 +641,17 @@ struct NoteEditorView: View {
             if let region = regionSelection {
                 let r = transform.toScreen(region.pageRect)
                 ZStack {
-                    RoundedRectangle(cornerRadius: 4)
-                        .strokeBorder(SemanticColor.aiCircleStroke, style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
-                        .frame(width: r.width, height: r.height)
-                        .position(x: r.midX, y: r.midY)
-                        .allowsHitTesting(false)
+                    // The lassoed SHAPE as drawn (not a rectangle).
+                    Path { p in
+                        let pts = region.polygon.map { transform.toScreen($0) }
+                        guard let f = pts.first else { return }
+                        p.move(to: f)
+                        for pt in pts.dropFirst() { p.addLine(to: pt) }
+                        p.closeSubpath()
+                    }
+                    .stroke(SemanticColor.aiCircleStroke,
+                            style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round, dash: [6, 4]))
+                    .allowsHitTesting(false)
                     HStack(spacing: 0) {
                         pasteMenuItem("media.copy") { copyRegion(region); withAnimation { regionSelection = nil } }
                         pasteMenuDivider
@@ -657,7 +665,7 @@ struct NoteEditorView: View {
                     .fixedSize()
                     .position(x: r.midX, y: max(44, r.minY - 28))
                 }
-                .transition(.scale(scale: 0.85).combined(with: .opacity))
+                .transition(.opacity)
                 .zIndex(41)
             }
 
@@ -892,9 +900,26 @@ struct NoteEditorView: View {
                     } else if canvasController.hasPasteContent || UIPasteboard.general.hasImages {
                         // Empty-space tap with something pasteable → our paste menu.
                         Haptics.selection()
-                        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) { pastePoint = point }
+                        withAnimation(.easeOut(duration: 0.15)) { pastePoint = point }
                     }
                 }
+            }
+            // The engine's pencil lasso gesture finished a loop (screen-coord
+            // points) → turn it into a selection. Freeform keeps its drawn shape;
+            // the marquee mode uses the bounding rectangle.
+            canvasController.onLassoComplete = { screenPoints in
+                guard screenPoints.count >= 3 else { return }
+                let t = canvasController.canvasTransform(forPage: pageIndex)
+                let polygon: [CGPoint]
+                if canvasController.lassoRectangular {
+                    let xs = screenPoints.map(\.x), ys = screenPoints.map(\.y)
+                    let rect = CGRect(x: xs.min()!, y: ys.min()!, width: xs.max()! - xs.min()!, height: ys.max()! - ys.min()!)
+                    polygon = [CGPoint(x: rect.minX, y: rect.minY), CGPoint(x: rect.maxX, y: rect.minY),
+                               CGPoint(x: rect.maxX, y: rect.maxY), CGPoint(x: rect.minX, y: rect.maxY)].map(t.toPage)
+                } else {
+                    polygon = screenPoints.map(t.toPage)
+                }
+                beginStrokeTransform(with: polygon)
             }
             // Fresh shapes commit clean and stay unselected — node editing
             // only opens when the user taps a shape with a finger.
@@ -935,6 +960,10 @@ struct NoteEditorView: View {
                 applyStrokeTransform()
                 strokeSelection = nil
             }
+            // A lasso selection belongs to the page it was drawn on — drop it on a
+            // page change so it doesn't follow you to the next page.
+            regionSelection = nil
+            canvasController.lassoPoints = []
             persistOverlays(to: page(at: oldIndex))
             canvasController.engine?.refreshPage(oldIndex)
             loadPage()
@@ -1123,11 +1152,12 @@ struct NoteEditorView: View {
     }
 
     /// Render a flat image of the lassoed region (page background + PDF + media +
-    /// ink). `polygon` is in the canvas's inkScale× space.
+    /// ink), MASKED to the drawn shape. `polygon` is in the canvas's inkScale× space.
     private func makeRegionSelection(canvasPolygon polygon: [CGPoint]) -> RegionSelection? {
         guard let page = currentPage, polygon.count >= 3 else { return nil }
         let s = canvasController.inkScale
-        let xs = polygon.map { $0.x / s }, ys = polygon.map { $0.y / s }
+        let pagePoly = polygon.map { CGPoint(x: $0.x / s, y: $0.y / s) }   // page coords
+        let xs = pagePoly.map(\.x), ys = pagePoly.map(\.y)
         guard let minX = xs.min(), let maxX = xs.max(), let minY = ys.min(), let maxY = ys.max(),
               maxX - minX > 8, maxY - minY > 8 else { return nil }
         let region = CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
@@ -1137,8 +1167,25 @@ struct NoteEditorView: View {
         let imgBounds = CGRect(x: 0, y: 0, width: cgFull.width, height: cgFull.height)
         let px = CGRect(x: region.minX * scale, y: region.minY * scale,
                         width: region.width * scale, height: region.height * scale).intersection(imgBounds)
-        guard !px.isEmpty, let cg = cgFull.cropping(to: px) else { return nil }
-        return RegionSelection(pageRect: region, image: UIImage(cgImage: cg, scale: scale, orientation: .up))
+        guard !px.isEmpty, let cropped = cgFull.cropping(to: px) else { return nil }
+        // Clip the crop to the lassoed shape so copy/duplicate keep the drawn
+        // outline instead of a rectangle.
+        let pxSize = CGSize(width: CGFloat(cropped.width), height: CGFloat(cropped.height))
+        let fmt = UIGraphicsImageRendererFormat(); fmt.scale = 1; fmt.opaque = false
+        let masked = UIGraphicsImageRenderer(size: pxSize, format: fmt).image { ctx in
+            let cg = ctx.cgContext
+            let path = CGMutablePath()
+            let pts = pagePoly.map { CGPoint(x: ($0.x - region.minX) * scale, y: ($0.y - region.minY) * scale) }
+            if let f = pts.first {
+                path.move(to: f)
+                for p in pts.dropFirst() { path.addLine(to: p) }
+                path.closeSubpath()
+            }
+            cg.addPath(path); cg.clip()
+            cg.draw(cropped, in: CGRect(origin: .zero, size: pxSize))
+        }
+        return RegionSelection(polygon: pagePoly, pageRect: region,
+                               image: UIImage(cgImage: masked.cgImage ?? cropped, scale: scale, orientation: .up))
     }
 
     private func copyRegion(_ region: RegionSelection) {
@@ -1230,11 +1277,12 @@ struct NoteEditorView: View {
     // MARK: - Ask bar
 }
 
-/// A lassoed region with no editable ink — a flat image of that page area,
-/// offered for copy / duplicate / delete via a pill.
+/// A lassoed region with no editable ink — a flat image of that page area
+/// (masked to the drawn shape), offered for copy / duplicate / delete via a pill.
 struct RegionSelection {
-    var pageRect: CGRect   // page coordinates
-    var image: UIImage
+    var polygon: [CGPoint]   // page coords — the lassoed shape, as drawn
+    var pageRect: CGRect     // bounding box (page coords) — pill anchor + crop
+    var image: UIImage       // masked to the polygon
 }
 
 /// Disables the interactive pop swipe and the split view's sidebar-reveal pan

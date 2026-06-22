@@ -81,9 +81,11 @@ struct ToolState: Codable, Equatable {
         switch kind {
         case .eraserPixel: return PKEraserTool(.bitmap, width: width)
         case .eraserObject: return PKEraserTool(.vector, width: width)
-        case .lasso: return PKLassoTool()
-        // Drawing is disabled while the hand tool is active; the tool itself is inert.
-        case .hand: return PKLassoTool()
+        // NEVER PKLassoTool — it engages Apple's native lasso selection on top of
+        // ours. Our lasso is driven by a separate pencil gesture; the canvas's
+        // drawing gesture is disabled for these tools (see applyTool), so an inert
+        // clear pen is fine and PencilKit simply never has a lasso tool to fire.
+        case .lasso, .hand: return PKInkingTool(.pen, color: .clear, width: 1)
         case .ballpoint, .fountain, .monoline, .highlighter, .pencil:
             // iOS 26 SDK renders PencilKit tool/stroke colors LITERALLY (no
             // appearance re-interpretation), so the tool color must already be

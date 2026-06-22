@@ -86,6 +86,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     private var lastPublishedOrigins: [CGPoint] = []
     private var keyboardObservers: [NSObjectProtocol] = []
     private weak var holdRecognizer: UILongPressGestureRecognizer?
+    private weak var lassoPan: UIPanGestureRecognizer?
 
     init(controller: CanvasController) {
         self.controller = controller
@@ -192,6 +193,18 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         hold.delegate = self
         addGestureRecognizer(hold)
         holdRecognizer = hold
+
+        // Lasso loop capture: a PENCIL-only pan that records the loop points. It
+        // lives on the canvas alongside the scroll view's finger pan, so a finger
+        // still scrolls/zooms the page while the lasso tool is armed. Disabled
+        // until the lasso tool is selected (controller.applyTool → setLassoGestureActive).
+        let lasso = UIPanGestureRecognizer(target: self, action: #selector(lassoPanned(_:)))
+        lasso.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.pencil.rawValue)]
+        lasso.maximumNumberOfTouches = 1
+        lasso.isEnabled = false
+        lasso.delegate = self
+        canvas.addGestureRecognizer(lasso)
+        lassoPan = lasso
 
         // UIKit-level dismiss tap: while a SwiftUI drawer/panel is open, the
         // editor arms this to catch the first tap anywhere on the canvas area
@@ -1183,6 +1196,34 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     @objc private func pencilHeld(_ recognizer: UILongPressGestureRecognizer) {
         guard recognizer.state == .began else { return }
         controller.onPencilHold?()
+    }
+
+    // MARK: - Lasso loop capture (pencil)
+
+    /// Enable the pencil lasso gesture only while the lasso tool is selected.
+    func setLassoGestureActive(_ active: Bool) {
+        lassoPan?.isEnabled = active
+        if !active { controller.lassoPoints = [] }
+    }
+
+    @objc private func lassoPanned(_ g: UIPanGestureRecognizer) {
+        // Window coordinates so the points line up with the editor's full-screen
+        // lasso overlay AND its canvasTransform (both share that space).
+        let p = g.location(in: nil)
+        switch g.state {
+        case .began:
+            controller.lassoPoints = [p]
+        case .changed:
+            controller.lassoPoints.append(p)
+        case .ended:
+            let pts = controller.lassoPoints
+            controller.lassoPoints = []
+            controller.onLassoComplete?(pts)
+        case .cancelled, .failed:
+            controller.lassoPoints = []
+        default:
+            break
+        }
     }
 
     // MARK: - Dismiss-tap intercept

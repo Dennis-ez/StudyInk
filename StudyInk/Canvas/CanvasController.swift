@@ -45,6 +45,13 @@ final class CanvasController: NSObject, ObservableObject {
     @Published var pageScreenOrigins: [CGPoint] = []
     /// The page under the viewport center; the live canvas follows it.
     @Published var currentPageIndex = 0
+    /// Live lasso loop points (screen coords) captured by the engine's PENCIL
+    /// lasso gesture; the lasso overlay reads these to draw the marching-ants loop.
+    /// Driven by the engine so a finger can still scroll while the lasso is armed.
+    @Published var lassoPoints: [CGPoint] = []
+    /// Fired when a lasso loop finishes (screen-coord points) — the editor turns
+    /// it into a selection.
+    var onLassoComplete: (([CGPoint]) -> Void)?
     /// Page to scroll to on first layout (restores where the user left off).
     var initialPageIndex = 0
     /// Lasso capture shape: false = freeform loop, true = drag a rectangle.
@@ -229,6 +236,9 @@ final class CanvasController: NSObject, ObservableObject {
         let drawingDisabled = isHand || toolState.kind == .lasso
         canvasView?.drawingGestureRecognizer.isEnabled = !drawingDisabled
         engine?.panGestureRecognizer.minimumNumberOfTouches = (isHand || pencilOnly) ? 1 : 2
+        // The lasso loop is captured by a dedicated PENCIL gesture on the canvas
+        // (so a finger still scrolls); enable it only for the lasso tool.
+        engine?.setLassoGestureActive(toolState.kind == .lasso)
     }
 
     func undo() { canvasView?.undoManager?.undo(); refreshUndoState() }

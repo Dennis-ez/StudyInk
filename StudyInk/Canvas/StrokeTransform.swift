@@ -83,53 +83,29 @@ enum StrokeSelector {
 /// (LassoOptionsStrip) — no on-canvas toast. Tap off to cancel.
 struct TransformLassoOverlay: View {
     @Binding var isActive: Bool
-    let transform: CanvasTransform
     /// false = freeform loop; true = drag-a-rectangle marquee (from the toolbar).
     let rectangular: Bool
-    /// Pencil-only (like the other tools) unless the user turned pencil-only off.
-    var penOnly: Bool = false
-    var onComplete: ([CGPoint]) -> Void
-
-    @State private var points: [CGPoint] = []
-    @State private var marquee: CGRect?
-    @State private var dragStart: CGPoint?
+    /// Live loop points in SCREEN space, captured by the engine's PENCIL lasso
+    /// gesture (`CanvasController.lassoPoints`). This overlay only DRAWS — it never
+    /// blocks touches, so a finger still scrolls/zooms the canvas while the lasso
+    /// is armed.
+    let points: [CGPoint]
+    var onCancel: () -> Void
 
     var body: some View {
         if isActive {
             ZStack {
-                // Pen-aware capture: a UIKit pan that honours pen-only (a finger
-                // won't start a lasso unless pencil-only is off), like the pens.
-                LassoTouchCatcher(
-                    penOnly: penOnly,
-                    onChanged: { p in
-                        if dragStart == nil { dragStart = p }
-                        if rectangular {
-                            let s = dragStart ?? p
-                            marquee = CGRect(x: min(s.x, p.x), y: min(s.y, p.y),
-                                             width: abs(p.x - s.x), height: abs(p.y - s.y))
-                        } else {
-                            points.append(p)
-                        }
-                    },
-                    onEnded: { complete() },
-                    onTap: { reset() }
-                )
-
-                // Marching ants driven by TimelineView so the dash phase scrolls
-                // off WALL-CLOCK time — the `points` churn while drawing the loop
-                // no longer interrupts the animation (it was a one-shot
-                // .repeatForever that the rapid state updates cancelled).
+                // Marching ants on wall-clock time so the point churn while drawing
+                // the loop doesn't interrupt the animation.
                 TimelineView(.animation) { context in
                     let secs = context.date.timeIntervalSinceReferenceDate
                     let phase = -CGFloat(secs.truncatingRemainder(dividingBy: 0.5) / 0.5) * 12
                     let style = StrokeStyle(lineWidth: 2.5, lineCap: .round, dash: [7, 5], dashPhase: phase)
-                    if rectangular {
-                        if let marquee {
-                            Path(marquee)
-                                .stroke(SemanticColor.aiCircleStroke, style: style)
-                                .background(Path(marquee).fill(SemanticColor.aiCircleStroke.opacity(0.06)))
-                        }
-                    } else {
+                    if rectangular, points.count >= 2 {
+                        let rect = boundingRect(points)
+                        Path(rect).stroke(SemanticColor.aiCircleStroke, style: style)
+                            .background(Path(rect).fill(SemanticColor.aiCircleStroke.opacity(0.06)))
+                    } else if !rectangular {
                         Path { path in
                             guard let first = points.first else { return }
                             path.move(to: first)
@@ -138,113 +114,27 @@ struct TransformLassoOverlay: View {
                         .stroke(SemanticColor.aiCircleStroke, style: style)
                     }
                 }
-            }
-            // Whole overlay ignores the safe area so the UIKit catcher's touch
-            // coordinates and the SwiftUI Path / transform.toPage all share ONE
-            // full-screen space — otherwise the lasso drew offset below the pen.
-            .ignoresSafeArea()
-            .overlay(alignment: .topTrailing) {
-                Button(action: reset) {
+                .allowsHitTesting(false)   // pure draw layer — never intercepts touches
+
+                // The only interactive bit: the cancel chip.
+                Button(action: onCancel) {
                     Image(systemName: "xmark.circle.fill")
                         .font(.title2)
                         .foregroundStyle(.secondary)
                         .padding()
                 }
                 .accessibilityLabel(Text("action.cancel"))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
             }
+            .ignoresSafeArea()
             .transition(.opacity)
         }
     }
 
-    private func reset() {
-        points = []; marquee = nil; dragStart = nil; isActive = false
-    }
-
-    private func complete() {
-        let polygon: [CGPoint]
-        if let rect = marquee, rectangular {
-            polygon = [
-                CGPoint(x: rect.minX, y: rect.minY),
-                CGPoint(x: rect.maxX, y: rect.minY),
-                CGPoint(x: rect.maxX, y: rect.maxY),
-                CGPoint(x: rect.minX, y: rect.maxY),
-            ].map(transform.toPage)
-        } else {
-            polygon = points.map(transform.toPage)
-        }
-        reset()
-        onComplete(polygon)
-    }
-}
-
-/// A full-screen UIKit touch catcher for the lasso. A `UIPanGestureRecognizer`
-/// reports the drag points and a `UITapGestureRecognizer` reports a plain tap —
-/// both gated to PENCIL touches when `penOnly`, so a resting finger can't start a
-/// lasso (matching the pen tools' pencil-only behaviour).
-private struct LassoTouchCatcher: UIViewRepresentable {
-    var penOnly: Bool
-    var onChanged: (CGPoint) -> Void
-    var onEnded: () -> Void
-    var onTap: () -> Void
-
-    private var allowed: [NSNumber] {
-        penOnly
-            ? [NSNumber(value: UITouch.TouchType.pencil.rawValue)]
-            : [NSNumber(value: UITouch.TouchType.pencil.rawValue), NSNumber(value: UITouch.TouchType.direct.rawValue)]
-    }
-
-    func makeUIView(context: Context) -> UIView {
-        let view = PassthroughCatcher()
-        view.penOnly = penOnly
-        view.backgroundColor = UIColor.black.withAlphaComponent(0.04)
-        let pan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.pan(_:)))
-        pan.maximumNumberOfTouches = 1
-        pan.allowedTouchTypes = allowed
-        let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.tap(_:)))
-        tap.allowedTouchTypes = allowed
-        view.addGestureRecognizer(pan)
-        view.addGestureRecognizer(tap)
-        context.coordinator.parent = self
-        return view
-    }
-
-    func updateUIView(_ view: UIView, context: Context) {
-        context.coordinator.parent = self
-        (view as? PassthroughCatcher)?.penOnly = penOnly
-        for gr in view.gestureRecognizers ?? [] { gr.allowedTouchTypes = allowed }
-    }
-
-    /// Captures only the touches the lasso actually wants (pencil, or finger in
-    /// finger-draw mode); everything else — single-finger scroll in pencil-only
-    /// mode, and any two-finger pinch — falls THROUGH to the canvas scroll view,
-    /// so the note still scrolls and zooms while the lasso is armed.
-    final class PassthroughCatcher: UIView {
-        var penOnly = true
-        override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-            // Live touches only (allTouches also reports ENDED ones, and the Set is
-            // unordered, so a stale ended pencil could fool the type check).
-            let live = (event?.allTouches ?? []).filter {
-                $0.phase == .began || $0.phase == .moved || $0.phase == .stationary
-            }
-            if live.count >= 2 { return nil }                              // pinch → scroll view
-            if penOnly, let t = live.first, t.type != .pencil { return nil } // a lone finger → scroll view
-            // Pencil OR no touch info yet → capture, so the lasso always draws.
-            return super.hitTest(point, with: event)
-        }
-    }
-
-    func makeCoordinator() -> Coordinator { Coordinator() }
-
-    final class Coordinator: NSObject {
-        var parent: LassoTouchCatcher?
-        @objc func pan(_ g: UIPanGestureRecognizer) {
-            switch g.state {
-            case .began, .changed: parent?.onChanged(g.location(in: g.view))
-            case .ended, .cancelled, .failed: parent?.onEnded()
-            default: break
-            }
-        }
-        @objc func tap(_ g: UITapGestureRecognizer) { parent?.onTap() }
+    private func boundingRect(_ pts: [CGPoint]) -> CGRect {
+        let xs = pts.map(\.x), ys = pts.map(\.y)
+        let minX = xs.min() ?? 0, maxX = xs.max() ?? 0, minY = ys.min() ?? 0, maxY = ys.max() ?? 0
+        return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
     }
 }
 
