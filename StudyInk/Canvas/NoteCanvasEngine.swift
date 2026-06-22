@@ -517,37 +517,35 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         }
     }
 
-    private func updateCurrentIndex() {
-        guard !pageFrames.isEmpty, zoomScale > 0 else { return }
-        // Don't re-activate pages mid-zoom: the center-page math is unstable
-        // while the transform is animating, so it can briefly flip to a neighbour
-        // and back — which flashes that page's cached low-res ink bitmap (a gray
-        // "ghost" double-image) over the live canvas on pinch.
-        guard !isZooming, !isZoomBouncing else { return }
-        // Don't steal the live canvas while the pen is on the page.
-        let drawingState = canvas.drawingGestureRecognizer.state
-        guard drawingState != .began, drawingState != .changed else { return }
+    /// The page nearest the viewport center (document space).
+    private func nearestPageToCenter() -> Int {
+        guard !pageFrames.isEmpty, zoomScale > 0 else { return activeIndex }
         let centerY = (contentOffset.y + bounds.height / 2 - documentView.frame.origin.y) / zoomScale
         var nearest = 0
         var bestDistance = CGFloat.greatestFiniteMagnitude
         for (index, frame) in pageFrames.enumerated() {
-            if frame.minY...frame.maxY ~= centerY {
-                nearest = index
-                bestDistance = 0
-                break
-            }
+            if frame.minY...frame.maxY ~= centerY { return index }
             let distance = min(abs(frame.minY - centerY), abs(frame.maxY - centerY))
-            if distance < bestDistance {
-                bestDistance = distance
-                nearest = index
-            }
+            if distance < bestDistance { bestDistance = distance; nearest = index }
         }
-        if nearest != activeIndex {
-            activatePage(nearest)
+        return nearest
+    }
+
+    /// Mount the live canvas on the page the user SETTLED on — called when a
+    /// scroll/zoom stops, NOT on every page crossed mid-scroll. Re-mounting per
+    /// crossing (the old behaviour) re-saved + reloaded + alpha-faded the canvas
+    /// against each page's cached image, which produced the page-switch hiccups,
+    /// the ink flashing/disappearing, and corrupted background renders.
+    private func settleActivePage() {
+        guard !isZooming, !isZoomBouncing else { return }
+        // Don't steal the live canvas while the pen is on the page.
+        let drawingState = canvas.drawingGestureRecognizer.state
+        guard drawingState != .began, drawingState != .changed else { return }
+        let nearest = nearestPageToCenter()
+        if nearest != activeIndex { activatePage(nearest) }
+        if controller.currentPageIndex != nearest {
             DispatchQueue.main.async { [controller] in
-                if controller.currentPageIndex != nearest {
-                    controller.currentPageIndex = nearest
-                }
+                if controller.currentPageIndex != nearest { controller.currentPageIndex = nearest }
             }
         }
     }
@@ -576,9 +574,17 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     func viewForZooming(in scrollView: UIScrollView) -> UIView? { documentView }
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        // Only keep the overlays glued to their pages while scrolling. Activating
+        // the live canvas is deferred to scrollViewDidEnd* (settleActivePage) so
+        // the canvas isn't re-mounted on every page crossed mid-scroll.
         publishGeometry()
-        updateCurrentIndex()
     }
+
+    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+        if !decelerate { settleActivePage() }
+    }
+    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) { settleActivePage() }
+    func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) { settleActivePage() }
 
     func scrollViewDidZoom(_ scrollView: UIScrollView) {
         centerDocument()
