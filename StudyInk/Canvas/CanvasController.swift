@@ -43,10 +43,6 @@ final class CanvasController: NSObject, ObservableObject {
     /// Screen-space origin of every page (editor coordinates), updated as the
     /// document scrolls/zooms. Overlays anchor to their page through these.
     @Published var pageScreenOrigins: [CGPoint] = []
-    /// Screen-space top-left of the unified ink canvas (document origin). All ink
-    /// lives in one canvas spanning every page; stroke-coordinate overlays
-    /// (lasso, shape edit, stroke move) anchor here via unifiedCanvasTransform().
-    @Published var canvasScreenOrigin: CGPoint = .zero
     /// The page under the viewport center; the live canvas follows it.
     @Published var currentPageIndex = 0
     /// Page to scroll to on first layout (restores where the user left off).
@@ -155,15 +151,6 @@ final class CanvasController: NSObject, ObservableObject {
     func canvasTransform(forPage pageIndex: Int) -> CanvasTransform {
         let t = transform(forPage: pageIndex)
         return CanvasTransform(zoomScale: t.zoomScale / inkScale, contentOffset: t.contentOffset)
-    }
-
-    /// Maps the unified ink canvas's inkScale× coordinates (anchored at the
-    /// document origin, NOT a single page) into editor screen space. Overlays
-    /// that read raw stroke geometry off the live canvas use this, since all ink
-    /// now lives in one canvas spanning every page.
-    func unifiedCanvasTransform() -> CanvasTransform {
-        CanvasTransform(zoomScale: zoomScale / inkScale,
-                        contentOffset: CGPoint(x: -canvasScreenOrigin.x, y: -canvasScreenOrigin.y))
     }
 
     func scrollToPage(_ index: Int, animated: Bool = true) {
