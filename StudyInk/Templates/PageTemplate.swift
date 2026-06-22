@@ -197,15 +197,25 @@ struct TemplateBackgroundView: View {
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)
-        .task(id: customPDFData) { renderPDF() }
+        .task(id: pdfTaskID) { await renderPDF() }
     }
 
-    private func renderPDF() {
+    /// Re-render the PDF when its data OR the zoom bucket changes, so deep zoom
+    /// loads a sharper raster instead of upscaling a fixed 2× bitmap.
+    private var pdfTaskID: String { "\(customPDFData?.count ?? 0)-\(Int(pdfPixelScale * 2))" }
+    /// On-screen pixels per page point, capped so a deep zoom doesn't blow memory.
+    private var pdfPixelScale: CGFloat { min(max(transform.zoomScale, 1) * UIScreen.main.scale, 4) }
+
+    private func renderPDF() async {
         guard template == .customPDF, let data = customPDFData else {
             pdfImage = nil
             return
         }
-        pdfImage = PDFTemplateRenderer.image(from: data, targetWidth: pageSize.width * 2)
+        let width = pageSize.width * pdfPixelScale
+        // Rasterize off the main thread so a high-res render doesn't hitch.
+        pdfImage = await Task.detached(priority: .userInitiated) {
+            PDFTemplateRenderer.image(from: data, targetWidth: width)
+        }.value
     }
 }
 
@@ -229,7 +239,22 @@ enum PDFTemplateRenderer {
         guard let doc = PDFDocument(data: data), let page = doc.page(at: 0) else { return nil }
         let bounds = page.bounds(for: .mediaBox)
         let scale = max(bucket / max(bounds.width, 1), 1)
-        let rendered = page.thumbnail(of: CGSize(width: bounds.width * scale, height: bounds.height * scale), for: .mediaBox)
+        let size = CGSize(width: bounds.width * scale, height: bounds.height * scale)
+        // Render the PDF page ourselves with HIGH interpolation instead of
+        // PDFPage.thumbnail (which produces noticeably softer text/lines), so the
+        // imported page stays crisp.
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        let rendered = UIGraphicsImageRenderer(size: size, format: format).image { ctx in
+            let cg = ctx.cgContext
+            cg.setFillColor(UIColor.white.cgColor)
+            cg.fill(CGRect(origin: .zero, size: size))
+            cg.interpolationQuality = .high
+            cg.translateBy(x: 0, y: size.height)
+            cg.scaleBy(x: scale, y: -scale)
+            page.draw(with: .mediaBox, to: cg)
+        }
         let result = darkMode ? darkOptimized(rendered) : rendered
         cache.setObject(result, forKey: key)
         return result
