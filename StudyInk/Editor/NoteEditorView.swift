@@ -355,7 +355,7 @@ struct NoteEditorView: View {
             // chrome (which follows) so the toolbar stays tappable during a lasso —
             // otherwise this full-screen catcher ate the toolbar tap and re-armed a
             // new lasso instead of opening the free/square options.
-            TransformLassoOverlay(isActive: $transformLassoActive, transform: canvasController.canvasTransform(forPage: pageIndex), rectangular: canvasController.lassoRectangular, penOnly: canvasController.pencilOnly) { polygon in
+            TransformLassoOverlay(isActive: $transformLassoActive, transform: canvasController.unifiedCanvasTransform(), rectangular: canvasController.lassoRectangular, penOnly: canvasController.pencilOnly) { polygon in
                 beginStrokeTransform(with: polygon)
             }
 
@@ -508,7 +508,7 @@ struct NoteEditorView: View {
                         get: { editingShape! },
                         set: { editingShape = $0 }
                     ),
-                    transform: canvasController.canvasTransform(forPage: editingShape!.pageIndex),
+                    transform: canvasController.unifiedCanvasTransform(),
                     snap: snapMetrics.map { SnapMetrics(stepX: $0.stepX.map { $0 * canvasController.inkScale },
                                                         stepY: $0.stepY.map { $0 * canvasController.inkScale }) },
                     onChange: { _ in
@@ -534,7 +534,7 @@ struct NoteEditorView: View {
             if let selection = strokeSelection {
                 StrokeTransformOverlay(
                     selection: selection,
-                    transform: canvasController.canvasTransform(forPage: selection.pageIndex),
+                    transform: canvasController.unifiedCanvasTransform(),
                     rotation: $strokeRotation,
                     translation: $strokeTranslation,
                     scale: $strokeScale,
@@ -559,13 +559,13 @@ struct NoteEditorView: View {
                     onDelete: { canvasController.engine?.deleteStrokeSelection(); clearStrokeSelection() },
                     onCollapse: {
                         // Keep the strokes (cancel restores the lifted ones); a cover
-                        // hides them. selection.bounds is canvas (inkScale×) space.
-                        let s = canvasController.inkScale
+                        // hides them. selection.bounds is unified-canvas (inkScale×,
+                        // document-anchored) space — store as-is and render the cover
+                        // through unifiedCanvasTransform.
                         let b = selection.bounds
-                        let pageRect = CGRect(x: b.minX / s, y: b.minY / s, width: b.width / s, height: b.height / s)
                         canvasController.engine?.cancelStrokeSelection()
                         withAnimation(.easeOut(duration: 0.25)) {
-                            foldedBlocks.append(FoldedBlock(rect: pageRect, count: selection.strokeIndices.count))
+                            foldedBlocks.append(FoldedBlock(rect: b, count: selection.strokeIndices.count))
                         }
                         saveFolds()
                         clearStrokeSelection()
@@ -577,7 +577,7 @@ struct NoteEditorView: View {
             ForEach(foldedBlocks) { block in
                 FoldedBlockCover(
                     block: block,
-                    transform: canvasController.canvasTransform(forPage: pageIndex),
+                    transform: canvasController.unifiedCanvasTransform(),
                     onExpand: {
                         withAnimation(.easeOut(duration: 0.2)) { foldedBlocks.removeAll { $0.id == block.id } }
                         saveFolds()

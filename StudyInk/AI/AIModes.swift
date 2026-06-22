@@ -162,7 +162,7 @@ extension AITutorController {
             let lineCount = max(1, answer.components(separatedBy: "\n").count)
             let blockSize = CGSize(width: textWidth, height: InkWriter.lineHeight(fontSize: fontSize) * CGFloat(lineCount))
             topLeft = clearSpot(near: topLeft, size: blockSize,
-                                avoiding: canvas.drawing.strokes.map(\.renderBounds),
+                                avoiding: existingInkBounds(on: canvas),
                                 pageSize: pageSize, margin: margin)
 
             // Adapt the colour the same way the pen does (iOS 26 renders ink
@@ -227,7 +227,7 @@ extension AITutorController {
         // column-aware (needs x-overlap too). Inline completions (center) sit on
         // their line on purpose, so they skip this.
         if !center {
-            let occupied = avoid + canvas.drawing.strokes.map(\.renderBounds)
+            let occupied = avoid + existingInkBounds(on: canvas)
             var guardCount = 0
             while guardCount < 24 {
                 let block = CGRect(x: topLeft.x, y: topLeft.y, width: max(textWidth, 8), height: blockH)
@@ -284,16 +284,32 @@ extension AITutorController {
     func appendInkUndoably(_ strokes: [PKStroke], to canvas: PKCanvasView) {
         let before = canvas.drawing
         registerInkUndo(restoring: before, on: canvas)
-        // The live canvas may be supersampled for native-sharp zoom (it carries a
-        // 1/inkScale transform); strokes are generated in page coordinates, so
-        // scale them up into the canvas's coordinate space. No-op (×1) when the
-        // canvas is at identity.
         var added = PKDrawing(strokes: strokes)
+        // Strokes are generated in CURRENT-PAGE coordinates. The single live canvas
+        // now spans every page (document-anchored), so shift them to that page's
+        // document origin first — otherwise AI ink on page 2+ lands on page 1.
+        if let engine = canvas.firstAncestor(ofType: DocumentScrollView.self) {
+            let o = engine.pageDocumentOrigin(currentPageIndex)
+            if o != .zero { added.transform(using: CGAffineTransform(translationX: o.x, y: o.y)) }
+        }
+        // The live canvas is supersampled for native-sharp zoom (it carries a
+        // 1/inkScale transform); scale the page/document strokes up into the
+        // canvas's coordinate space. No-op (×1) when the canvas is at identity.
         let inv = canvas.transform.a
         if inv > 0, abs(inv - 1) > 0.0001 {
             added.transform(using: CGAffineTransform(scaleX: 1 / inv, y: 1 / inv))
         }
         canvas.drawing = before.appending(added)
+    }
+
+    /// Existing ink on the current page in PAGE-LOCAL coordinates, for AI placement
+    /// that must avoid the student's work. (The live canvas is document-anchored
+    /// and inkScale×, so read it back through the engine.)
+    func existingInkBounds(on canvas: PKCanvasView) -> [CGRect] {
+        if let engine = canvas.firstAncestor(ofType: DocumentScrollView.self) {
+            return engine.pageStrokeBounds(currentPageIndex)
+        }
+        return canvas.drawing.strokes.map(\.renderBounds)
     }
 
     /// Registers an undo that restores `drawing`; performing it re-registers the
@@ -348,5 +364,17 @@ struct SubjectContextMenu: View {
             get: { note.subjectContext ?? "calculus1" },
             set: { note.subjectContext = $0; PersistenceController.shared.save() }
         )
+    }
+}
+
+extension UIView {
+    /// Nearest ancestor of a given type walking up the view hierarchy.
+    func firstAncestor<T: UIView>(ofType type: T.Type) -> T? {
+        var node = superview
+        while let current = node {
+            if let match = current as? T { return match }
+            node = current.superview
+        }
+        return nil
     }
 }
