@@ -93,13 +93,22 @@ private struct MediaItemView: View {
         .onTapGesture(perform: onSelect)
         .gesture(isSelected && !cropMode ? dragGesture.simultaneously(with: twoFingerRotation) : nil)
         .task(id: item.fileName) {
-            image = MediaStore.image(named: item.fileName)
+            let name = item.fileName
+            // Decode AND force-prepare the bitmap OFF the main thread, so scrolling
+            // onto a page with images doesn't hitch while UIImage lazily decodes
+            // at draw time on the main thread.
+            func load() async -> UIImage? {
+                await Task.detached(priority: .userInitiated) {
+                    MediaStore.image(named: name)?.preparingForDisplay()
+                }.value
+            }
+            image = await load()
             // Resilience against the "gray shadow rectangle": if the first load
             // missed, retry briefly instead of leaving the placeholder forever.
             var tries = 0
             while image == nil, tries < 5, !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 200_000_000)
-                image = MediaStore.image(named: item.fileName)
+                image = await load()
                 tries += 1
             }
         }
