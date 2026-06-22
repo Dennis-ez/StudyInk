@@ -1,51 +1,18 @@
 import SwiftUI
 import PencilKit
 
-/// PKCanvasView that suppresses the system "Select All / Insert Space / Paste"
-/// edit menu — the app provides its own themed finger-tap paste menu, so the
-/// built-in one (which pastes a screenshot, not ink) must not appear. PencilKit's
-/// menu rides a UIEditMenuInteraction that ignores canPerformAction, so we strip
-/// the interaction outright (and keep re-stripping, since PencilKit re-adds it).
-final class InkCanvasView: PKCanvasView {
-    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
-        false
-    }
-
-    override func didMoveToWindow() {
-        super.didMoveToWindow()
-        stripEditMenuInteractions()
-    }
-
-    override func addInteraction(_ interaction: any UIInteraction) {
-        // Drop the edit-menu interaction the moment PencilKit tries to add it.
-        if interaction is UIEditMenuInteraction { return }
-        super.addInteraction(interaction)
-    }
-
-    override func didAddSubview(_ subview: UIView) {
-        super.didAddSubview(subview)
-        stripEditMenuInteractions()
-    }
-
-    private func stripEditMenuInteractions() {
-        func strip(_ view: UIView) {
-            for interaction in view.interactions where interaction is UIEditMenuInteraction {
-                view.removeInteraction(interaction)
-            }
-            view.subviews.forEach(strip)
-        }
-        strip(self)
-    }
-}
-
-/// The document engine: one vertical UIScrollView containing every page of the
-/// note, stitched with small gaps — continuous scrolling across page
-/// boundaries, Notability-style. Pages stay separate entities: the page under
-/// the viewport center hosts the single live PKCanvasView; all other pages
-/// show cached full renders. Centering is done the UIKit-native way in
-/// layoutSubviews, so the document is always centered at any zoom.
-final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasViewDelegate, UIPencilInteractionDelegate, UIGestureRecognizerDelegate {
+/// The document engine, Notability-style: the PKCanvasView IS the scroll view
+/// (it subclasses UIScrollView), so PencilKit owns scrolling AND zooming. That's
+/// the supported way to drive a document-sized canvas — ink renders reliably
+/// (PencilKit tracks its own visible rect) and native zoom re-tessellates vector
+/// ink sharply at any scale, with no supersampling and no transform-zoom blur.
+/// ONE drawing spans every page (so writing works across page boundaries and on
+/// a peeking neighbour); page backgrounds ride in `documentView`, the canvas's
+/// zooming content view; ink is split back to per-page drawings on save.
+final class DocumentScrollView: PKCanvasView, PKCanvasViewDelegate, UIPencilInteractionDelegate, UIGestureRecognizerDelegate {
     private let controller: CanvasController
+    /// The zooming content view that holds the page backgrounds. Returned from
+    /// viewForZooming so backgrounds scale in lock-step with the native ink zoom.
     private let documentView = UIView()
     private var containers: [PageContainerView] = []
     private var pageFrames: [CGRect] = []   // document space (zoom 1)
@@ -53,7 +20,24 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     private var layoutSignature = ""
     private let pageGap: CGFloat = 0
 
-    let canvas = InkCanvasView()
+    /// `self` IS the canvas now; this alias keeps the (many) `canvas.…` call sites
+    /// unchanged after collapsing the old outer-scrollview + inner-canvas split.
+    private var canvas: PKCanvasView { self }
+
+    // MARK: System edit-menu suppression (the app has its own paste menu).
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool { false }
+    override func didMoveToWindow() { super.didMoveToWindow(); stripEditMenuInteractions() }
+    override func addInteraction(_ interaction: any UIInteraction) {
+        if interaction is UIEditMenuInteraction { return }   // PencilKit's edit menu
+        super.addInteraction(interaction)
+    }
+    private func stripEditMenuInteractions() {
+        func strip(_ view: UIView) {
+            for i in view.interactions where i is UIEditMenuInteraction { view.removeInteraction(i) }
+            view.subviews.forEach(strip)
+        }
+        strip(self)
+    }
     private var activeIndex = 0
     private var isProgrammaticChange = false
     /// True once the active page's real drawing has been loaded into the live
@@ -98,41 +82,35 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         super.init(frame: .zero)
 
         delegate = self
-        // The pencil belongs to ink (draw/lasso/erase) — never to scrolling.
-        // Without this, the scroll pan races PencilKit's gestures and lasso
-        // strokes intermittently drag the page instead of selecting.
+        // Pencil belongs to ink (draw/lasso/erase); fingers scroll. Keep the
+        // scroll pan off the pencil so the pen never drags the page.
         panGestureRecognizer.allowedTouchTypes = [
             NSNumber(value: UITouch.TouchType.direct.rawValue),
             NSNumber(value: UITouch.TouchType.indirectPointer.rawValue),
         ]
+        // PencilKit drives scrolling AND zooming natively now (it IS the scroll
+        // view). Native zoom re-tessellates vector ink, so it stays sharp at any
+        // scale — no supersampling, no transform-zoom raster wall.
         minimumZoomScale = 0.4
-        // Cap at the raster ceiling (transform-zoom rasterizes ink to a bitmap;
-        // past 3x it can't get sharper without breaking PencilKit — see
-        // updateRasterScale). So all reachable zoom stays crisp instead of
-        // letting the user zoom into blur.
-        // Ink is permanently supersampled at inkScale×, so zoom stays native-
-        // sharp up to that factor (no transform-zoom raster wall any more).
-        maximumZoomScale = 4
+        maximumZoomScale = 5
         bouncesZoom = true
         alwaysBounceVertical = true
         contentInsetAdjustmentBehavior = .never
-        // The desk follows the active theme so the canvas backdrop matches the
-        // rest of the app (the page itself stays its own paper colour).
-        backgroundColor = AppTheme.current.deskUIColor
+        // self is pinned to .light (below), so resolve the desk for the REAL
+        // appearance or a dark-mode desk would render light.
+        backgroundColor = AppTheme.current.deskUIColor.resolvedColor(
+            with: UITraitCollection(userInterfaceStyle: controller.isDarkMode ? .dark : .light))
 
+        // documentView is the canvas's zooming CONTENT view (page backgrounds);
+        // returned from viewForZooming so paper/lines scale with the ink.
         addSubview(documentView)
 
-        canvas.delegate = self
-        canvas.backgroundColor = .clear
-        canvas.isOpaque = false
-        canvas.isScrollEnabled = false
-        // Pin ONLY the PKCanvasView to light so PencilKit renders ink colors
-        // LITERALLY (no appearance adaptation of the live tool — which on iOS
-        // 26 still turns a near-white pen dark). The PAGE container stays on
-        // the real (dark) appearance and draws a dark page; the canvas is
-        // transparent, so dark page + the literal light ink show correctly.
-        // Ink colors are pre-adapted by appearance via InkColorAdapter.
-        canvas.overrideUserInterfaceStyle = .light
+        // Pin the CANVAS (self) to light so PencilKit renders the pre-adapted
+        // (InkColorAdapter) display ink colours LITERALLY — on iOS 26 it would
+        // otherwise re-darken a near-white pen in dark mode. The page backgrounds
+        // must still follow the REAL appearance, so documentView overrides back.
+        overrideUserInterfaceStyle = .light
+        documentView.overrideUserInterfaceStyle = controller.isDarkMode ? .dark : .light
         controller.inkScale = inkScale
         controller.attach(canvas)
         controller.engine = self
@@ -324,35 +302,40 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        let top = safeAreaInsets.top + topGutter
-        if abs(contentInset.top - top) > 0.5 {
-            let restingAtTop = contentOffset.y <= -contentInset.top + 1
-            contentInset.top = top
-            verticalScrollIndicatorInsets.top = top
-            // Keep the page pinned just below the gutter if we were at the top.
-            if restingAtTop { contentOffset.y = -top }
-        }
         applyInitialZoomIfNeeded()
         centerDocument()
         restorePageIfNeeded()
         publishGeometry()
     }
 
+    /// Native-scroll centering: keep the document under the top gutter and
+    /// horizontally — and vertically, when it's shorter than the viewport —
+    /// centered via contentInset. documentView itself stays at the content origin
+    /// (it's the zooming content view), so it's PencilKit's clean zoom target.
     private func centerDocument() {
-        let dx = max(0, (bounds.width - contentSize.width) / 2)
-        let dy = max(0, (bounds.height - contentSize.height) / 2)
-        if documentView.frame.origin != CGPoint(x: dx, y: dy) {
-            documentView.frame.origin = CGPoint(x: dx, y: dy)
+        guard contentSize.width > 0 else { return }
+        let scaledW = contentSize.width * zoomScale
+        let scaledH = contentSize.height * zoomScale
+        let side = max(0, (bounds.width - scaledW) / 2)
+        let top = safeAreaInsets.top + topGutter
+        let extraTop = max(0, (bounds.height - top - scaledH) / 2)
+        let inset = UIEdgeInsets(top: top + extraTop, left: side, bottom: 40, right: side)
+        if abs(inset.top - contentInset.top) > 0.5 || abs(inset.left - contentInset.left) > 0.5 {
+            let wasAtTop = contentOffset.y <= -contentInset.top + 1
+            contentInset = inset
+            verticalScrollIndicatorInsets.top = top
+            if wasAtTop { contentOffset.y = -inset.top }
         }
     }
 
     private func applyInitialZoomIfNeeded() {
-        guard !didSetInitialZoom, bounds.width > 0, documentView.frame.width > 0 else { return }
+        guard !didSetInitialZoom, bounds.width > 0, contentSize.width > 0 else { return }
         didSetInitialZoom = true
-        let fit = bounds.width / (documentView.frame.width / zoomScale)
+        let fit = bounds.width / contentSize.width
         setZoomScale(min(max(fit, minimumZoomScale), 1.5), animated: false)
-        // Rest just below the top gutter so page 1 clears the status bar.
-        contentOffset = CGPoint(x: max(0, (contentSize.width - bounds.width) / 2), y: -contentInset.top)
+        centerDocument()
+        // Rest at the top-left of the (now centered) content.
+        contentOffset = CGPoint(x: -contentInset.left, y: -contentInset.top)
     }
 
     private var didRestorePage = false
@@ -373,35 +356,18 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     /// last page), so the pen writes anywhere — on a peeking neighbour and across
     /// a page boundary. Page backgrounds stay per-container; ink lives here and
     /// is split back into per-page drawings on save.
+    /// Load the merged ink. `self` IS the canvas now, so there's no separate
+    /// canvas view to size or mount — the drawing lives in the scroll view's
+    /// content (document) coordinates, sharp at any native zoom.
     private func mountUnifiedCanvas() {
-        canvas.isUserInteractionEnabled = true
-        applyUnifiedCanvasGeometry()
-        // Above the page backgrounds; the canvas stops at the last page's bottom
-        // so the trailing "add page" button below it stays tappable.
-        documentView.addSubview(canvas)
-        canvas.alpha = 1
         loadUnifiedDrawing()
-        canvas.undoManager?.removeAllActions()
+        undoManager?.removeAllActions()
         shapeWorkItem?.cancel()
         DispatchQueue.main.async { [controller] in controller.refreshUndoState() }
     }
 
-    /// Size the canvas to the full stack at inkScale× (native-sharp), counter-
-    /// scaled 1/inkScale so it occupies the document 1:1.
-    private func applyUnifiedCanvasGeometry() {
-        let docW = documentView.frame.width
-        let height = pagesBottom
-        canvas.transform = .identity
-        canvas.bounds = CGRect(origin: .zero, size: CGSize(width: docW * inkScale, height: height * inkScale))
-        canvas.center = CGPoint(x: docW / 2, y: height / 2)
-        if inkScale != 1 {
-            canvas.transform = CGAffineTransform(scaleX: 1 / inkScale, y: 1 / inkScale)
-        }
-    }
-
     /// Merge every page's stored (canonical, page-local) ink into the single
-    /// canvas, each page offset to its document position, appearance-adapted and
-    /// scaled into the canvas's inkScale space.
+    /// drawing, each page offset to its document position and appearance-adapted.
     private func loadUnifiedDrawing() {
         guard controller.drawingProvider != nil else { return }
         var merged = PKDrawing()
@@ -513,6 +479,11 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         // display(new) back into inkScale space.
         let canonical = canonicalFromCanvas(canvas.drawing)
         displayDark = newDark
+        // Backgrounds follow the real appearance even though the canvas is pinned
+        // light for literal ink rendering.
+        documentView.overrideUserInterfaceStyle = newDark ? .dark : .light
+        backgroundColor = AppTheme.current.deskUIColor.resolvedColor(
+            with: UITraitCollection(userInterfaceStyle: newDark ? .dark : .light))
         isProgrammaticChange = true
         canvas.drawing = displayIntoCanvas(canonical)
         isProgrammaticChange = false
@@ -552,9 +523,10 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
 
     func scrollToPage(_ index: Int, animated: Bool) {
         guard pageFrames.indices.contains(index) else { return }
-        let y = documentView.frame.origin.y + (pageFrames[index].minY - pageGap) * zoomScale
-        let maxY = max(-adjustedContentInset.top, contentSize.height - bounds.height)
-        setContentOffset(CGPoint(x: contentOffset.x, y: min(max(y, 0), maxY)), animated: animated)
+        let y = pageFrames[index].minY * zoomScale - contentInset.top
+        let minY = -contentInset.top
+        let maxY = max(minY, contentSize.height * zoomScale - bounds.height + contentInset.bottom)
+        setContentOffset(CGPoint(x: contentOffset.x, y: min(max(y, minY), maxY)), animated: animated)
         activeIndex = index
         if controller.currentPageIndex != index {
             DispatchQueue.main.async { [controller] in controller.currentPageIndex = index }
@@ -571,7 +543,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         // Don't steal the live canvas while the pen is on the page.
         let drawingState = canvas.drawingGestureRecognizer.state
         guard drawingState != .began, drawingState != .changed else { return }
-        let centerY = (contentOffset.y + bounds.height / 2 - documentView.frame.origin.y) / zoomScale
+        let centerY = (contentOffset.y + bounds.height / 2) / zoomScale
         var nearest = 0
         var bestDistance = CGFloat.greatestFiniteMagnitude
         for (index, frame) in pageFrames.enumerated() {
@@ -600,17 +572,15 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
 
     private func publishGeometry() {
         let zoom = zoomScale
-        let origin = documentView.frame.origin
         let offset = contentOffset
+        // documentView sits at the content origin; a content point P maps to
+        // editor space as P*zoom − contentOffset.
         let origins = pageFrames.map { frame in
-            CGPoint(
-                x: origin.x + frame.origin.x * zoom - offset.x,
-                y: origin.y + frame.origin.y * zoom - offset.y
-            )
+            CGPoint(x: frame.origin.x * zoom - offset.x, y: frame.origin.y * zoom - offset.y)
         }
         // Screen position of document (0,0) — the unified ink canvas's top-left.
         // Overlays reading raw canvas geometry (lasso, shape edit) anchor here.
-        let canvasOrigin = CGPoint(x: origin.x - offset.x, y: origin.y - offset.y)
+        let canvasOrigin = CGPoint(x: -offset.x, y: -offset.y)
         guard origins != lastPublishedOrigins || zoom != controller.zoomScale else { return }
         lastPublishedOrigins = origins
         DispatchQueue.main.async { [weak controller] in
@@ -644,8 +614,8 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
 
     /// Releasing a pinch near fit-width snaps the page to exactly fill the screen.
     func scrollViewDidEndZooming(_ scrollView: UIScrollView, with view: UIView?, atScale scale: CGFloat) {
-        guard documentView.frame.width > 0, zoomScale > 0 else { return }
-        let fit = bounds.width / (documentView.frame.width / zoomScale)
+        guard contentSize.width > 0, zoomScale > 0 else { return }
+        let fit = bounds.width / contentSize.width
         if fit >= minimumZoomScale, fit <= maximumZoomScale,
            abs(zoomScale - fit) / fit < 0.12, zoomScale != fit {
             setZoomScale(fit, animated: true)
