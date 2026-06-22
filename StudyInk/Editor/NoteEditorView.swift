@@ -172,7 +172,10 @@ struct NoteEditorView: View {
                 .animation(.easeOut(duration: 0.25), value: showLoader)
                 .zIndex(50)
                 .task {
-                    try? await Task.sleep(nanoseconds: 230_000_000)
+                    // Short enough that opening a note reliably shows the loader
+                    // while it builds, long enough that a near-instant load doesn't
+                    // flash it.
+                    try? await Task.sleep(nanoseconds: 120_000_000)
                     if !canvasController.isContentReady { loaderArmed = true }
                 }
 
