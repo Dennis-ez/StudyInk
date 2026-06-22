@@ -86,7 +86,6 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     private var lastPublishedOrigins: [CGPoint] = []
     private var keyboardObservers: [NSObjectProtocol] = []
     private weak var holdRecognizer: UILongPressGestureRecognizer?
-    private let addPageButton = UIButton(type: .system)
 
     init(controller: CanvasController) {
         self.controller = controller
@@ -204,15 +203,6 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         addGestureRecognizer(intercept)
         interceptTap = intercept
 
-        var addConfig = UIButton.Configuration.gray()
-        addConfig.image = UIImage(systemName: "plus")
-        addConfig.title = NSLocalizedString("page.add", comment: "")
-        addConfig.imagePadding = 6
-        addConfig.cornerStyle = .capsule
-        addPageButton.configuration = addConfig
-        addPageButton.addAction(UIAction { [weak self] _ in self?.controller.onAddPage?() }, for: .touchUpInside)
-        documentView.addSubview(addPageButton)
-
         observeKeyboard()
     }
 
@@ -262,9 +252,9 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
             y += size.height + pageGap
         }
 
-        addPageButton.sizeToFit()
-        addPageButton.frame.origin = CGPoint(x: (docWidth - addPageButton.frame.width) / 2, y: y + 6)
-        let docHeight = y + addPageButton.frame.height + 48
+        // No "add page" button — the document auto-grows a fresh page when the
+        // last one is inked. Just leave a little breathing room below the stack.
+        let docHeight = y + 40
 
         documentView.frame = CGRect(x: 0, y: 0, width: docWidth, height: docHeight)
         contentSize = documentView.frame.size
@@ -511,10 +501,14 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         let y = documentView.frame.origin.y + (pageFrames[index].minY - pageGap) * zoomScale
         let maxY = max(-adjustedContentInset.top, contentSize.height - bounds.height)
         setContentOffset(CGPoint(x: contentOffset.x, y: min(max(y, 0), maxY)), animated: animated)
-        activatePage(index)
         if controller.currentPageIndex != index {
             DispatchQueue.main.async { [controller] in controller.currentPageIndex = index }
         }
+        // An animated jump mounts the live canvas when the scroll settles
+        // (scrollViewDidEndScrollingAnimation) — so rapid chevron taps don't
+        // re-mount once per tap (which glitched the ink). A non-animated jump has
+        // no end callback, so settle right away.
+        if !animated { settleActivePage() }
     }
 
     /// The page nearest the viewport center (document space).

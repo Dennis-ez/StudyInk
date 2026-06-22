@@ -93,12 +93,6 @@ struct TransformLassoOverlay: View {
     @State private var points: [CGPoint] = []
     @State private var marquee: CGRect?
     @State private var dragStart: CGPoint?
-    /// Marching-ants: the dash phase scrolls continuously while selecting.
-    @State private var antsPhase: CGFloat = 0
-
-    private var antsStyle: StrokeStyle {
-        StrokeStyle(lineWidth: 2.5, lineCap: .round, dash: [7, 5], dashPhase: antsPhase)
-    }
 
     var body: some View {
         if isActive {
@@ -121,31 +115,34 @@ struct TransformLassoOverlay: View {
                     onTap: { reset() }
                 )
 
-                if rectangular {
-                    if let marquee {
-                        Path(marquee)
-                            .stroke(SemanticColor.aiCircleStroke, style: antsStyle)
-                            .background(Path(marquee).fill(SemanticColor.aiCircleStroke.opacity(0.06)))
+                // Marching ants driven by TimelineView so the dash phase scrolls
+                // off WALL-CLOCK time — the `points` churn while drawing the loop
+                // no longer interrupts the animation (it was a one-shot
+                // .repeatForever that the rapid state updates cancelled).
+                TimelineView(.animation) { context in
+                    let secs = context.date.timeIntervalSinceReferenceDate
+                    let phase = -CGFloat(secs.truncatingRemainder(dividingBy: 0.5) / 0.5) * 12
+                    let style = StrokeStyle(lineWidth: 2.5, lineCap: .round, dash: [7, 5], dashPhase: phase)
+                    if rectangular {
+                        if let marquee {
+                            Path(marquee)
+                                .stroke(SemanticColor.aiCircleStroke, style: style)
+                                .background(Path(marquee).fill(SemanticColor.aiCircleStroke.opacity(0.06)))
+                        }
+                    } else {
+                        Path { path in
+                            guard let first = points.first else { return }
+                            path.move(to: first)
+                            for point in points.dropFirst() { path.addLine(to: point) }
+                        }
+                        .stroke(SemanticColor.aiCircleStroke, style: style)
                     }
-                } else {
-                    Path { path in
-                        guard let first = points.first else { return }
-                        path.move(to: first)
-                        for point in points.dropFirst() { path.addLine(to: point) }
-                    }
-                    .stroke(SemanticColor.aiCircleStroke, style: antsStyle)
                 }
             }
             // Whole overlay ignores the safe area so the UIKit catcher's touch
             // coordinates and the SwiftUI Path / transform.toPage all share ONE
             // full-screen space — otherwise the lasso drew offset below the pen.
             .ignoresSafeArea()
-            .onAppear {
-                // Scroll one dash+gap (12pt) forever → marching ants.
-                withAnimation(.linear(duration: 0.5).repeatForever(autoreverses: false)) {
-                    antsPhase = -12
-                }
-            }
             .overlay(alignment: .topTrailing) {
                 Button(action: reset) {
                     Image(systemName: "xmark.circle.fill")
@@ -224,9 +221,16 @@ private struct LassoTouchCatcher: UIViewRepresentable {
     final class PassthroughCatcher: UIView {
         var penOnly = true
         override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-            let touches = event?.allTouches ?? []
-            if touches.count >= 2 { return nil }                    // pinch-zoom → scroll view
-            if penOnly, let t = touches.first, t.type != .pencil { return nil }  // finger scroll → scroll view
+            // Only consider touches that are actually down right now — allTouches
+            // also reports ENDED ones, and the Set is unordered, so picking
+            // `.first` could grab a stale pencil and wrongly capture a finger.
+            let active = (event?.allTouches ?? []).filter {
+                $0.phase == .began || $0.phase == .moved || $0.phase == .stationary
+            }
+            if active.count >= 2 { return nil }   // pinch-zoom → scroll view
+            if penOnly && !active.contains(where: { $0.type == .pencil }) {
+                return nil                          // finger (scroll / tap) → falls through
+            }
             return super.hitTest(point, with: event)
         }
     }
