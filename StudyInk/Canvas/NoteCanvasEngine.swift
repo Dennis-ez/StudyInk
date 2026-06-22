@@ -67,15 +67,17 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     private var displayDark = false
     private var saveWorkItem: DispatchWorkItem?
     private var didSetInitialZoom = false
-    /// Native-sharp zoom: the live canvas ALWAYS renders at `inkScale`× the page
-    /// size (counter-scaled to fit), so transform-zoom up to maximumZoomScale
-    /// never magnifies below native resolution — ink is sharp at every moment,
-    /// including mid-pinch. PencilKit tiles its rendering, so memory stays
-    /// bounded to the viewport. The cost: the canvas's internal coordinates are
-    /// inkScale×, so ink is scaled at the load/save/AI-insert boundaries (see
-    /// displayIntoCanvas / canonicalFromCanvas). KILL SWITCH: set to 1 to fully
-    /// revert to plain page-coordinate, transform-zoom behaviour.
-    private let inkScale: CGFloat = 4
+    /// Supersample factor for native-sharp zoom. The live canvas renders at
+    /// `inkScale`× and counter-scales to fit. With the UNIFIED canvas (one canvas
+    /// spanning the WHOLE document, not a single page) inkScale MUST stay 1:
+    /// supersampling a multi-page document blows PencilKit's backing store past
+    /// the point where it "silently stops rendering ink entirely" (ink vanishes
+    /// the moment a new stroke forces a re-render). The per-page canvas could
+    /// afford inkScale=4 because it was bounded to one page; the document-spanning
+    /// canvas cannot. Sharp deep-zoom now needs a bounded supersampled WINDOW, a
+    /// separate change. The ×1/÷1 scaling at the load/save/AI-insert boundaries
+    /// (displayIntoCanvas / canonicalFromCanvas) is a no-op at inkScale=1.
+    private let inkScale: CGFloat = 1
     /// Cached-render resolution in PIXELS per point, raised when zoomed in.
     /// Starts at the screen scale so adjacent (inactive) pages are retina-sharp
     /// at default zoom, not a soft 1x bitmap.
