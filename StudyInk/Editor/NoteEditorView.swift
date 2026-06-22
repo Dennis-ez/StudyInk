@@ -1800,7 +1800,12 @@ extension NoteEditorView {
             if index == pages.count - 1, !drawing.strokes.isEmpty {
                 _ = note.addPage()
             }
-            note.searchableText = SearchableTextBuilder.build(for: note)
+            // NOTE: the note's search index is NOT rebuilt here. Rebuilding it on
+            // every debounced stroke scanned every page on the main thread while
+            // the user was still writing — a real hiccup. Ink doesn't change the
+            // recognized TEXT until OCR runs, so the rebuild moved into the
+            // debounced OCR task (scheduleOCR), which only fires once writing
+            // settles. This save just persists the ink.
             PersistenceController.shared.save()
             scheduleOCR(for: pages[index])
         }
@@ -1810,10 +1815,17 @@ extension NoteEditorView {
     /// search (and AI targeting) fresh without OCR-ing every stroke.
     private func scheduleOCR(for page: Page) {
         ocrTask?.cancel()
-        ocrTask = Task {
+        ocrTask = Task { [weak note] in
             try? await Task.sleep(for: .seconds(4))
             guard !Task.isCancelled else { return }
             await OCRService.indexPage(page)
+            // Refresh the search index ONCE, after OCR actually changed the
+            // recognized text — moved off the per-stroke save path.
+            guard !Task.isCancelled, let note else { return }
+            await MainActor.run {
+                note.searchableText = SearchableTextBuilder.build(for: note)
+                PersistenceController.shared.save()
+            }
         }
     }
 

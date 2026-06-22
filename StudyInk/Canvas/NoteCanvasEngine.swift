@@ -1326,7 +1326,11 @@ final class StationaryStrokeRecognizer: UIGestureRecognizer {
         // Once snapped, the pen keeps dragging the shape's last node.
         if fired { onAdjust?(location); return }
         samples.append(location)
-        if hypot(location.x - lastLocation.x, location.y - lastLocation.y) > 2.5 {
+        // "Still" tolerance is generous: samples are in the supersampled canvas
+        // space (×4), and a held pencil always jitters a few points — too tight a
+        // threshold (it was 2.5 ≈ 0.6pt) kept resetting the timer so the snap
+        // never fired. ~12 canvas pts ≈ 3pt of real movement reads as a hold.
+        if hypot(location.x - lastLocation.x, location.y - lastLocation.y) > 12 {
             lastLocation = location
             lastMoveAt = Date()
         }
@@ -1350,8 +1354,9 @@ final class StationaryStrokeRecognizer: UIGestureRecognizer {
     }
 
     private func checkHold() {
-        guard !fired, samples.count >= 12,
-              Date().timeIntervalSince(lastMoveAt) > 0.45 else { return }
+        // ~0.4s of holding still after drawing some extent → snap (Apple-Notes feel).
+        guard !fired, samples.count >= 8,
+              Date().timeIntervalSince(lastMoveAt) > 0.4 else { return }
         // Ignore dots/taps — require some drawn extent before snapping.
         let xs = samples.map(\.x), ys = samples.map(\.y)
         guard let minX = xs.min(), let maxX = xs.max(),

@@ -197,7 +197,8 @@ private struct LassoTouchCatcher: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> UIView {
-        let view = UIView()
+        let view = PassthroughCatcher()
+        view.penOnly = penOnly
         view.backgroundColor = UIColor.black.withAlphaComponent(0.04)
         let pan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.pan(_:)))
         pan.maximumNumberOfTouches = 1
@@ -212,7 +213,22 @@ private struct LassoTouchCatcher: UIViewRepresentable {
 
     func updateUIView(_ view: UIView, context: Context) {
         context.coordinator.parent = self
+        (view as? PassthroughCatcher)?.penOnly = penOnly
         for gr in view.gestureRecognizers ?? [] { gr.allowedTouchTypes = allowed }
+    }
+
+    /// Captures only the touches the lasso actually wants (pencil, or finger in
+    /// finger-draw mode); everything else — single-finger scroll in pencil-only
+    /// mode, and any two-finger pinch — falls THROUGH to the canvas scroll view,
+    /// so the note still scrolls and zooms while the lasso is armed.
+    final class PassthroughCatcher: UIView {
+        var penOnly = true
+        override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+            let touches = event?.allTouches ?? []
+            if touches.count >= 2 { return nil }                    // pinch-zoom → scroll view
+            if penOnly, let t = touches.first, t.type != .pencil { return nil }  // finger scroll → scroll view
+            return super.hitTest(point, with: event)
+        }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
