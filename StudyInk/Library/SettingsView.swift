@@ -83,16 +83,24 @@ struct SettingsView: View {
     // MARK: - Body
 
     var body: some View {
-        // Constant .all visibility = the sidebar can't be collapsed/hidden, and a
-        // single fixed column width = it can't be drag-resized.
-        NavigationSplitView(columnVisibility: .constant(.all)) {
+        // Same shell as the main library screen: a fixed, full-bleed sidebar
+        // column flush at the leading edge (NOT NavigationSplitView's floating
+        // glass column), a hairline divider, then the content pane.
+        HStack(spacing: 0) {
             sidebar
-                .navigationSplitViewColumnWidth(248)
-                .toolbar(removing: .sidebarToggle)
-        } detail: {
-            detail
+                .frame(width: 264)
+                .clipped()
+            Rectangle()
+                .fill(SemanticColor.separator)
+                .frame(width: 1)
+                .ignoresSafeArea()
+            NavigationStack { detail }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .navigationSplitViewStyle(.balanced)
+        .background(alignment: .leading) {
+            themeSidebar.frame(width: 264).ignoresSafeArea()
+        }
+        .background(themePaper.ignoresSafeArea())
         .tint(activeTheme.accent)
         .onChange(of: providerRaw) { refreshProviderState() }
         .onAppear { refreshProviderState() }
@@ -101,24 +109,25 @@ struct SettingsView: View {
     // MARK: - Sidebar
 
     private var sidebar: some View {
-        List {
-            ForEach(SettingsPane.allCases) { item in
-                sidebarRow(item)
-            }
-        }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
-        .background(themeSidebar.ignoresSafeArea())
-        .navigationTitle(Text("settings.title"))
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            // H1 in the brand serif (the spec's Fraunces title voice).
-            ToolbarItem(placement: .principal) {
+        // Opaque warm spine behind the rows — mirrors the library sidebar.
+        ZStack {
+            themeSidebar.ignoresSafeArea()
+            List {
+                // Big serif title in the content, matching the library spine.
                 Text("settings.title")
-                    .font(.fraunces(20, weight: .semibold, relativeTo: .headline))
+                    .font(.fraunces(28, weight: .semibold, relativeTo: .largeTitle))
                     .foregroundStyle(.primary)
+                    .padding(.top, DS.Space.sm)
+                    .padding(.bottom, DS.Space.xs)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+
+                ForEach(SettingsPane.allCases) { item in
+                    sidebarRow(item)
+                }
             }
-            // Done lives on the detail pane only (removed from the sidebar).
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
         }
     }
 
