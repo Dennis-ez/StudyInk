@@ -153,12 +153,14 @@ struct NoteEditorView: View {
             // is what closes the drawer, and it lives INSIDE the canvas's
             // UIKit hierarchy. Disabling hit-testing here starved it and made
             // the drawer unclosable.
-            // Also OFF whenever the lasso tool is active: our TransformLassoOverlay
-            // owns selection, so the PencilKit canvas must never receive those
-            // touches — otherwise its built-in PKLassoTool fires a SECOND (native)
-            // selection over ours, which spawned the system edit menu and a
-            // stroke-group index crash.
-            .allowsHitTesting(selectedMediaID == nil && strokeSelection == nil && !transformLassoActive && editingShape == nil && canvasController.toolState.kind != .lasso)
+            // The canvas STAYS hit-testable while the lasso tool is armed so a
+            // finger can still scroll/zoom the page (the lasso overlay above passes
+            // finger touches through and captures only the pencil). The native
+            // PKLassoTool can't fire because applyTool disables the canvas's drawing
+            // gesture for the lasso tool, and the pencil is caught by the overlay
+            // before it reaches the canvas. Only a committed selection / media /
+            // shape edit takes the canvas out of play.
+            .allowsHitTesting(selectedMediaID == nil && strokeSelection == nil && editingShape == nil)
 
             // Loader over the canvas until the page's content (ink/PDF) is up — but
             // only after a short delay (loaderArmed), so a fast note switch doesn't
