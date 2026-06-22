@@ -67,6 +67,9 @@ struct NoteEditorView: View {
     @State private var strokeRotation: Double = 0
     @State private var strokeTranslation: CGSize = .zero
     @State private var strokeScale: CGFloat = 1
+    /// An ink-free lassoed region (image of a PDF/printed chunk) awaiting a
+    /// copy / duplicate / delete choice from the pill.
+    @State private var regionSelection: RegionSelection?
     @State private var editingShape: EditingShape?
     @State private var circleAskRegion: CGRect?
     @Environment(\.managedObjectContext) private var context
@@ -631,6 +634,33 @@ struct NoteEditorView: View {
                 .zIndex(40)
             }
 
+            // Ink-free lassoed region → copy / duplicate / delete pill (the lasso
+            // caught no editable strokes, so we treat the area as an image).
+            if let region = regionSelection {
+                let r = transform.toScreen(region.pageRect)
+                ZStack {
+                    RoundedRectangle(cornerRadius: 4)
+                        .strokeBorder(SemanticColor.aiCircleStroke, style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+                        .frame(width: r.width, height: r.height)
+                        .position(x: r.midX, y: r.midY)
+                        .allowsHitTesting(false)
+                    HStack(spacing: 0) {
+                        pasteMenuItem("media.copy") { copyRegion(region); withAnimation { regionSelection = nil } }
+                        pasteMenuDivider
+                        pasteMenuItem("media.duplicate") { duplicateRegion(region); withAnimation { regionSelection = nil } }
+                        pasteMenuDivider
+                        pasteMenuItem("action.delete") { deleteRegion(region); withAnimation { regionSelection = nil } }
+                    }
+                    .background(.regularMaterial, in: Capsule())
+                    .overlay(Capsule().strokeBorder(Color.primary.opacity(0.08)))
+                    .shadow(color: .black.opacity(0.16), radius: 8, y: 2)
+                    .fixedSize()
+                    .position(x: r.midX, y: max(44, r.minY - 28))
+                }
+                .transition(.scale(scale: 0.85).combined(with: .opacity))
+                .zIndex(41)
+            }
+
             // Guided-mode bottom suggestion card. High zIndex so nothing (AI overlay,
             // margin lane) can sit over it.
             if let suggestion = guidedMode.suggestion {
@@ -844,6 +874,12 @@ struct NoteEditorView: View {
             // under it (media is otherwise non-interactive so pan/zoom pass
             // through), or deselect if the tap missed everything.
             canvasController.onCanvasFingerTap = { point in
+                // A tap dismisses the ink-free region pill.
+                if regionSelection != nil {
+                    withAnimation { regionSelection = nil }
+                    rearmLassoIfActive()
+                    return
+                }
                 if let hit = mediaItems.last(where: { $0.frame.contains(point) }) {
                     Haptics.selection()
                     selectedMediaID = hit.id
@@ -1072,37 +1108,63 @@ struct NoteEditorView: View {
             // selection doesn't leave a copy at the original position.
             canvasController.engine?.liftStrokeSelection(selection.strokeIndices)
         } else {
-            // No editable ink in the loop → copy a SCREENSHOT of that region to
-            // the pasteboard, so you can grab a chunk of a PDF / printed problem
-            // (which has no strokes) with the lasso too.
-            copyRegionAsImage(canvasPolygon: polygon)
-            // Empty loop — go straight back to capturing, no dead end.
-            rearmLassoIfActive()
+            // No editable ink in the loop — select the lassoed REGION (a chunk of
+            // PDF / printed problem) and offer copy / duplicate / delete via a pill,
+            // instead of auto-copying.
+            if let region = makeRegionSelection(canvasPolygon: polygon) {
+                Haptics.selection()
+                regionSelection = region
+                withAnimation { transformLassoActive = false }
+            } else {
+                Haptics.error()
+                rearmLassoIfActive()
+            }
         }
     }
 
-    /// Copy a flat image of the lassoed region (page background + PDF + media +
-    /// ink) when the loop caught no editable strokes. `polygon` is in the canvas's
-    /// inkScale× space.
-    private func copyRegionAsImage(canvasPolygon polygon: [CGPoint]) {
-        guard let page = currentPage, polygon.count >= 3 else { Haptics.error(); return }
+    /// Render a flat image of the lassoed region (page background + PDF + media +
+    /// ink). `polygon` is in the canvas's inkScale× space.
+    private func makeRegionSelection(canvasPolygon polygon: [CGPoint]) -> RegionSelection? {
+        guard let page = currentPage, polygon.count >= 3 else { return nil }
         let s = canvasController.inkScale
         let xs = polygon.map { $0.x / s }, ys = polygon.map { $0.y / s }
         guard let minX = xs.min(), let maxX = xs.max(), let minY = ys.min(), let maxY = ys.max(),
-              maxX - minX > 8, maxY - minY > 8 else { Haptics.error(); return }
+              maxX - minX > 8, maxY - minY > 8 else { return nil }
         let region = CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
         let scale: CGFloat = 3
         let full = PageRenderer.render(PageRenderer.Snapshot(page: page), darkMode: colorScheme == .dark, scale: scale)
-        guard let cgFull = full.cgImage else { Haptics.error(); return }
+        guard let cgFull = full.cgImage else { return nil }
         let imgBounds = CGRect(x: 0, y: 0, width: cgFull.width, height: cgFull.height)
         let px = CGRect(x: region.minX * scale, y: region.minY * scale,
                         width: region.width * scale, height: region.height * scale).intersection(imgBounds)
-        if !px.isEmpty, let cg = cgFull.cropping(to: px) {
-            UIPasteboard.general.image = UIImage(cgImage: cg, scale: scale, orientation: .up)
-            Haptics.success()
-        } else {
-            Haptics.error()
-        }
+        guard !px.isEmpty, let cg = cgFull.cropping(to: px) else { return nil }
+        return RegionSelection(pageRect: region, image: UIImage(cgImage: cg, scale: scale, orientation: .up))
+    }
+
+    private func copyRegion(_ region: RegionSelection) {
+        UIPasteboard.general.image = region.image
+        Haptics.success()
+    }
+
+    /// Drop the lassoed region back onto the page as a movable image.
+    private func duplicateRegion(_ region: RegionSelection) {
+        guard let data = region.image.pngData() ?? region.image.jpegData(compressionQuality: 0.9),
+              let name = MediaStore.save(data) else { Haptics.error(); return }
+        let r = region.pageRect
+        let item = MediaItemModel(fileName: name, x: r.minX + 24, y: r.minY + 24, width: r.width, height: r.height)
+        mediaItems.append(item)
+        persistOverlays()
+        selectedMediaID = item.id
+        Haptics.success()
+    }
+
+    /// Remove media whose center sits inside the lassoed region (the only
+    /// deletable content under an ink-free loop).
+    private func deleteRegion(_ region: RegionSelection) {
+        let r = region.pageRect
+        let before = mediaItems.count
+        mediaItems.removeAll { r.contains(CGPoint(x: $0.frame.midX, y: $0.frame.midY)) }
+        if mediaItems.count != before { persistOverlays(); Haptics.success() } else { Haptics.tap() }
     }
 
     /// Bake the previewed move + resize + rotation into the strokes, undoably.
@@ -1166,6 +1228,13 @@ struct NoteEditorView: View {
     }
 
     // MARK: - Ask bar
+}
+
+/// A lassoed region with no editable ink — a flat image of that page area,
+/// offered for copy / duplicate / delete via a pill.
+struct RegionSelection {
+    var pageRect: CGRect   // page coordinates
+    var image: UIImage
 }
 
 /// Disables the interactive pop swipe and the split view's sidebar-reveal pan
