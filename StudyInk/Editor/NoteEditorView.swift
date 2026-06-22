@@ -60,9 +60,6 @@ struct NoteEditorView: View {
     /// Armed after a short delay so the content loader only shows for a SLOW load —
     /// a fast note switch shouldn't flash it (that read as a hiccup).
     @State private var loaderArmed = false
-    /// Apple-style "Insert Space" drag session + its live inserted amount.
-    @State private var insertSpaceSession: InsertSpaceSession?
-    @State private var insertSpaceDrag: CGFloat = 0
     @State private var strokeSelection: StrokeSelection?
     @State private var strokeRotation: Double = 0
     @State private var strokeTranslation: CGSize = .zero
@@ -70,10 +67,6 @@ struct NoteEditorView: View {
     /// An ink-free lassoed region (image of a PDF/printed chunk) awaiting a
     /// copy / duplicate / delete choice from the pill.
     @State private var regionSelection: RegionSelection?
-    /// Pending page-jump target while rapid-tapping the navigator chevrons; the
-    /// real page change is debounced so it commits once, smoothly.
-    @State private var pageJumpTarget: Int?
-    @State private var pageJumpTask: Task<Void, Never>?
     @State private var editingShape: EditingShape?
     @State private var circleAskRegion: CGRect?
     @Environment(\.managedObjectContext) private var context
@@ -308,17 +301,6 @@ struct NoteEditorView: View {
                     .zIndex(55)
             }
 
-            // Insert Space: Apple-style drag-to-open-a-gap.
-            if let session = insertSpaceSession {
-                InsertSpaceOverlay(
-                    session: session,
-                    transform: transform,
-                    dragPage: $insertSpaceDrag,
-                    onCommit: commitInsertSpace,
-                    onCancel: { withAnimation(.easeOut(duration: 0.2)) { insertSpaceSession = nil } }
-                )
-                .zIndex(58)
-            }
 
             if tutor.isThinking || ambient.isChecking || ambient.isSuggesting || guidedMode.isWatching || ghostWitness.isFitting {
                 AIThinkingBadge()
@@ -620,15 +602,10 @@ struct NoteEditorView: View {
                             }
                             dismissPasteMenu()
                         }
-                        pasteMenuDivider
+                        if UIPasteboard.general.hasImages { pasteMenuDivider }
                     }
                     if UIPasteboard.general.hasImages {
                         pasteMenuItem("media.pasteImage") { pasteImage(at: pt); dismissPasteMenu() }
-                        pasteMenuDivider
-                    }
-                    pasteMenuItem("media.insertSpace") {
-                        startInsertSpace(atPageY: pt.y)
-                        withAnimation { pastePoint = nil }
                     }
                 }
                 .background(.regularMaterial, in: Capsule())
@@ -636,6 +613,9 @@ struct NoteEditorView: View {
                 .shadow(color: .black.opacity(0.16), radius: 8, y: 2)
                 .fixedSize()
                 .position(x: screen.x, y: max(44, screen.y - 28))
+                // New identity per spot so it fades in fresh at the new point
+                // instead of sliding from the previous position.
+                .id(pt)
                 .transition(.opacity)
                 .zIndex(40)
             }
@@ -1760,31 +1740,20 @@ extension NoteEditorView {
         .accessibilityLabel(Text("editor.more"))
     }
 
-    /// Debounced page jump: rapid chevron taps accumulate into one target, and
-    /// the heavy page change (overlay swap + animated scroll) runs once it settles.
+    /// Page jump: each chevron tap advances one page immediately and animates the
+    /// scroll. (The live canvas only re-mounts when the scroll settles, so rapid
+    /// taps no longer glitch the ink.)
     private func jumpPage(by delta: Int) {
         let count = note.sortedPages.count
-        let base = pageJumpTarget ?? pageIndex
-        let target = max(0, min(count - 1, base + delta))
-        guard target != base else { return }
+        let target = max(0, min(count - 1, pageIndex + delta))
+        guard target != pageIndex else { return }
         Haptics.tap()
-        pageJumpTarget = target
-        pageJumpTask?.cancel()
-        pageJumpTask = Task {
-            try? await Task.sleep(for: .milliseconds(160))
-            guard !Task.isCancelled else { return }
-            await MainActor.run {
-                if let t = pageJumpTarget { pageIndex = t }
-                pageJumpTarget = nil
-            }
-        }
+        pageIndex = target
     }
 
     /// Bottom-right: current page out of total, with up/down paging.
     private var pageIndicator: some View {
-        // While the user is rapid-tapping, show the pending target; the actual
-        // page (and its heavy cascade + scroll) commits once the taps settle.
-        let shown = pageJumpTarget ?? pageIndex
+        let shown = pageIndex
         return VStack(spacing: 0) {
             Button {
                 jumpPage(by: -1)
@@ -1880,32 +1849,6 @@ extension NoteEditorView {
 
     private var pasteMenuDivider: some View {
         Rectangle().fill(Color.primary.opacity(0.12)).frame(width: 1, height: 22)
-    }
-
-    // MARK: - Insert Space (Apple-style drag)
-
-    private func startInsertSpace(atPageY y: CGFloat) {
-        guard let page = currentPage else { return }
-        let pageSize = page.canvasSize
-        let line = max(0, min(y, pageSize.height - 20))
-        let snapshot = PageRenderer.Snapshot(page: page)
-        let dark = colorScheme == .dark
-        let full = PageRenderer.render(snapshot, darkMode: dark, scale: 2)
-        let s = full.scale
-        let cropPx = CGRect(x: 0, y: line * s, width: pageSize.width * s, height: (pageSize.height - line) * s)
-        guard let cg = full.cgImage?.cropping(to: cropPx) else { return }
-        let belowImage = UIImage(cgImage: cg, scale: s, orientation: .up)
-        insertSpaceDrag = 0
-        withAnimation(.easeOut(duration: 0.2)) {
-            insertSpaceSession = InsertSpaceSession(lineYPage: line, belowImage: belowImage, pageSize: pageSize)
-        }
-    }
-
-    private func commitInsertSpace() {
-        if let session = insertSpaceSession, insertSpaceDrag > 1 {
-            canvasController.engine?.insertSpace(belowPageY: session.lineYPage, amount: insertSpaceDrag)
-        }
-        withAnimation(.easeOut(duration: 0.2)) { insertSpaceSession = nil }
     }
 
     /// Paste the system-clipboard image as a media item at the tap.
