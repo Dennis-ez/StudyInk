@@ -221,16 +221,14 @@ private struct LassoTouchCatcher: UIViewRepresentable {
     final class PassthroughCatcher: UIView {
         var penOnly = true
         override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-            // Only consider touches that are actually down right now — allTouches
-            // also reports ENDED ones, and the Set is unordered, so picking
-            // `.first` could grab a stale pencil and wrongly capture a finger.
-            let active = (event?.allTouches ?? []).filter {
+            // Live touches only (allTouches also reports ENDED ones, and the Set is
+            // unordered, so a stale ended pencil could fool the type check).
+            let live = (event?.allTouches ?? []).filter {
                 $0.phase == .began || $0.phase == .moved || $0.phase == .stationary
             }
-            if active.count >= 2 { return nil }   // pinch-zoom → scroll view
-            if penOnly && !active.contains(where: { $0.type == .pencil }) {
-                return nil                          // finger (scroll / tap) → falls through
-            }
+            if live.count >= 2 { return nil }                              // pinch → scroll view
+            if penOnly, let t = live.first, t.type != .pencil { return nil } // a lone finger → scroll view
+            // Pencil OR no touch info yet → capture, so the lasso always draws.
             return super.hitTest(point, with: event)
         }
     }
