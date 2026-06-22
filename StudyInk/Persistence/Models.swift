@@ -78,7 +78,13 @@ final class Note: NSManagedObject {
         let page = Page(context: context)
         page.id = UUID()
         page.index = insertIndex
-        page.templateID = templateID ?? sortedPages.first(where: { $0.index == insertIndex - 1 })?.templateID ?? "blank"
+        // Inherit the note's LINE template + spacing (never a PDF page's, which
+        // would leave the new page with a "customPDF" id and no data), so every
+        // page of a note shares one template. Imported-PDF pages set their own.
+        let reference = sortedPages.first(where: { $0.customTemplatePDF == nil })
+        page.templateID = templateID ?? reference?.templateID ?? "blank"
+        page.templateSpacing = reference?.templateSpacing ?? 1
+        if let sizeID = reference?.pageSizeID { page.pageSizeID = sizeID }
         page.note = self
         touch()
         return page

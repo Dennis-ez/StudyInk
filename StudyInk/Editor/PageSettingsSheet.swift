@@ -89,8 +89,23 @@ struct PageSettingsSheet: View {
         .presentationDetents([.medium, .large])
     }
 
+    /// Set the line template on EVERY non-PDF page of the note — templates are
+    /// note-wide, and imported-PDF pages keep their own background.
+    private func applyTemplateToNote(_ template: PageTemplate) {
+        let pages = page.note?.sortedPages ?? [page]
+        for p in pages where p.customTemplatePDF == nil {
+            p.templateID = template.rawValue
+        }
+        page.note?.touch()
+        PersistenceController.shared.save()
+    }
+
     private func commitSpacing() {
-        page.templateSpacing = spacingValue
+        // Spacing is part of the (note-wide) template — apply to all non-PDF pages.
+        let pages = page.note?.sortedPages ?? [page]
+        for p in pages where p.customTemplatePDF == nil {
+            p.templateSpacing = spacingValue
+        }
         page.note?.touch()
         PersistenceController.shared.save()
     }
@@ -106,10 +121,9 @@ struct PageSettingsSheet: View {
         let isSelected = page.template == template
         let hasSpacing = template != .blank && template != .customPDF
         return Button {
-            page.templateID = template.rawValue
-            page.customTemplatePDF = nil
-            page.note?.touch()
-            PersistenceController.shared.save()
+            // A note has ONE template across all its pages (#7); imported-PDF
+            // pages keep their PDF background (#6) and are never overwritten.
+            applyTemplateToNote(template)
         } label: {
             VStack(spacing: 6) {
                 Canvas { ctx, size in
