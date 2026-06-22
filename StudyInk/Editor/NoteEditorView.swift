@@ -1067,9 +1067,36 @@ struct NoteEditorView: View {
             // selection doesn't leave a copy at the original position.
             canvasController.engine?.liftStrokeSelection(selection.strokeIndices)
         } else {
-            Haptics.error()
+            // No editable ink in the loop → copy a SCREENSHOT of that region to
+            // the pasteboard, so you can grab a chunk of a PDF / printed problem
+            // (which has no strokes) with the lasso too.
+            copyRegionAsImage(canvasPolygon: polygon)
             // Empty loop — go straight back to capturing, no dead end.
             rearmLassoIfActive()
+        }
+    }
+
+    /// Copy a flat image of the lassoed region (page background + PDF + media +
+    /// ink) when the loop caught no editable strokes. `polygon` is in the canvas's
+    /// inkScale× space.
+    private func copyRegionAsImage(canvasPolygon polygon: [CGPoint]) {
+        guard let page = currentPage, polygon.count >= 3 else { Haptics.error(); return }
+        let s = canvasController.inkScale
+        let xs = polygon.map { $0.x / s }, ys = polygon.map { $0.y / s }
+        guard let minX = xs.min(), let maxX = xs.max(), let minY = ys.min(), let maxY = ys.max(),
+              maxX - minX > 8, maxY - minY > 8 else { Haptics.error(); return }
+        let region = CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+        let scale: CGFloat = 3
+        let full = PageRenderer.render(PageRenderer.Snapshot(page: page), darkMode: colorScheme == .dark, scale: scale)
+        guard let cgFull = full.cgImage else { Haptics.error(); return }
+        let imgBounds = CGRect(x: 0, y: 0, width: cgFull.width, height: cgFull.height)
+        let px = CGRect(x: region.minX * scale, y: region.minY * scale,
+                        width: region.width * scale, height: region.height * scale).intersection(imgBounds)
+        if !px.isEmpty, let cg = cgFull.cropping(to: px) {
+            UIPasteboard.general.image = UIImage(cgImage: cg, scale: scale, orientation: .up)
+            Haptics.success()
+        } else {
+            Haptics.error()
         }
     }
 
