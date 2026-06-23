@@ -625,16 +625,21 @@ struct NoteEditorView: View {
             if let region = regionSelection {
                 let r = transform.toScreen(region.pageRect)
                 ZStack {
-                    // The lassoed SHAPE as drawn (not a rectangle).
-                    Path { p in
-                        let pts = region.polygon.map { transform.toScreen($0) }
-                        guard let f = pts.first else { return }
-                        p.move(to: f)
-                        for pt in pts.dropFirst() { p.addLine(to: pt) }
-                        p.closeSubpath()
+                    // Same marching ants as the ink lasso (animated, same colour),
+                    // following the SHAPE as drawn (not a rectangle).
+                    TimelineView(.animation) { context in
+                        let secs = context.date.timeIntervalSinceReferenceDate
+                        let phase = -CGFloat(secs.truncatingRemainder(dividingBy: 0.5) / 0.5) * 12
+                        Path { p in
+                            let pts = region.polygon.map { transform.toScreen($0) }
+                            guard let f = pts.first else { return }
+                            p.move(to: f)
+                            for pt in pts.dropFirst() { p.addLine(to: pt) }
+                            p.closeSubpath()
+                        }
+                        .stroke(SemanticColor.aiCircleStroke,
+                                style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round, dash: [7, 5], dashPhase: phase))
                     }
-                    .stroke(SemanticColor.aiCircleStroke,
-                            style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round, dash: [6, 4]))
                     .allowsHitTesting(false)
                     HStack(spacing: 0) {
                         pasteMenuItem("media.copy") { copyRegion(region); withAnimation { regionSelection = nil } }

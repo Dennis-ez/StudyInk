@@ -661,7 +661,19 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
             if abs(active.contentScaleFactor - bg) > 0.25 {
                 active.contentScaleFactor = bg
                 active.layer.contentsScale = bg
-                active.setNeedsDisplay()
+                // For a PDF page the redraw rasterizes the PDF — warm that cache
+                // OFF the main thread first so the on-main draw is just a blit (no
+                // zoom hitch). The container draws at min(max(scale,2),4)× width.
+                if let snap = controller.snapshotProvider?(activeIndex), let data = snap.customTemplatePDF {
+                    let width = snap.pageSize.width * min(max(bg, 2), 4)
+                    let dark = controller.isDarkMode
+                    Task.detached(priority: .userInitiated) {
+                        _ = PDFTemplateRenderer.image(from: data, targetWidth: width, darkMode: dark)
+                        await MainActor.run { active.setNeedsDisplay() }
+                    }
+                } else {
+                    active.setNeedsDisplay()
+                }
             }
         }
     }
