@@ -274,8 +274,12 @@ struct PageThumbnailView: View {
         // Follow appearance — PageRenderer maps ink storage→display so a dark
         // thumbnail shows a dark page with light ink (matches the editor).
         let dark = colorScheme == .dark
+        // Rasterize ink HERE on the main actor (PKDrawing.image needs main), then
+        // composite off-main with no main hop — the old main.sync inside the
+        // detached render stalled under load and produced black, ink-less covers.
+        let ink = PageRenderer.inkLayer(for: snapshot, darkMode: dark, scale: renderScale)
         Task.detached(priority: .utility) {
-            let image = PageRenderer.render(snapshot, darkMode: dark, scale: renderScale)
+            let image = PageRenderer.render(snapshot, darkMode: dark, scale: renderScale, inkLayer: ink)
             await MainActor.run { thumbnail = image; resolved = true }
         }
     }

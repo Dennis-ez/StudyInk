@@ -264,7 +264,7 @@ struct NoteGridView: View {
                 }
             } else if gridLayout {
                 ScrollView {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 240), spacing: DS.Space.xl)], spacing: DS.Space.xl) {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 190), spacing: DS.Space.xl)], spacing: DS.Space.xl) {
                         ForEach(notes, id: \.objectID) { note in
                             noteCell(note)
                         }

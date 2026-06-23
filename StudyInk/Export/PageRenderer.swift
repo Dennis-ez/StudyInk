@@ -53,6 +53,34 @@ enum PageRenderer {
         }
     }
 
+    /// The ink shrink-boost factor for a given render scale (see `render`).
+    static func inkBoost(forScale scale: CGFloat) -> CGFloat { min(4, max(1, 0.5 / scale)) }
+
+    /// Rasterize JUST the ink layer. `PKDrawing.image()` must run on the main
+    /// thread (off it the iOS 26 SDK returns a blank image), so call this on the
+    /// main actor and hand the result to `render(_:darkMode:scale:inkLayer:)`,
+    /// which then composites the whole page OFF the main thread with no main hop.
+    @MainActor
+    static func inkLayer(for snapshot: Snapshot, darkMode: Bool, scale: CGFloat) -> UIImage? {
+        guard let data = snapshot.drawingData, let stored = try? PKDrawing(data: data), !stored.strokes.isEmpty
+        else { return nil }
+        let adapted = InkColorAdapter.displayDrawing(stored, darkMode: darkMode)
+        let drawing = boldened(adapted, factor: inkBoost(forScale: scale))
+        return inkImage(drawing, from: CGRect(origin: .zero, size: snapshot.pageSize))
+    }
+
+    /// Composite a page with a PRE-rasterized ink layer — safe to call OFF the
+    /// main thread (no `DispatchQueue.main.sync` for PKDrawing.image, which stalled
+    /// and produced black/ink-less renders under the load of opening a note).
+    static func render(_ snapshot: Snapshot, darkMode: Bool, scale: CGFloat, inkLayer: UIImage?) -> UIImage {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = scale
+        let renderer = UIGraphicsImageRenderer(size: snapshot.pageSize, format: format)
+        return renderer.image { ctx in
+            draw(snapshot, in: ctx.cgContext, darkMode: darkMode, inkBoost: 1, inkLayer: inkLayer)
+        }
+    }
+
     @MainActor
     static func image(for page: Page, darkMode: Bool, scale: CGFloat = 1) -> UIImage {
         render(Snapshot(page: page), darkMode: darkMode, scale: scale)
@@ -125,7 +153,7 @@ enum PageRenderer {
         }
     }
 
-    private static func draw(_ snapshot: Snapshot, in cg: CGContext, darkMode: Bool, inkBoost: CGFloat = 1) {
+    private static func draw(_ snapshot: Snapshot, in cg: CGContext, darkMode: Bool, inkBoost: CGFloat = 1, inkLayer: UIImage? = nil) {
         let pageRect = CGRect(origin: .zero, size: snapshot.pageSize)
 
         drawBackground(snapshot, in: cg, darkMode: darkMode)
@@ -140,7 +168,10 @@ enum PageRenderer {
         // against the ambient appearance on iOS 26, so render it in a fixed
         // LIGHT trait context — exactly like the live canvas, which is pinned
         // to .light — so the near-white strokes render literally.
-        if let data = snapshot.drawingData, let stored = try? PKDrawing(data: data), !stored.strokes.isEmpty {
+        if let inkLayer {
+            // Pre-rasterized on the main actor by the caller — no main hop here.
+            inkLayer.draw(in: pageRect)
+        } else if let data = snapshot.drawingData, let stored = try? PKDrawing(data: data), !stored.strokes.isEmpty {
             let adapted = InkColorAdapter.displayDrawing(stored, darkMode: darkMode)
             let drawing = boldened(adapted, factor: inkBoost)
             inkImage(drawing, from: pageRect)?.draw(in: pageRect)

@@ -310,6 +310,9 @@
 "ai.quiz.prefix %lld" = "Question %lld:";
 "ai.guidedMode" = "Guided Mode";
 "ai.guided.suggestion" = "AI tutor suggestion";
+"ai.guided.why" = "Why";
+"ai.guided.how" = "How";
+"ai.guided.openChat" = "Open in chat";
 "ai.guided.activated" = "Guided Mode is on — I'll watch this page and suggest as you write";
 "ai.guided.disable" = "Turn off Guided Mode";
 "ai.guided.log" = "Suggestion History";
