@@ -315,10 +315,10 @@ final class AmbientTutorController: ObservableObject {
         }
     }
 
-    /// Streams glyphs top-down (120ms each): ✓ on every correct region, a
-    /// correction on every wrong one. Anchored to the region's own OCR rect, and
-    /// the model decides completeness (so OCR dropping the "3" in "lim…=3" can't
-    /// suppress a valid correction).
+    /// Streams glyphs top-down (120ms each): ✓ on the correct regions, then a
+    /// single correction on the FIRST wrong one — and stops there. Anchored to the
+    /// region's own OCR rect, and the model decides completeness (so OCR dropping
+    /// the "3" in "lim…=3" can't suppress a valid correction).
     private func stream(verdicts: [Verdict], lines: [OCRLine], pageIndex: Int) async {
         let minConf = sensitivity == .subtle ? 0.90 : 0.0
         var placed: [CGRect] = []
@@ -359,7 +359,11 @@ final class AmbientTutorController: ObservableObject {
                         body: v.note, result: v.fix?.isEmpty == true ? nil : v.fix))
                 }
                 Haptics.selection()
-                try? await Task.sleep(nanoseconds: 120_000_000)
+                // Stop at the FIRST wrong line: everything below it usually follows
+                // from this one error, so flagging the rest is noise. The student
+                // fixes here and re-checks. (Verdicts are sorted top-down, so this
+                // is the first error in the worked solution.)
+                break
             }
         }
     }
