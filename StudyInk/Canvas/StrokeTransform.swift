@@ -131,7 +131,11 @@ struct TransformLassoOverlay: View {
                 .accessibilityLabel(Text("action.cancel"))
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
             }
-            .ignoresSafeArea()
+            // Match the canvas's safe-area treatment (bottom only) so the points,
+            // which are transform.toScreen values in the SAFE-AREA-relative space
+            // the page/MediaLayer live in, render right under the pen — a full
+            // .ignoresSafeArea() shifted the loop DOWN by the top inset.
+            .ignoresSafeArea(edges: .bottom)
             .transition(.opacity)
         }
     }
@@ -222,7 +226,7 @@ struct StrokeTransformOverlay: View {
             // Apple-style marching-ants OUTLINE tracing the lasso loop (not a box,
             // no corner handles — resize is a pinch). Falls back to the bounds.
             antsOutline(base: base)
-                .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 1.5, lineJoin: .round, dash: [6, 4], dashPhase: antsPhase))
+                .stroke(SemanticColor.aiCircleStroke, style: StrokeStyle(lineWidth: 1.5, lineJoin: .round, dash: [6, 4], dashPhase: antsPhase))
                 .allowsHitTesting(false)
 
             // Apple-style edit menu, floating just above the selection.

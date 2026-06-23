@@ -56,6 +56,7 @@ private struct MediaItemView: View {
     @State private var image: UIImage?
     @State private var dragStart: CGPoint?
     @State private var resizeStart: CGRect?
+    @State private var pinchStart: CGRect?
     @State private var rotateStart: Double?
     // Crop mode keeps a normalized [0,1] rectangle of the region to KEEP.
     @State private var cropMode = false
@@ -91,7 +92,9 @@ private struct MediaItemView: View {
             }
         }
         .onTapGesture(perform: onSelect)
-        .gesture(isSelected && !cropMode ? dragGesture.simultaneously(with: twoFingerRotation) : nil)
+        .gesture(isSelected && !cropMode
+                 ? dragGesture.simultaneously(with: twoFingerRotation).simultaneously(with: pinchResize)
+                 : nil)
         .task(id: item.fileName) {
             let name = item.fileName
             // Decode AND force-prepare the bitmap OFF the main thread, so scrolling
@@ -205,6 +208,21 @@ private struct MediaItemView: View {
                 item.rotation = (rotateStart ?? 0) + value.rotation.degrees
             }
             .onEnded { _ in rotateStart = nil }
+    }
+
+    /// Pinch anywhere on a selected image to resize it about its center
+    /// (aspect-locked), in addition to the corner handles.
+    private var pinchResize: some Gesture {
+        MagnifyGesture(minimumScaleDelta: 0.01)
+            .onChanged { value in
+                if pinchStart == nil { pinchStart = item.frame }
+                guard let start = pinchStart else { return }
+                let factor = min(8, max(0.2, value.magnification))
+                let newW = max(40, start.width * factor)
+                let newH = newW * (start.height / max(start.width, 1))
+                item.frame = CGRect(x: start.midX - newW / 2, y: start.midY - newH / 2, width: newW, height: newH)
+            }
+            .onEnded { _ in pinchStart = nil }
     }
 
     // MARK: - Action bar
