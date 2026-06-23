@@ -375,6 +375,13 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         guard containers.indices.contains(index) else { return }
         activeIndex = index
         let container = containers[index]
+        // Hide the live canvas (still holding the PREVIOUS page's ink) and reveal
+        // the destination page's cached render BEFORE reparenting it — otherwise
+        // the old ink shows for one frame at the new page (the flash when swiping
+        // to the first/last page). PencilKit also renders the swapped-in drawing
+        // asynchronously, so the canvas stays hidden until it catches up.
+        canvas.alpha = 0
+        container.imageView.isHidden = false
         canvas.isUserInteractionEnabled = true
         applyCanvasGeometry(pageSize: pageSizes[index])
         container.addSubview(canvas)
@@ -387,11 +394,6 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         // is legitimately empty). If not, ensureContent() seeds it once the
         // provider connects.
         seededActiveDrawing = controller.drawingProvider != nil
-        // PencilKit renders the swapped-in drawing asynchronously; the canvas
-        // would briefly show the PREVIOUS page's ink. Hide the live canvas and
-        // show this page's cached render until PencilKit has caught up.
-        container.imageView.isHidden = false
-        canvas.alpha = 0
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) { [weak self, weak container] in
             guard let self, self.activeIndex == index else { return }
             self.canvas.alpha = 1
@@ -561,9 +563,10 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         guard drawingState != .began, drawingState != .changed else { return }
         let nearest = nearestPageToCenter()
         if nearest != activeIndex { activatePage(nearest) }
-        if controller.currentPageIndex != nearest {
+        if controller.currentPageIndex != nearest || controller.visiblePageIndex != nearest {
             DispatchQueue.main.async { [controller] in
                 if controller.currentPageIndex != nearest { controller.currentPageIndex = nearest }
+                if controller.visiblePageIndex != nearest { controller.visiblePageIndex = nearest }
             }
         }
     }
@@ -580,10 +583,14 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         }
         guard origins != lastPublishedOrigins || zoom != controller.zoomScale else { return }
         lastPublishedOrigins = origins
+        // Live page-under-viewport for the navigator — cheap, and coalesced into
+        // this same per-frame publish so it costs no extra dispatch.
+        let visible = nearestPageToCenter()
         DispatchQueue.main.async { [weak controller] in
             guard let controller else { return }
             if controller.zoomScale != zoom { controller.zoomScale = zoom }
             if controller.pageScreenOrigins != origins { controller.pageScreenOrigins = origins }
+            if controller.visiblePageIndex != visible { controller.visiblePageIndex = visible }
         }
     }
 

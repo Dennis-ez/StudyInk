@@ -1749,7 +1749,10 @@ extension NoteEditorView {
     /// taps no longer glitch the ink.)
     private func jumpPage(by delta: Int) {
         let count = note.sortedPages.count
-        let target = max(0, min(count - 1, pageIndex + delta))
+        // Base the jump on the page the user currently SEES (live), so a tap after
+        // a free-scroll goes to the right neighbour.
+        let base = canvasController.visiblePageIndex
+        let target = max(0, min(count - 1, base + delta))
         guard target != pageIndex else { return }
         Haptics.tap()
         pageIndex = target
@@ -1757,7 +1760,9 @@ extension NoteEditorView {
 
     /// Bottom-right: current page out of total, with up/down paging.
     private var pageIndicator: some View {
-        let shown = pageIndex
+        // The LIVE page under the viewport (updates while scrolling); the canvas
+        // still mounts at settle. Falls back to pageIndex before the first scroll.
+        let shown = canvasController.visiblePageIndex
         return VStack(spacing: 0) {
             Button {
                 jumpPage(by: -1)

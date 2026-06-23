@@ -45,6 +45,10 @@ final class CanvasController: NSObject, ObservableObject {
     @Published var pageScreenOrigins: [CGPoint] = []
     /// The page under the viewport center; the live canvas follows it.
     @Published var currentPageIndex = 0
+    /// The page under the viewport center, updated LIVE while scrolling (the page
+    /// navigator reads this). The live canvas still mounts only at settle
+    /// (currentPageIndex), so this never triggers a re-mount.
+    @Published var visiblePageIndex = 0
     /// Live lasso loop points (screen coords) captured by the engine's PENCIL
     /// lasso gesture; the lasso overlay reads these to draw the marching-ants loop.
     /// Driven by the engine so a finger can still scroll while the lasso is armed.
