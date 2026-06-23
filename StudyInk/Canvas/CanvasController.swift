@@ -49,9 +49,12 @@ final class CanvasController: NSObject, ObservableObject {
     /// lasso gesture; the lasso overlay reads these to draw the marching-ants loop.
     /// Driven by the engine so a finger can still scroll while the lasso is armed.
     @Published var lassoPoints: [CGPoint] = []
-    /// Fired when a lasso loop finishes (screen-coord points) — the editor turns
+    /// Fired when a lasso loop finishes (CANVAS-coord points) — the editor turns
     /// it into a selection.
     var onLassoComplete: (([CGPoint]) -> Void)?
+    /// Fired when a new lasso loop STARTS — the editor commits/clears any prior
+    /// selection so a second lasso doesn't sit on top of the first.
+    var onLassoBegan: (() -> Void)?
     /// Page to scroll to on first layout (restores where the user left off).
     var initialPageIndex = 0
     /// Lasso capture shape: false = freeform loop, true = drag a rectangle.

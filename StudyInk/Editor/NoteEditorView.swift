@@ -351,6 +351,7 @@ struct NoteEditorView: View {
             TransformLassoOverlay(
                 isActive: $transformLassoActive,
                 rectangular: canvasController.lassoRectangular,
+                transform: canvasController.canvasTransform(forPage: pageIndex),
                 points: canvasController.lassoPoints,
                 onCancel: { canvasController.select(.ballpoint) }
             )
@@ -893,22 +894,30 @@ struct NoteEditorView: View {
                     }
                 }
             }
-            // The engine's pencil lasso gesture finished a loop (screen-coord
-            // points) → turn it into a selection. Freeform keeps its drawn shape;
-            // the marquee mode uses the bounding rectangle.
-            canvasController.onLassoComplete = { screenPoints in
-                guard screenPoints.count >= 3 else { return }
-                let t = canvasController.canvasTransform(forPage: pageIndex)
+            // The engine's pencil lasso gesture finished a loop (CANVAS-coord
+            // points — same space as canvas.drawing) → turn it into a selection.
+            // Freeform keeps its drawn shape; the marquee uses the bounding rect.
+            canvasController.onLassoComplete = { canvasPoints in
+                guard canvasPoints.count >= 3 else { return }
                 let polygon: [CGPoint]
                 if canvasController.lassoRectangular {
-                    let xs = screenPoints.map(\.x), ys = screenPoints.map(\.y)
+                    let xs = canvasPoints.map(\.x), ys = canvasPoints.map(\.y)
                     let rect = CGRect(x: xs.min()!, y: ys.min()!, width: xs.max()! - xs.min()!, height: ys.max()! - ys.min()!)
                     polygon = [CGPoint(x: rect.minX, y: rect.minY), CGPoint(x: rect.maxX, y: rect.minY),
-                               CGPoint(x: rect.maxX, y: rect.maxY), CGPoint(x: rect.minX, y: rect.maxY)].map(t.toPage)
+                               CGPoint(x: rect.maxX, y: rect.maxY), CGPoint(x: rect.minX, y: rect.maxY)]
                 } else {
-                    polygon = screenPoints.map(t.toPage)
+                    polygon = canvasPoints
                 }
                 beginStrokeTransform(with: polygon)
+            }
+            // A NEW lasso loop is starting — commit/clear any prior selection so the
+            // second loop draws live and the first doesn't linger underneath (#3/#4).
+            canvasController.onLassoBegan = {
+                if strokeSelection != nil { applyStrokeTransform() }
+                if regionSelection != nil { regionSelection = nil }
+                // A region selection had hidden the lasso overlay — re-arm it so the
+                // new loop is visible while it's drawn.
+                rearmLassoIfActive()
             }
             // Fresh shapes commit clean and stay unselected — node editing
             // only opens when the user taps a shape with a finger.
@@ -1141,7 +1150,10 @@ struct NoteEditorView: View {
     }
 
     /// Render a flat image of the lassoed region (page background + PDF + media +
-    /// ink), MASKED to the drawn shape. `polygon` is in the canvas's inkScale× space.
+    /// ink). The captured image is the RECTANGULAR bounding box of the loop (the
+    /// on-canvas outline still traces the freeform shape via `polygon`); copy /
+    /// duplicate produce a clean rectangle, not a clipped silhouette. `polygon` is
+    /// in the canvas's inkScale× space.
     private func makeRegionSelection(canvasPolygon polygon: [CGPoint]) -> RegionSelection? {
         guard let page = currentPage, polygon.count >= 3 else { return nil }
         let s = canvasController.inkScale
@@ -1157,24 +1169,11 @@ struct NoteEditorView: View {
         let px = CGRect(x: region.minX * scale, y: region.minY * scale,
                         width: region.width * scale, height: region.height * scale).intersection(imgBounds)
         guard !px.isEmpty, let cropped = cgFull.cropping(to: px) else { return nil }
-        // Clip the crop to the lassoed shape so copy/duplicate keep the drawn
-        // outline instead of a rectangle.
-        let pxSize = CGSize(width: CGFloat(cropped.width), height: CGFloat(cropped.height))
-        let fmt = UIGraphicsImageRendererFormat(); fmt.scale = 1; fmt.opaque = false
-        let masked = UIGraphicsImageRenderer(size: pxSize, format: fmt).image { ctx in
-            let cg = ctx.cgContext
-            let path = CGMutablePath()
-            let pts = pagePoly.map { CGPoint(x: ($0.x - region.minX) * scale, y: ($0.y - region.minY) * scale) }
-            if let f = pts.first {
-                path.move(to: f)
-                for p in pts.dropFirst() { path.addLine(to: p) }
-                path.closeSubpath()
-            }
-            cg.addPath(path); cg.clip()
-            cg.draw(cropped, in: CGRect(origin: .zero, size: pxSize))
-        }
+        // Crop straight from the rendered page's cgImage — already in display
+        // orientation, so the copy is upright (the mask path flipped it) and
+        // rectangular.
         return RegionSelection(polygon: pagePoly, pageRect: region,
-                               image: UIImage(cgImage: masked.cgImage ?? cropped, scale: scale, orientation: .up))
+                               image: UIImage(cgImage: cropped, scale: scale, orientation: .up))
     }
 
     private func copyRegion(_ region: RegionSelection) {

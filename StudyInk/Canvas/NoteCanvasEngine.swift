@@ -1219,11 +1219,14 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     }
 
     @objc private func lassoPanned(_ g: UIPanGestureRecognizer) {
-        // Window coordinates so the points line up with the editor's full-screen
-        // lasso overlay AND its canvasTransform (both share that space).
-        let p = g.location(in: nil)
+        // CANVAS coordinates (inkScale× page space) — the same conversion
+        // canvasTapped uses. The editor maps these to screen via the page's
+        // canvasTransform for drawing, and feeds them straight to the selector.
+        // Reporting in window space drifted off by the safe-area inset on commit.
+        let p = g.location(in: canvas)
         switch g.state {
         case .began:
+            controller.onLassoBegan?()
             controller.lassoPoints = [p]
         case .changed:
             controller.lassoPoints.append(p)

@@ -85,7 +85,11 @@ struct TransformLassoOverlay: View {
     @Binding var isActive: Bool
     /// false = freeform loop; true = drag-a-rectangle marquee (from the toolbar).
     let rectangular: Bool
-    /// Live loop points in SCREEN space, captured by the engine's PENCIL lasso
+    /// Maps the CANVAS-space lasso points to screen for drawing (the active page's
+    /// canvasTransform). Using the same space as the rest of the system keeps the
+    /// live loop and the committed selection pixel-aligned.
+    let transform: CanvasTransform
+    /// Live loop points in CANVAS space, captured by the engine's PENCIL lasso
     /// gesture (`CanvasController.lassoPoints`). This overlay only DRAWS — it never
     /// blocks touches, so a finger still scrolls/zooms the canvas while the lasso
     /// is armed.
@@ -94,6 +98,7 @@ struct TransformLassoOverlay: View {
 
     var body: some View {
         if isActive {
+            let screenPoints = points.map(transform.toScreen)
             ZStack {
                 // Marching ants on wall-clock time so the point churn while drawing
                 // the loop doesn't interrupt the animation.
@@ -101,15 +106,15 @@ struct TransformLassoOverlay: View {
                     let secs = context.date.timeIntervalSinceReferenceDate
                     let phase = -CGFloat(secs.truncatingRemainder(dividingBy: 0.5) / 0.5) * 12
                     let style = StrokeStyle(lineWidth: 2.5, lineCap: .round, dash: [7, 5], dashPhase: phase)
-                    if rectangular, points.count >= 2 {
-                        let rect = boundingRect(points)
+                    if rectangular, screenPoints.count >= 2 {
+                        let rect = boundingRect(screenPoints)
                         Path(rect).stroke(SemanticColor.aiCircleStroke, style: style)
                             .background(Path(rect).fill(SemanticColor.aiCircleStroke.opacity(0.06)))
                     } else if !rectangular {
                         Path { path in
-                            guard let first = points.first else { return }
+                            guard let first = screenPoints.first else { return }
                             path.move(to: first)
-                            for point in points.dropFirst() { path.addLine(to: point) }
+                            for point in screenPoints.dropFirst() { path.addLine(to: point) }
                         }
                         .stroke(SemanticColor.aiCircleStroke, style: style)
                     }
