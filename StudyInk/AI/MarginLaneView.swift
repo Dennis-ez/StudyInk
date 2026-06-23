@@ -125,8 +125,8 @@ struct GhostInkLayer: View {
                     .overlay(Capsule().strokeBorder(SemanticColor.separator))
                 }
                 .buttonStyle(.plain)
-                // "Why is this the next step?" — reveals the model's one-line reason.
-                if ghost.why != nil {
+                // "Why is this the next step?" — reveals the reason AND the worked steps.
+                if ghost.hasDetail {
                     Button { withAnimation(.easeOut(duration: 0.2)) { showWhy.toggle() } } label: {
                         Circle().fill(SemanticColor.surface)
                             .frame(width: 22, height: 22)
@@ -147,16 +147,31 @@ struct GhostInkLayer: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(Text("ai.dismiss"))
             }
-            if showWhy, let why = ghost.why {
-                Text(verbatim: why)
-                    .font(.system(size: 12))
-                    .foregroundStyle(SemanticColor.textMutedColor)
-                    .multilineTextAlignment(why.isMostlyRTL ? .trailing : .leading)
-                    .padding(.horizontal, 10).padding(.vertical, 7)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(SemanticColor.separator))
-                    .frame(maxWidth: 240, alignment: .leading)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+            if showWhy, ghost.hasDetail {
+                VStack(alignment: .leading, spacing: 7) {
+                    // The reason — rendered with AIRichText so its LaTeX shows as math.
+                    if let why = ghost.why, !why.isEmpty {
+                        AIRichText(content: why).font(.system(size: 12))
+                    }
+                    // The ordered worked steps to reach the next line.
+                    if !ghost.steps.isEmpty {
+                        ForEach(Array(ghost.steps.enumerated()), id: \.offset) { index, step in
+                            HStack(alignment: .top, spacing: 8) {
+                                Text(verbatim: "\(index + 1)")
+                                    .font(.caption2.weight(.bold).monospacedDigit())
+                                    .foregroundStyle(.white)
+                                    .frame(width: 17, height: 17)
+                                    .background(AppTheme.current.aiAccent, in: Circle())
+                                AIRichText(content: step).font(.system(size: 12))
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 10).padding(.vertical, 8)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(SemanticColor.separator))
+                .frame(maxWidth: 280, alignment: .leading)
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .fixedSize()

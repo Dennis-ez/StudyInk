@@ -111,6 +111,8 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         bouncesZoom = true
         alwaysBounceVertical = true
         contentInsetAdjustmentBehavior = .never
+        // A status-bar tap must NOT fling the page to the top mid-writing.
+        scrollsToTop = false
         // The desk follows the active theme so the canvas backdrop matches the
         // rest of the app (the page itself stays its own paper colour).
         backgroundColor = AppTheme.current.deskUIColor
