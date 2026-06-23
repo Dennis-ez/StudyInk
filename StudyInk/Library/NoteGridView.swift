@@ -485,7 +485,9 @@ struct NoteGridView: View {
 
     private func gridCellLabel(_ note: Note) -> some View {
         VStack(spacing: 0) {
-            // Cover: the top of the first page, like a real notebook cover.
+            // Cover: the top of the first page, like a real notebook cover. A
+            // portrait 4:5 window (taller than wide) so the card reads as a
+            // notebook, not a landscape tile.
             Group {
                 if let first = note.sortedPages.first {
                     PageThumbnailView(page: first)
@@ -495,7 +497,7 @@ struct NoteGridView: View {
                 }
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 168)
+            .aspectRatio(4 / 5, contentMode: .fit)
             .clipped()
             .overlay(alignment: .bottom) {
                 Rectangle().fill(SemanticColor.cardEdge).frame(height: 1)

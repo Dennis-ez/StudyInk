@@ -1312,9 +1312,12 @@ final class PageContainerView: UIView {
         guard let snapshot, let cg = UIGraphicsGetCurrentContext() else { return }
         let dark = traitCollection.userInterfaceStyle == .dark
         PageRenderer.drawBackground(snapshot, in: cg, darkMode: dark)
-        // Hairline seam where stitched pages meet (pages are gapless).
+        // Hairline seam where stitched ruled pages meet (pages are gapless). A PDF
+        // page is a discrete document, not stitched paper — drawing the light seam
+        // on a dark-mode PDF rendered it as a glaring white border at the page edge.
+        guard snapshot.customTemplatePDF == nil else { return }
         let seam = (UIColor(named: "templateLine") ?? .separator).resolvedColor(with: traitCollection)
-        cg.setFillColor(seam.withAlphaComponent(0.8).cgColor)
+        cg.setFillColor(seam.withAlphaComponent(0.3).cgColor)
         cg.fill(CGRect(x: 0, y: bounds.height - 0.5, width: bounds.width, height: 0.5))
     }
 }

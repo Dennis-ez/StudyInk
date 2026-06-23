@@ -75,7 +75,14 @@ final class GuidedModeController: ObservableObject {
     func pageTurned() {
         guard isEnabled else { return }
         penPauseTask?.cancel()
-        Task { await checkPage(force: true) }
+        // Don't fire on every page while the user scrolls through an imported PDF
+        // — wait until they DWELL on a page, then evaluate (and checkPage still
+        // bails on pages with no student work of their own).
+        penPauseTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1.2))
+            guard !Task.isCancelled else { return }
+            await self?.checkPage(force: true)
+        }
     }
 
     private func stopTasks() {
@@ -105,14 +112,20 @@ final class GuidedModeController: ObservableObject {
         // Rate limit: at most one request per 30s, regardless of trigger.
         guard Date().timeIntervalSince(lastRequestAt) >= minRequestInterval else { return }
 
-        await OCRService.indexPage(page)
-        let typed = page.textBoxes.map(\.text).joined(separator: "\n")
-        let content = [(page.ocrText ?? ""), typed].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-        // Use stroke count too, so we still re-evaluate handwriting that OCR
-        // can't read (the model SEES the page image below regardless).
+        // CHEAP eligibility gate, BEFORE any OCR / render / Core Data save: only
+        // evaluate pages the STUDENT is actively working on — their handwriting or
+        // their own typed text. A pristine imported PDF page (printed Q&A they're
+        // just reading/scrolling) has OCR'd content but no work of their own, so
+        // skip it entirely — no heavy work, no hiccup (#5/#8).
+        let typed = page.textBoxes.map(\.text).joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
         let strokeCount = page.drawing.strokes.count
+        guard strokeCount > 2 || typed.count > 8 else { return }
+
+        await OCRService.indexPage(page)
+        let content = [(page.ocrText ?? ""), typed].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        // Stroke count is part of the signature so we re-evaluate handwriting that
+        // OCR can't read (the model SEES the page image below regardless).
         let signature = "\(content)#\(strokeCount)"
-        guard strokeCount > 2 || content.count > 8 else { return }     // something to look at
         guard force || signature != lastSeenText else { return }       // and it changed
         lastSeenText = signature
         lastRequestAt = Date()
