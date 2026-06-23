@@ -121,6 +121,8 @@ final class GuidedModeController: ObservableObject {
         let strokeCount = page.drawing.strokes.count
         guard strokeCount > 2 || typed.count > 8 else { return }
 
+        PerfMonitor.shared.setActivity("ai:guided")
+        defer { if PerfMonitor.shared.activity == "ai:guided" { PerfMonitor.shared.setActivity("idle") } }
         await OCRService.indexPage(page)
         let content = [(page.ocrText ?? ""), typed].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
         // Stroke count is part of the signature so we re-evaluate handwriting that

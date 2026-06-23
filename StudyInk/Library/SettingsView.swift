@@ -32,6 +32,7 @@ struct SettingsView: View {
     ]
 
     @State private var showAIDebug = false
+    @State private var showPerfMonitor = false
     @State private var models: [String] = []
     @State private var loadingModels = false
     @State private var customModel = ""
@@ -437,10 +438,29 @@ struct SettingsView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    Divider()
+                    Button {
+                        showPerfMonitor = true
+                    } label: {
+                        HStack {
+                            Label(title: { Text(verbatim: "Performance") },
+                                  icon: { Image(systemName: "gauge.with.dots.needle.bottom.50percent") })
+                            Spacer()
+                            if PerfMonitor.shared.isCapturing {
+                                Image(systemName: "record.circle").foregroundStyle(.red)
+                            }
+                            Image(systemName: "chevron.right").font(.footnote).foregroundStyle(.tertiary)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                 }
             }
             .sheet(isPresented: $showAIDebug) {
                 NavigationStack { AIDebugView() }
+            }
+            .sheet(isPresented: $showPerfMonitor) {
+                NavigationStack { PerfMonitorView() }
             }
         }
     }

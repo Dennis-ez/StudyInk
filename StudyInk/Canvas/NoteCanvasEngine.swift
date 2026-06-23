@@ -373,6 +373,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
 
     private func mountCanvas(on index: Int) {
         guard containers.indices.contains(index) else { return }
+        PerfMonitor.shared.setActivity("page-mount")
         activeIndex = index
         let container = containers[index]
         // Hide the live canvas (still holding the PREVIOUS page's ink) and reveal
@@ -398,6 +399,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
             guard let self, self.activeIndex == index else { return }
             self.canvas.alpha = 1
             container?.imageView.isHidden = true
+            if PerfMonitor.shared.activity == "page-mount" { PerfMonitor.shared.setActivity("idle") }
         }
         // The undo stack is per-canvas, not per-page: undoing after a page
         // switch would resurrect the previous page's ink on this one.
@@ -605,11 +607,21 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         publishGeometry()
     }
 
-    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
-        if !decelerate { settleActivePage() }
+    func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+        PerfMonitor.shared.setActivity("scroll")
     }
-    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) { settleActivePage() }
+    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+        if !decelerate { settleActivePage(); PerfMonitor.shared.setActivity("idle") }
+    }
+    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+        settleActivePage()
+        PerfMonitor.shared.setActivity("idle")
+    }
     func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) { settleActivePage() }
+
+    func scrollViewWillBeginZooming(_ scrollView: UIScrollView, with view: UIView?) {
+        PerfMonitor.shared.setActivity("zoom")
+    }
 
     func scrollViewDidZoom(_ scrollView: UIScrollView) {
         centerDocument()
@@ -625,6 +637,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
 
     /// Releasing a pinch near fit-width snaps the page to exactly fill the screen.
     func scrollViewDidEndZooming(_ scrollView: UIScrollView, with view: UIView?, atScale scale: CGFloat) {
+        PerfMonitor.shared.setActivity("idle")
         guard documentView.frame.width > 0, zoomScale > 0 else { return }
         let fit = bounds.width / (documentView.frame.width / zoomScale)
         if fit >= minimumZoomScale, fit <= maximumZoomScale,
