@@ -843,9 +843,12 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
 
         let countBeforeCancel = canvas.drawing.strokes.count
         shapeWorkItem?.cancel()
-        // Toggling the drawing recognizer cancels the live stroke.
+        // Disabling the drawing recognizer cancels the in-flight stroke AND keeps
+        // it off through the live-adjust phase — otherwise the still-down pen
+        // immediately starts a NEW scribble that fights the node drag. endLiveShape
+        // re-enables it on pen-up. (It used to toggle back on right away, which is
+        // why "keep moving the pen to adjust" didn't behave.)
         canvas.drawingGestureRecognizer.isEnabled = false
-        canvas.drawingGestureRecognizer.isEnabled = true
 
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
@@ -915,6 +918,9 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
 
     /// The pen lifted — commit the adjusted shape (undoable back to before the snap).
     private func endLiveShape() {
+        // Always restore drawing (handleHoldSnap left it off for the adjust phase),
+        // even on the no-liveShape path, so the pen can draw again.
+        canvas.drawingGestureRecognizer.isEnabled = true
         guard let live = liveShape else { return }
         liveShape = nil
         let final = canvas.drawing
