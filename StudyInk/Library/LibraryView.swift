@@ -219,11 +219,9 @@ struct LibraryView: View {
             .listRowSeparator(.hidden)
 
             Section {
-                // One tint across the smart sections — the sidebar reads as a
-                // set, not a rainbow.
+                // Just All Notes at the top — Recents / Favorites / Recently
+                // Deleted live as filter chips under the All Notes title instead.
                 sectionRow(.all, lucide: "layers", count: activeNotes.count)
-                sectionRow(.recents, lucide: "clock", count: recentsCount)
-                sectionRow(.favorites, lucide: "star", count: favoritesCount)
             }
             Section(header:
                 HStack {
@@ -262,9 +260,6 @@ struct LibraryView: View {
                     subjectRows(subject, depth: 0)
                 }
             }
-            Section {
-                sectionRow(.deleted, lucide: "trash", count: deletedCount)
-            }
         }
             .scrollContentBackground(.hidden)
             // Plain (not .sidebar) = edge-to-edge rows, no grouped inset.
@@ -284,6 +279,16 @@ struct LibraryView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .frame(maxWidth: .infinity)
+                // Opaque sidebar fill + a top hairline so scrolling rows pass
+                // BEHIND the pinned button instead of bleeding through it.
+                .background(alignment: .top) {
+                    themeSidebar
+                        .ignoresSafeArea(edges: .bottom)
+                        .overlay(alignment: .top) {
+                            Rectangle().fill(SemanticColor.separator).frame(height: 0.5)
+                        }
+                }
             }
         }
     }
@@ -384,8 +389,14 @@ struct LibraryView: View {
                     .foregroundStyle(.secondary)
                 VStack { Divider() }
             }
+            // Hebrew/Arabic dividers mirror so the label sits on the right.
+            .environment(\.layoutDirection, nameDirection(subject.name))
             .padding(.leading, CGFloat(depth) * 20)
             .contentShape(Rectangle())
+            // Clear row fill — the List's default dark row background read as a
+            // weird black band behind the divider in dark mode.
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
             .draggable("subject:\(subject.id?.uuidString ?? "")")
             .contextMenu { subjectContextMenu(subject) }
             // A divider is a container for OTHER subjects/dividers — accept those
@@ -430,6 +441,8 @@ struct LibraryView: View {
                         .accessibilityLabel(Text("library.toggleChildren"))
                     }
                 }
+                // Hebrew/Arabic names mirror the row so the name reads from the right.
+                .environment(\.layoutDirection, nameDirection(subject.name))
             }
             .padding(.leading, CGFloat(depth) * 20)
             // Subject rows carry their color as a soft wash; selection darkens
@@ -503,6 +516,14 @@ struct LibraryView: View {
         return changed
     }
 
+    /// A name beginning with a Hebrew/Arabic letter reads right-to-left, so its
+    /// row mirrors (name on the right). Falls back to LTR for English/numbers.
+    private func nameDirection(_ name: String?) -> LayoutDirection {
+        guard let scalar = name?.unicodeScalars.first(where: { CharacterSet.letters.contains($0) })
+        else { return .leftToRight }
+        return (0x0590...0x08FF).contains(scalar.value) ? .rightToLeft : .leftToRight
+    }
+
     /// A subject/divider can be nested into any other subject OR divider — the
     /// only rule is it can't go into itself or one of its own descendants (that
     /// would orphan a cycle).
@@ -558,6 +579,26 @@ struct LibraryView: View {
                     PersistenceController.shared.save()
                 }
             } label: { Label("library.moveOut", systemImage: "arrow.up.left") }
+        }
+
+        // Reliable reparent (dragging a row onto another is finicky inside a
+        // List): move this subject/divider INTO any other one.
+        let nestTargets = allSubjects.filter { canNest(subject, into: $0) && $0 != subject.parent }
+        if !nestTargets.isEmpty {
+            Menu {
+                ForEach(nestTargets, id: \.objectID) { target in
+                    Button {
+                        withAnimation { subject.parent = target }
+                        PersistenceController.shared.save()
+                    } label: {
+                        Label {
+                            Text(verbatim: target.name ?? "—")
+                        } icon: {
+                            Image(systemName: target.isDivider ? "minus" : "folder")
+                        }
+                    }
+                }
+            } label: { Label("library.moveInto", systemImage: "arrow.turn.down.right") }
         }
 
         if !subject.isDivider {

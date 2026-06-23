@@ -48,11 +48,14 @@ struct NoteGridView: View {
     }
     @Namespace private var zoomNamespace
 
-    private var inTrash: Bool { section == .deleted }
+    /// Trash mode (restore/permanent-delete actions, no import/new): the old
+    /// sidebar section OR the new "Recently Deleted" chip under All Notes.
+    private var inTrash: Bool { section == .deleted || (section == .all && allTab == .deleted) }
 
-    /// Sub-filter tabs shown only in All Notes.
+    /// Sub-filter tabs shown only in All Notes. Recently Deleted lives here now
+    /// instead of in the sidebar.
     enum AllTab: String, CaseIterable {
-        case all, recents, favorites, unfiled
+        case all, recents, favorites, unfiled, deleted
 
         var labelKey: LocalizedStringKey {
             switch self {
@@ -60,6 +63,7 @@ struct NoteGridView: View {
             case .recents: return "library.recents"
             case .favorites: return "library.favorites"
             case .unfiled: return "library.unfiled"
+            case .deleted: return "library.recentlyDeleted"
             }
         }
     }
@@ -70,17 +74,21 @@ struct NoteGridView: View {
         var result: [Note]
         switch section {
         case .all:
-            result = allNotes.filter { $0.deletedAt == nil }
-            switch allTab {
-            case .all:
-                break
-            case .recents:
-                let cutoff = Date().addingTimeInterval(-7 * 24 * 3600)
-                result = result.filter { ($0.modifiedAt ?? .distantPast) > cutoff }
-            case .favorites:
-                result = result.filter(\.isFavorite)
-            case .unfiled:
-                result = result.filter { $0.subject == nil }
+            if allTab == .deleted {
+                result = allNotes.filter { $0.deletedAt != nil }
+            } else {
+                result = allNotes.filter { $0.deletedAt == nil }
+                switch allTab {
+                case .all, .deleted:
+                    break
+                case .recents:
+                    let cutoff = Date().addingTimeInterval(-7 * 24 * 3600)
+                    result = result.filter { ($0.modifiedAt ?? .distantPast) > cutoff }
+                case .favorites:
+                    result = result.filter(\.isFavorite)
+                case .unfiled:
+                    result = result.filter { $0.subject == nil }
+                }
             }
         case .recents:
             let cutoff = Date().addingTimeInterval(-7 * 24 * 3600)
@@ -497,7 +505,7 @@ struct NoteGridView: View {
                 }
             }
             .frame(maxWidth: .infinity)
-            .aspectRatio(4 / 5, contentMode: .fit)
+            .aspectRatio(9 / 10, contentMode: .fit)
             .clipped()
             .overlay(alignment: .bottom) {
                 Rectangle().fill(SemanticColor.cardEdge).frame(height: 1)

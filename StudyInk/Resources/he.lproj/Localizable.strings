@@ -137,6 +137,7 @@
 "library.moveUp" = "הזזה למעלה";
 "library.moveDown" = "הזזה למטה";
 "library.moveOut" = "הוצאה מהתיקייה";
+"library.moveInto" = "העברה לתוך";
 "library.deleteSubject.confirm" = "למחוק את הנושא?";
 "library.deleteSubject.message" = "המחברות שלו עוברות לנמחקו לאחרונה. נושאים מקוננים יימחקו איתו.";
 "library.deleteNote.confirm" = "למחוק?";

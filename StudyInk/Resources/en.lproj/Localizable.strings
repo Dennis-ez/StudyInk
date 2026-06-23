@@ -137,6 +137,7 @@
 "library.moveUp" = "Move Up";
 "library.moveDown" = "Move Down";
 "library.moveOut" = "Move Out of Folder";
+"library.moveInto" = "Move Into";
 "library.deleteSubject.confirm" = "Delete this subject?";
 "library.deleteSubject.message" = "Its notes move to Recently Deleted. Nested subjects are deleted with it.";
 "library.deleteNote.confirm" = "Delete?";
