@@ -108,6 +108,15 @@
 "media.resize" = "Resize";
 "media.rotate" = "Rotate";
 "media.resetRotation" = "Reset Rotation";
+"media.duplicate" = "Duplicate";
+"media.copy" = "Copy";
+"media.cut" = "Cut";
+"media.crop" = "Crop";
+"media.pasteImage" = "Paste Image";
+"media.insertSpace" = "Insert Space";
+"settings.ai.lang" = "Response language";
+"settings.ai.lang.device" = "App language";
+"settings.ai.lang.context" = "Language of the work";
 
 /* Library */
 "library.allNotes" = "All Notes";
@@ -128,6 +137,7 @@
 "library.moveUp" = "Move Up";
 "library.moveDown" = "Move Down";
 "library.moveOut" = "Move Out of Folder";
+"library.moveInto" = "Move Into";
 "library.deleteSubject.confirm" = "Delete this subject?";
 "library.deleteSubject.message" = "Its notes move to Recently Deleted. Nested subjects are deleted with it.";
 "library.deleteNote.confirm" = "Delete?";
@@ -184,12 +194,10 @@
 "settings.appearance.system" = "System";
 "settings.appearance.light" = "Light";
 "settings.appearance.dark" = "Dark";
-"settings.theme" = "Accent Theme";
-"theme.classic" = "Classic Blue";
-"theme.violet" = "Violet";
-"theme.forest" = "Forest";
-"theme.sunset" = "Sunset";
-"theme.rose" = "Rose";
+"settings.theme" = "Theme";
+"theme.foolscap" = "Foolscap";
+"theme.neon" = "Neon";
+"theme.daylight" = "Daylight";
 "theme.graphite" = "Graphite";
 "settings.backup" = "Backup & Sync";
 "settings.notes" = "Notes";
@@ -224,8 +232,26 @@
 
 /* AI tutor */
 "ai.tutorName" = "AI Tutor";
+"ai.tutorRole" = "Study partner";
+"ambient.check" = "Check my work";
+"ambient.fixIt" = "Fix it for me";
+"ambient.flickAccept" = "flick to accept";
+"ambient.suggest" = "Suggest next step";
+"ambient.sensitivity" = "Ambient tutor";
+"ambient.showWhy" = "Show why";
+"ambient.glyph.correct" = "Looks right";
+"ambient.glyph.attend" = "Correction — double-tap to view";
+"ambient.off" = "Off";
+"ambient.subtle" = "Subtle";
+"ambient.helpful" = "Helpful";
+"ambient.checking" = "Checking your work…";
+"ambient.notice.empty" = "Nothing to check yet — write something first.";
+"ambient.notice.unreadable" = "Couldn't read this page clearly. Try again.";
+"ambient.notice.allGood" = "Looks all good ✓";
+"ambient.notice.noSuggestion" = "No next step to suggest here.";
 "ai.menu" = "AI Tutor Menu";
 "ai.ask" = "Ask AI";
+"ai.pen" = "AI pen";
 "ai.askPlaceholder" = "Ask about your notes…";
 "ai.askHint" = "The tutor sees all pages of this note.";
 "ai.askMore" = "Ask more…";
@@ -252,6 +278,14 @@
 "ai.explainPage" = "Explain This Page";
 "ai.explainPage.question" = "Explain this page: summarize it and point out the key concepts.";
 "ai.quizMe" = "Quiz Me";
+"ai.fitSketch" = "Fit My Sketch";
+"ai.ghost.dismiss" = "Clear guides";
+"ai.ghost.none" = "No sketch found to fit on this page.";
+"collapse.collapsed" = "Collapsed";
+"collapse.expand" = "Expand collapsed block";
+"ai.showQuestion" = "Show the Question";
+"warp.question" = "Question · page %lld";
+"warp.none" = "Couldn't find a separate question page.";
 "ai.quiz.failed" = "Couldn't generate a quiz from this note yet — try adding more content.";
 "quiz.title" = "Quiz";
 "quiz.loading" = "Writing questions from your note…";

@@ -48,8 +48,28 @@ enum AIContent {
     case imagePNG(Data)
 
     static func image(_ image: UIImage) -> AIContent? {
-        guard let data = image.pngData() else { return nil }
+        // Cap the longest side before encoding. A page render is already ~2x, but
+        // a pasted photo/screenshot can be 3–4k px — sending that raw burns image
+        // tokens and memory for no readability gain. 2048 keeps stacked fractions
+        // legible while bounding the payload.
+        guard let data = image.downsampled(maxDimension: 2048).pngData() else { return nil }
         return .imagePNG(data)
+    }
+}
+
+extension UIImage {
+    /// Scales down so the longest side ≤ `maxDimension` (aspect-preserving; never
+    /// upscales). Returns self when already within bounds.
+    func downsampled(maxDimension: CGFloat) -> UIImage {
+        let longest = max(size.width, size.height)
+        guard longest > maxDimension, longest > 0 else { return self }
+        let factor = maxDimension / longest
+        let newSize = CGSize(width: size.width * factor, height: size.height * factor)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        return UIGraphicsImageRenderer(size: newSize, format: format).image { _ in
+            draw(in: CGRect(origin: .zero, size: newSize))
+        }
     }
 }
 
@@ -85,11 +105,37 @@ enum AIServiceError: LocalizedError {
 
 /// Single entry point the tutor uses; routes to the provider chosen in Settings.
 enum AIService {
-    static func send(system: String, messages: [AIMessage], maxTokens: Int = 1500) async throws -> String {
-        switch AIConfig.provider {
-        case .claude: return try await ClaudeService.send(system: system, messages: messages, maxTokens: maxTokens)
-        case .gemini: return try await GeminiService.send(system: system, messages: messages, maxTokens: maxTokens)
-        case .custom: return try await OpenAICompatService.send(system: system, messages: messages, maxTokens: maxTokens)
+    /// `temperature` controls sampling randomness. Grading ("Check my work")
+    /// passes 0 so the SAME page yields the SAME verdicts every run; creative
+    /// asks can leave the default.
+    static func send(system: String, messages: [AIMessage], maxTokens: Int = 1500, temperature: Double = 0.3) async throws -> String {
+        let start = Date()
+        let userText = messages.flatMap(\.content)
+            .compactMap { block -> String? in if case let .text(t) = block { return t } else { return nil } }
+            .joined(separator: "\n")
+        let imageCount = messages.flatMap(\.content).filter { if case .imagePNG = $0 { return true } else { return false } }.count
+        func log(_ response: String, failed: Bool) {
+            let ms = Int(Date().timeIntervalSince(start) * 1000)
+            Task { @MainActor in
+                AIDebugLog.shared.record(system: system, user: userText, images: imageCount, response: response, failed: failed, ms: ms)
+            }
+        }
+        do {
+            let response: String
+            switch AIConfig.provider {
+            case .claude: response = try await ClaudeService.send(system: system, messages: messages, maxTokens: maxTokens, temperature: temperature)
+            case .gemini: response = try await GeminiService.send(system: system, messages: messages, maxTokens: maxTokens, temperature: temperature)
+            case .custom: response = try await OpenAICompatService.send(system: system, messages: messages, maxTokens: maxTokens, temperature: temperature)
+            }
+            log(response, failed: false)
+            return response
+        } catch {
+            // A cancelled request (superseded by newer input) is debounce noise,
+            // not a failure — don't clutter the debug log with it.
+            if (error as? URLError)?.code != .cancelled && !(error is CancellationError) {
+                log("ERROR: \(error.localizedDescription)", failed: true)
+            }
+            throw error
         }
     }
 

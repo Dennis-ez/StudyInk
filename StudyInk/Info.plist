@@ -35,6 +35,10 @@
 	<string>StudyInk can save exported note images to your photo library.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>StudyInk lets you insert images from your photo library into your notes.</string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>Fraunces-Variable.ttf</string>
+	</array>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UIBackgroundModes</key>
@@ -45,7 +49,7 @@
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColorName</key>
-		<string>canvasBackground</string>
+		<string>paperBackground</string>
 	</dict>
 	<key>UIRequiresFullScreen</key>
 	<false/>

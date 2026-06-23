@@ -40,13 +40,7 @@ struct PageNavigatorStrip: View {
                             end: commitReorder
                         ))
                 }
-                Button(action: { addPage() }) {
-                    Image(systemName: "plus")
-                        .font(.title3)
-                        .frame(width: 54, height: 72)
-                        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
-                }
-                .accessibilityLabel(Text("page.add"))
+                addPageButton
             }
             .padding(10)
             // Thumbnails slide into place on reorder/insert/delete instead of
@@ -101,6 +95,24 @@ struct PageNavigatorStrip: View {
                 }
             }
             .accessibilityLabel(Text("page.thumbnail \(index + 1)"))
+    }
+
+    /// Dashed "+ add page" affordance at the end of the strip (spec §3.2).
+    private var addPageButton: some View {
+        Button {
+            addPage()
+        } label: {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(SemanticColor.separator, style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                .frame(width: 54, height: 72)
+                .overlay {
+                    Image(systemName: "plus")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("page.addAfter"))
     }
 
     private func addPage(after index: Int? = nil) {
@@ -190,6 +202,9 @@ struct PageThumbnailView: View {
     @ObservedObject var page: Page
     @Environment(\.colorScheme) private var colorScheme
     @State private var thumbnail: UIImage?
+    /// True once we know the page is empty OR have rendered its image — so a
+    /// blank page shows just its template instead of spinning forever.
+    @State private var resolved = false
     /// Measured display width — the page renders at this size (× screen scale),
     /// not a fixed tiny raster that upscales into blur.
     @State private var displayWidth: CGFloat = 0
@@ -215,12 +230,10 @@ struct PageThumbnailView: View {
                     Image(uiImage: thumbnail)
                         .resizable()
                         .scaledToFit()
-                } else {
-                    // Still rendering — show a loader so the note doesn't read
-                    // as empty before its ink/PDF has been rasterized.
-                    ProgressView()
-                        .controlSize(.small)
-                        .tint(.secondary)
+                } else if !resolved {
+                    // Still rendering — the ink-stroke loader, not a beachball.
+                    // (A blank page resolves immediately, so it never spins.)
+                    InkSpinner(size: 26)
                 }
             }
             .onAppear {
@@ -249,8 +262,13 @@ struct PageThumbnailView: View {
         let snapshot = PageRenderer.Snapshot(page: page)
         guard snapshot.drawingData != nil || !snapshot.mediaItems.isEmpty || !snapshot.textBoxes.isEmpty else {
             thumbnail = nil
+            resolved = true   // empty page — show the template, never spin
             return
         }
+        // Wait for the real cell size before rendering — otherwise we'd render a
+        // tiny 0.2× raster and resolve INSTANTLY (the loader never gets seen), then
+        // re-render. Keep the loader up until the actual thumbnail is ready.
+        guard displayWidth > 1 else { return }
         // Pixels-per-page-point that fills the actual cell on this screen.
         let renderScale = min(2, max(0.2, displayWidth * UIScreen.main.scale / max(snapshot.pageSize.width, 1)))
         // Follow appearance — PageRenderer maps ink storage→display so a dark
@@ -258,7 +276,7 @@ struct PageThumbnailView: View {
         let dark = colorScheme == .dark
         Task.detached(priority: .utility) {
             let image = PageRenderer.render(snapshot, darkMode: dark, scale: renderScale)
-            await MainActor.run { thumbnail = image }
+            await MainActor.run { thumbnail = image; resolved = true }
         }
     }
 }

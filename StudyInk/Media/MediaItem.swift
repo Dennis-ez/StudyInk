@@ -47,9 +47,17 @@ enum MediaStore {
         }
     }
 
+    /// Decoded-image cache so a media item that scrolled off-screen (and dropped
+    /// its @State image) reloads instantly and can't get stuck on the gray
+    /// placeholder. Keyed by filename; evicted under memory pressure by NSCache.
+    private static let imageCache = NSCache<NSString, UIImage>()
+
     static func image(named fileName: String) -> UIImage? {
-        if let img = UIImage(contentsOfFile: directory.appendingPathComponent(fileName).path) { return img }
-        return UIImage(contentsOfFile: stickerDirectory.appendingPathComponent(fileName).path)
+        if let cached = imageCache.object(forKey: fileName as NSString) { return cached }
+        let img = UIImage(contentsOfFile: directory.appendingPathComponent(fileName).path)
+            ?? UIImage(contentsOfFile: stickerDirectory.appendingPathComponent(fileName).path)
+        if let img { imageCache.setObject(img, forKey: fileName as NSString) }
+        return img
     }
 
     static func userStickers() -> [String] {
@@ -59,6 +67,19 @@ enum MediaStore {
 
     static func delete(fileName: String) {
         try? FileManager.default.removeItem(at: directory.appendingPathComponent(fileName))
+    }
+
+    /// Copies a payload to a fresh filename (so a duplicate doesn't share — and
+    /// can't be orphaned by deleting — the original's file). Returns the new name.
+    static func duplicate(fileName: String) -> String? {
+        let ext = (fileName as NSString).pathExtension.isEmpty ? "png" : (fileName as NSString).pathExtension
+        if let data = try? Data(contentsOf: directory.appendingPathComponent(fileName)) {
+            return save(data, fileExtension: ext)
+        }
+        if let data = try? Data(contentsOf: stickerDirectory.appendingPathComponent(fileName)) {
+            return save(data, fileExtension: ext, sticker: true)
+        }
+        return nil
     }
 }
 

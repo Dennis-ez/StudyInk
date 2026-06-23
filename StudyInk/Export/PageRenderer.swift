@@ -43,8 +43,13 @@ enum PageRenderer {
         let format = UIGraphicsImageRendererFormat()
         format.scale = scale
         let renderer = UIGraphicsImageRenderer(size: snapshot.pageSize, format: format)
+        // In a tiny preview the page is shrunk many times, so a normal 2–3pt
+        // stroke falls below a pixel and antialiases to near-invisible grey —
+        // sparse handwriting then "vanishes". Fatten the ink the more we shrink
+        // so it still reads, tapering back to 1× at full size.
+        let inkBoost = min(4, max(1, 0.5 / scale))
         return renderer.image { ctx in
-            draw(snapshot, in: ctx.cgContext, darkMode: darkMode)
+            draw(snapshot, in: ctx.cgContext, darkMode: darkMode, inkBoost: inkBoost)
         }
     }
 
@@ -96,7 +101,7 @@ enum PageRenderer {
 
         // Rasterize the PDF at the destination's actual pixel scale (capped to
         // bound memory) so it stays sharp at retina + zoom, not a soft 2x.
-        let pixelScale = min(max(abs(cg.ctm.a), 2), 3)
+        let pixelScale = min(max(abs(cg.ctm.a), 2), 4)
         if snapshot.template == .customPDF, let data = snapshot.customTemplatePDF,
            let pdfImage = PDFTemplateRenderer.image(from: data, targetWidth: snapshot.pageSize.width * pixelScale, darkMode: darkMode) {
             // Aspect-fit: a PDF must never run wider (or taller) than the page.
@@ -120,7 +125,7 @@ enum PageRenderer {
         }
     }
 
-    private static func draw(_ snapshot: Snapshot, in cg: CGContext, darkMode: Bool) {
+    private static func draw(_ snapshot: Snapshot, in cg: CGContext, darkMode: Bool, inkBoost: CGFloat = 1) {
         let pageRect = CGRect(origin: .zero, size: snapshot.pageSize)
 
         drawBackground(snapshot, in: cg, darkMode: darkMode)
@@ -136,12 +141,9 @@ enum PageRenderer {
         // LIGHT trait context — exactly like the live canvas, which is pinned
         // to .light — so the near-white strokes render literally.
         if let data = snapshot.drawingData, let stored = try? PKDrawing(data: data), !stored.strokes.isEmpty {
-            let drawing = InkColorAdapter.displayDrawing(stored, darkMode: darkMode)
-            var inkImage: UIImage?
-            UITraitCollection(userInterfaceStyle: .light).performAsCurrent {
-                inkImage = drawing.image(from: pageRect, scale: 2)
-            }
-            inkImage?.draw(in: pageRect)
+            let adapted = InkColorAdapter.displayDrawing(stored, darkMode: darkMode)
+            let drawing = boldened(adapted, factor: inkBoost)
+            inkImage(drawing, from: pageRect)?.draw(in: pageRect)
         }
 
         // Typed text boxes.
@@ -163,5 +165,46 @@ enum PageRenderer {
             NSAttributedString(string: box.text, attributes: attributes)
                 .draw(in: box.frame.insetBy(dx: 4, dy: 4))
         }
+    }
+
+    /// Rasterizes a drawing to an image. `PKDrawing.image()` must run on the
+    /// main thread — off it (we render thumbnails/page images from background
+    /// tasks) the iOS 26 SDK hands back a BLANK image, so the ink vanishes.
+    /// Hop to main when needed; force a LIGHT trait so iOS 26 doesn't re-adapt
+    /// the (already display-mapped) stroke colours against the ambient appearance.
+    private static func inkImage(_ drawing: PKDrawing, from rect: CGRect) -> UIImage? {
+        let make: () -> UIImage = {
+            var image: UIImage?
+            UITraitCollection(userInterfaceStyle: .light).performAsCurrent {
+                image = drawing.image(from: rect, scale: 2)
+            }
+            return image ?? UIImage()
+        }
+        return Thread.isMainThread ? make() : DispatchQueue.main.sync(execute: make)
+    }
+
+    /// Widens every stroke by `factor` (preserving relative widths) so ink stays
+    /// legible in heavily-shrunk previews. `factor == 1` returns the drawing as-is.
+    private static func boldened(_ drawing: PKDrawing, factor: CGFloat) -> PKDrawing {
+        guard factor > 1.001 else { return drawing }
+        var strokes = drawing.strokes
+        for i in strokes.indices {
+            let s = strokes[i]
+            let path = s.path
+            let points = (0..<path.count).map { index -> PKStrokePoint in
+                let p = path[index]
+                return PKStrokePoint(
+                    location: p.location, timeOffset: p.timeOffset,
+                    size: CGSize(width: p.size.width * factor, height: p.size.height * factor),
+                    opacity: p.opacity, force: p.force, azimuth: p.azimuth, altitude: p.altitude
+                )
+            }
+            strokes[i] = PKStroke(
+                ink: s.ink,
+                path: PKStrokePath(controlPoints: points, creationDate: path.creationDate),
+                transform: s.transform, mask: s.mask
+            )
+        }
+        return PKDrawing(strokes: strokes)
     }
 }

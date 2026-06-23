@@ -9,21 +9,53 @@ enum ShapeRecognizer {
         case line(from: CGPoint, to: CGPoint)
         case ellipse(center: CGPoint, radiusX: CGFloat, radiusY: CGFloat)
         case polygon([CGPoint])   // closed, ordered corners
+
+        /// Move the shape's "last node" to `point` — for live pen-drag after a
+        /// hold-snap. Line: the end point; polygon: the last corner; ellipse:
+        /// resize so its edge reaches the point.
+        static func movingLastNode(_ shape: Shape, to point: CGPoint) -> Shape {
+            switch shape {
+            case let .line(from, _):
+                return .line(from: from, to: point)
+            case var .polygon(corners):
+                guard !corners.isEmpty else { return shape }
+                corners[corners.count - 1] = point
+                return .polygon(corners)
+            case let .ellipse(center, _, _):
+                return .ellipse(center: center,
+                                radiusX: max(4, abs(point.x - center.x)),
+                                radiusY: max(4, abs(point.y - center.y)))
+            }
+        }
+
+        /// Uniformly scales the shape's geometry — used to convert between the
+        /// live canvas's supersampled (inkScale×) space and page coordinates.
+        func scaled(by f: CGFloat) -> Shape {
+            func s(_ p: CGPoint) -> CGPoint { CGPoint(x: p.x * f, y: p.y * f) }
+            switch self {
+            case let .line(a, b): return .line(from: s(a), to: s(b))
+            case let .ellipse(c, rx, ry): return .ellipse(center: s(c), radiusX: rx * f, radiusY: ry * f)
+            case let .polygon(pts): return .polygon(pts.map(s))
+            }
+        }
     }
 
     // MARK: - Recognition
 
-    static func recognize(_ stroke: PKStroke) -> Shape? {
-        recognize(points: sample(stroke))
+    static func recognize(_ stroke: PKStroke, minDiagonal: CGFloat = 40) -> Shape? {
+        recognize(points: sample(stroke), minDiagonal: minDiagonal)
     }
 
     /// Core recognizer over raw points — also used for in-flight (pencil still
-    /// touching) detection where no PKStroke exists yet.
-    static func recognize(points: [CGPoint]) -> Shape? {
+    /// touching) detection where no PKStroke exists yet. `minDiagonal` is the
+    /// smallest stroke (in the caller's coordinate space) worth snapping: set it
+    /// above handwriting size so letters/digits drawn while writing are never
+    /// converted to a line/box. Defaults to a permissive value for other callers.
+    static func recognize(points: [CGPoint], minDiagonal: CGFloat = 40) -> Shape? {
         guard points.count >= 10 else { return nil }
         let box = boundingBox(points)
         let diagonal = hypot(box.width, box.height)
-        guard diagonal > 40 else { return nil }
+        guard diagonal > minDiagonal else { return nil }
 
         let gapToClose = distance(points[0], points[points.count - 1])
         let closed = gapToClose < max(24, diagonal * 0.18)
@@ -32,26 +64,42 @@ enum ShapeRecognizer {
             return lineFit(points, diagonal: diagonal)
         }
 
-        // Corners via Ramer–Douglas–Peucker; a smooth loop yields many corners,
-        // a deliberate polygon yields 3–6.
+        // 1) Axis-aligned rectangle / square: if every sample hugs the bounding
+        // box, snap straight to it. A circle bulges away from the box corners and
+        // fails this, so it's never mistaken for a box — and a wobbly square no
+        // longer RDP's into a stray pentagon/"octagon".
+        let aabb = [
+            CGPoint(x: box.minX, y: box.minY), CGPoint(x: box.maxX, y: box.minY),
+            CGPoint(x: box.maxX, y: box.maxY), CGPoint(x: box.minX, y: box.maxY),
+        ]
+        if box.width > 16, box.height > 16,
+           hugsPolygon(points, corners: aabb, tolerance: max(10, diagonal * 0.06)) {
+            return .polygon(aabb)
+        }
+
+        // Corners via Ramer–Douglas–Peucker; a smooth loop yields many shallow
+        // corners, a deliberate polygon yields 3–4 sharp ones.
         let epsilon = max(7, diagonal * 0.05)
         var corners = ramerDouglasPeucker(points, epsilon: epsilon)
         if corners.count > 1, distance(corners[0], corners[corners.count - 1]) < epsilon * 2 {
             corners.removeLast()
         }
+
+        // A CLEAN triangle/quad (3–4 corners that tightly hug their outline) stays
+        // a polygon — even a tilted square. Everything else that's roundish is an
+        // ellipse, tried BEFORE the many-corner polygon path: hand-drawn circles
+        // wobble, and were turning into hexagons because the polygon test won
+        // first and the old ellipse test (0.12) was far too strict.
+        let cleanPolygon = (3...4).contains(corners.count)
+            && hugsPolygon(points, corners: corners, tolerance: epsilon * 1.4)
+        if !cleanPolygon, let ellipse = ellipseFit(points, box: box, maxError: 0.24) {
+            return ellipse
+        }
         if (3...6).contains(corners.count),
            hugsPolygon(points, corners: corners, tolerance: epsilon * 1.6) {
-            // A circle RDPs into 4–6 shallow pseudo-corners that still hug
-            // their own outline, so it used to win as a polygon. When the
-            // points also fit an ellipse tightly, the ellipse is what the
-            // user meant — real rectangles/triangles fail this fit by a mile.
-            if corners.count >= 4, let ellipse = ellipseFit(points, box: box, maxError: 0.12) {
-                return ellipse
-            }
             return .polygon(snapCorners(corners))
         }
-
-        return ellipseFit(points, box: box)
+        return ellipseFit(points, box: box, maxError: 0.3)
     }
 
     /// Aligns recognized geometry with the page's template lines/grid.

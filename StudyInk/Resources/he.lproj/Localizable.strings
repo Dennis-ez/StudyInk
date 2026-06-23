@@ -108,6 +108,15 @@
 "media.resize" = "שינוי גודל";
 "media.rotate" = "סיבוב";
 "media.resetRotation" = "איפוס סיבוב";
+"media.duplicate" = "שכפול";
+"media.copy" = "העתקה";
+"media.cut" = "גזירה";
+"media.crop" = "חיתוך";
+"media.pasteImage" = "הדבק תמונה";
+"media.insertSpace" = "הוסף רווח";
+"settings.ai.lang" = "שפת התשובה";
+"settings.ai.lang.device" = "שפת האפליקציה";
+"settings.ai.lang.context" = "שפת העבודה";
 
 /* ספרייה */
 "library.allNotes" = "כל המחברות";
@@ -128,6 +137,7 @@
 "library.moveUp" = "הזזה למעלה";
 "library.moveDown" = "הזזה למטה";
 "library.moveOut" = "הוצאה מהתיקייה";
+"library.moveInto" = "העברה לתוך";
 "library.deleteSubject.confirm" = "למחוק את הנושא?";
 "library.deleteSubject.message" = "המחברות שלו עוברות לנמחקו לאחרונה. נושאים מקוננים יימחקו איתו.";
 "library.deleteNote.confirm" = "למחוק?";
@@ -184,12 +194,10 @@
 "settings.appearance.system" = "מערכת";
 "settings.appearance.light" = "בהיר";
 "settings.appearance.dark" = "כהה";
-"settings.theme" = "ערכת צבע";
-"theme.classic" = "כחול קלאסי";
-"theme.violet" = "סגול";
-"theme.forest" = "ירוק יער";
-"theme.sunset" = "שקיעה";
-"theme.rose" = "ורוד";
+"settings.theme" = "ערכת נושא";
+"theme.foolscap" = "פולסקאפ";
+"theme.neon" = "ניאון";
+"theme.daylight" = "אור יום";
 "theme.graphite" = "גרפיט";
 "settings.backup" = "גיבוי וסנכרון";
 "settings.notes" = "מחברות";
@@ -224,8 +232,26 @@
 
 /* מורה AI */
 "ai.tutorName" = "מורה AI";
+"ai.tutorRole" = "שותף ללמידה";
+"ambient.check" = "בדוק את העבודה שלי";
+"ambient.fixIt" = "תקן בשבילי";
+"ambient.flickAccept" = "החלק לאישור";
+"ambient.suggest" = "הצע צעד הבא";
+"ambient.sensitivity" = "מורה סביבתי";
+"ambient.showWhy" = "הראה למה";
+"ambient.glyph.correct" = "נראה נכון";
+"ambient.glyph.attend" = "תיקון — הקש פעמיים לצפייה";
+"ambient.off" = "כבוי";
+"ambient.subtle" = "עדין";
+"ambient.helpful" = "מועיל";
+"ambient.checking" = "בודק את העבודה שלך…";
+"ambient.notice.empty" = "אין מה לבדוק עדיין — כתוב משהו קודם.";
+"ambient.notice.unreadable" = "לא הצלחתי לקרוא את הדף. נסה שוב.";
+"ambient.notice.allGood" = "הכול נראה תקין ✓";
+"ambient.notice.noSuggestion" = "אין צעד הבא להציע כאן.";
 "ai.menu" = "תפריט מורה AI";
 "ai.ask" = "שאלו את ה-AI";
+"ai.pen" = "עט AI";
 "ai.askPlaceholder" = "שאלו על המחברת שלכם…";
 "ai.askHint" = "המורה רואה את כל עמודי המחברת.";
 "ai.askMore" = "שאלו עוד…";
@@ -252,6 +278,14 @@
 "ai.explainPage" = "הסבר את העמוד";
 "ai.explainPage.question" = "הסבר את העמוד הזה: סכם אותו והצבע על המושגים המרכזיים.";
 "ai.quizMe" = "בחן אותי";
+"ai.fitSketch" = "התאם את השרטוט שלי";
+"ai.ghost.dismiss" = "נקה קווי עזר";
+"ai.ghost.none" = "לא נמצא שרטוט להתאמה בעמוד הזה.";
+"collapse.collapsed" = "מקופל";
+"collapse.expand" = "פתח בלוק מקופל";
+"ai.showQuestion" = "הצג את השאלה";
+"warp.question" = "שאלה · עמוד %lld";
+"warp.none" = "לא נמצא עמוד שאלה נפרד.";
 "ai.quiz.failed" = "עדיין אי אפשר ליצור בוחן מהמחברת הזו — נסו להוסיף עוד תוכן.";
 "quiz.title" = "בוחן";
 "quiz.loading" = "כותב שאלות מהמחברת…";

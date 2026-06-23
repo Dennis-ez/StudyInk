@@ -36,7 +36,17 @@ struct AnnotationOverlay: View {
     @ViewBuilder
     private func annotationView(_ annotation: AIAnnotationModel, rect: CGRect) -> some View {
         let p = progress[annotation.id] ?? 0
-        let color = Color(annotation.colorToken)
+        // Map the AI's semantic token to the active skin's mark colors so the
+        // on-page circle/arrow/highlight/underline follow the theme.
+        let color: Color = {
+            switch annotation.colorToken {
+            case "aiCircleStroke":   return AppTheme.current.aiCircleColor
+            case "aiHighlightYellow": return AppTheme.current.aiHighlight
+            case "aiArrow":          return AppTheme.current.aiArrowColor
+            case "accentBlue":       return AppTheme.current.aiUnderlineColor
+            default:                 return Color(annotation.colorToken)
+            }
+        }()
 
         switch annotation.kind {
         case .highlight:

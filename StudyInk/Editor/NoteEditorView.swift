@@ -16,7 +16,9 @@ struct NoteEditorView: View {
     @State private var editingBoxID: UUID?
     @State private var selectedMediaID: UUID?
     @State private var distractionFree = false
-    @State private var showPageStrip = true
+    @State private var showPageStrip = false
+    /// Debounce for the ambient ghost suggestion (fires when the pen goes idle).
+    @State private var ghostIdleTask: Task<Void, Never>?
     /// 0 = closed, 1 = notes pane, 2 = notes pane + subjects sidebar.
     @State private var drawerStage = 0
     /// Subject chosen in the drawer's subjects pane (.some(nil) = All Notes).
@@ -37,7 +39,11 @@ struct NoteEditorView: View {
     @State private var overlaySaveTask: Task<Void, Never>?
     @StateObject private var tutor = AITutorController()
     @StateObject private var guidedMode = GuidedModeController()
+    @StateObject private var ghostWitness = GhostWitnessController()
+    @StateObject private var warpTunnel = WarpTunnelController()
     @StateObject private var quiz = QuizController()
+    /// Ambient Tutor — the margin lane + glyphs (Marginalia design).
+    @StateObject private var ambient = AmbientTutorController()
     @StateObject private var audio = AudioSyncController()
     @State private var showAskField = false
     @State private var askText = ""
@@ -47,15 +53,32 @@ struct NoteEditorView: View {
     @State private var askLassoActive = false
     @State private var showGuidedLog = false
     @State private var transformLassoActive = false
+    /// Page-space point of a pending finger-tap "Paste" affordance (ink clipboard).
+    @State private var pastePoint: CGPoint?
+    /// Smart Collapse: folded regions on the current page (session-scoped).
+    @State private var foldedBlocks: [FoldedBlock] = []
+    /// Armed after a short delay so the content loader only shows for a SLOW load —
+    /// a fast note switch shouldn't flash it (that read as a hiccup).
+    @State private var loaderArmed = false
     @State private var strokeSelection: StrokeSelection?
     @State private var strokeRotation: Double = 0
     @State private var strokeTranslation: CGSize = .zero
     @State private var strokeScale: CGFloat = 1
+    /// An ink-free lassoed region (image of a PDF/printed chunk) awaiting a
+    /// copy / duplicate / delete choice from the pill.
+    @State private var regionSelection: RegionSelection?
     @State private var editingShape: EditingShape?
     @State private var circleAskRegion: CGRect?
+    /// Tap-to-define: cached OCR lines (page coords) for the current page, and the
+    /// concept the student tapped (Lagrange, L'Hôpital, …) with its definition.
+    @State private var conceptOCRLines: [OCRLine] = []
+    @State private var conceptHit: ConceptHit?
     @Environment(\.managedObjectContext) private var context
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.themePaper) private var themePaper
+    @Environment(\.themeDesk) private var themeDesk
+    @Environment(\.aiAccent) private var aiAccent
 
     private var currentPage: Page? {
         let pages = note.sortedPages
@@ -87,9 +110,40 @@ struct NoteEditorView: View {
         return SnapMetrics.metrics(for: page.template, spacing: page.effectiveTemplateSpacing)
     }
 
+    /// AI annotations + floating bubbles for every page, anchored through each
+    /// page transform. Extracted to keep the body's type-check tractable.
+    @ViewBuilder private var aiOverlays: some View {
+        ForEach(tutor.bubbles) { bubble in
+            AnnotationOverlay( 
+                annotations: bubble.annotations,
+                bubbleOrigin: CGPoint(x: bubble.x, y: bubble.y + 60),
+                transform: canvasController.transform(forPage: bubble.pageIndex)
+            )
+        }
+        ForEach(tutor.bubbles.filter { $0.isPanelOnly != true }) { bubble in
+            AIBubbleView(
+                bubble: bubble,
+                isLoading: tutor.loadingBubbleIDs.contains(bubble.id),
+                transform: canvasController.transform(forPage: bubble.pageIndex),
+                tutor: tutor,
+                onInsertTextBox: { textBoxes.append($0) }
+            )
+        }
+    }
+
+    @ViewBuilder private var floatingHeader: some View {
+        if !distractionFree {
+            editorHeader
+                // The AI side panel (320pt, trailing) should PUSH the header
+                // icons left rather than cover them.
+                .padding(.trailing, tutor.panelOpen ? 320 : 0)
+                .animation(.spring(response: 0.35, dampingFraction: 0.85), value: tutor.panelOpen)
+        }
+    }
+
     var body: some View {
         ZStack {
-            Color("deskBackground").ignoresSafeArea()
+            themeDesk.ignoresSafeArea()
 
             // The stitched document: every page in one continuous scroll.
             NoteCanvasView(
@@ -103,7 +157,33 @@ struct NoteEditorView: View {
             // is what closes the drawer, and it lives INSIDE the canvas's
             // UIKit hierarchy. Disabling hit-testing here starved it and made
             // the drawer unclosable.
-            .allowsHitTesting(selectedMediaID == nil && strokeSelection == nil && !transformLassoActive && editingShape == nil)
+            // The canvas STAYS hit-testable while the lasso tool is armed so a
+            // finger can still scroll/zoom the page (the lasso overlay above passes
+            // finger touches through and captures only the pencil). The native
+            // PKLassoTool can't fire because applyTool disables the canvas's drawing
+            // gesture for the lasso tool, and the pencil is caught by the overlay
+            // before it reaches the canvas. Only a committed selection / media /
+            // shape edit takes the canvas out of play.
+            .allowsHitTesting(selectedMediaID == nil && strokeSelection == nil && editingShape == nil)
+
+            // Loader over the canvas until the page's content (ink/PDF) is up — but
+            // only after a short delay (loaderArmed), so a fast note switch doesn't
+            // flash it (that flash read as a hiccup). Still masks the stale-ink flash.
+            let showLoader = !canvasController.isContentReady && loaderArmed
+            themeDesk
+                .ignoresSafeArea()
+                .overlay { if showLoader { ProgressView().controlSize(.large).tint(.secondary) } }
+                .opacity(showLoader ? 1 : 0)
+                .allowsHitTesting(showLoader)
+                .animation(.easeOut(duration: 0.25), value: showLoader)
+                .zIndex(50)
+                .task {
+                    // Short enough that opening a note reliably shows the loader
+                    // while it builds, long enough that a near-instant load doesn't
+                    // flash it.
+                    try? await Task.sleep(nanoseconds: 120_000_000)
+                    if !canvasController.isContentReady { loaderArmed = true }
+                }
 
             // Tap-anywhere catcher to drop the current media/text selection.
             if selectedMediaID != nil || editingBoxID != nil {
@@ -120,24 +200,140 @@ struct NoteEditorView: View {
             MediaLayer(items: $mediaItems, transform: transform, selectedItemID: $selectedMediaID, snap: snapMetrics)
             TextBoxLayer(boxes: $textBoxes, transform: transform, editingBoxID: $editingBoxID, snap: snapMetrics)
 
-            // AI annotations + bubbles for every page, each anchored through
-            // its own page transform so they ride along while scrolling.
-            ForEach(tutor.bubbles) { bubble in
-                AnnotationOverlay(
-                    annotations: bubble.annotations,
-                    bubbleOrigin: CGPoint(x: bubble.x, y: bubble.y + 60),
-                    transform: canvasController.transform(forPage: bubble.pageIndex)
+            // Above the margin glyphs — a chat bubble must never sit under a ✓/~/?.
+            aiOverlays
+                .zIndex(1)
+
+            // The Ambient Tutor's margin lane: glyphs anchored to the lines of
+            // work, and the note that unfolds from a tapped glyph.
+            MarginLaneView(
+                ambient: ambient,
+                pageIndex: pageIndex,
+                transform: transform,
+                // Keep the unfolded note card clear of the page strip on the right.
+                trailingInset: showPageStrip ? 110 : 0,
+                onFixIt: { item in
+                    // The "your-style amber ink" write-on is the deferred deep
+                    // feature; for now write the correction in amber ink right
+                    // beside the line it belongs to (we already know the rect,
+                    // so no AI/OCR round-trip to land it in the wrong place).
+                    ambient.dismiss()
+                    if let result = item.result {
+                        let rect = item.anchorRect
+                        let fontSize = max(16, min(34, rect.height * 0.95))
+                        // Write the corrected line just BELOW the student's line
+                        // (writing to the right overlaps their work), verbatim —
+                        // `result` is already the full corrected expression.
+                        let point = CGPoint(x: rect.minX, y: rect.maxY + 6)
+                        tutor.writeInk(
+                            text: result,
+                            at: point,
+                            fontSize: fontSize,
+                            colorHex: ambientInkHex,
+                            avoid: ambient.lastLineRects,
+                            on: canvasController.canvasView
+                        )
+                    }
+                },
+                onShowWhy: { item in
+                    ambient.dismiss()
+                    Task { await tutor.ask(question: "Explain why: \(item.body)", anchor: askAnchor) }
+                },
+                onOpenHint: { item in
+                    // A watcher's "?" — highlight the line it flagged RIGHT AWAY (so
+                    // the student sees what it's about before the answer streams in),
+                    // then open the full explanation there. The glyph PERSISTS: only a
+                    // new nudge, a check, or switching the watcher off clears it —
+                    // opening it does not.
+                    ambient.focus(on: item)
+                    let anchor = CGPoint(x: item.anchorRect.midX, y: item.anchorRect.midY)
+                    Task { await tutor.ask(question: item.body, anchor: anchor) }
+                },
+                onAcceptGhost: { g in
+                    ambient.dismissGhost()
+                    // Write where the preview was. Inline completions centre on the
+                    // line (so a tall fraction straddles it); below-the-line ones
+                    // avoid existing work.
+                    tutor.writeInk(
+                        text: g.text,
+                        at: g.anchor,
+                        colorHex: ambientInkHex,
+                        avoid: g.inline ? [] : ambient.lastLineRects,
+                        center: g.inline,
+                        on: canvasController.canvasView
+                    )
+                    ambient.invalidateGhost()
+                }
+            )
+
+            // Ambient tutor result banner ("looks all good" / error). Thinking
+            // itself is the breathing corner badge below.
+            ambientStatusHUD
+
+            // ANY AI work — Check my work, Circle & Ask, Explain, Answer in Ink —
+            // shows one breathing sparkle in the top corner so "the AI is
+            // thinking" (replaces the old 'Checking your work…' pill).
+            // Ghost Witness: faint dashed guide lines fitted over the sketch.
+            if let g = ghostWitness.geometry, g.pageIndex == pageIndex {
+                GhostWitnessOverlay(
+                    geometry: g,
+                    transform: canvasController.canvasTransform(forPage: pageIndex),
+                    onDismiss: { ghostWitness.dismiss() }
                 )
+                .zIndex(35)
             }
-            // Panel-only conversations never float on the canvas.
-            ForEach(tutor.bubbles.filter { $0.isPanelOnly != true }) { bubble in
-                AIBubbleView(
-                    bubble: bubble,
-                    isLoading: tutor.loadingBubbleIDs.contains(bubble.id),
-                    transform: canvasController.transform(forPage: bubble.pageIndex),
-                    tutor: tutor,
-                    onInsertTextBox: { textBoxes.append($0) }
-                )
+            if let notice = ghostWitness.notice ?? warpTunnel.notice {
+                VStack {
+                    Text(notice)
+                        .font(.subheadline)
+                        .padding(.horizontal, 16).padding(.vertical, 10)
+                        .background(.regularMaterial, in: Capsule())
+                        .overlay(Capsule().strokeBorder(SemanticColor.separator))
+                        .shadow(color: .black.opacity(0.15), radius: 8, y: 2)
+                        .padding(.top, 100)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity)
+                .transition(.opacity)
+                .allowsHitTesting(false)
+                .zIndex(36)
+            }
+
+            // Warp Tunnel: slide-up preview of the question page.
+            if let preview = warpTunnel.preview {
+                WarpTunnelPanel(preview: preview, onDismiss: { warpTunnel.dismiss() })
+                    .zIndex(55)
+            }
+
+
+            if tutor.isThinking || ambient.isChecking || ambient.isSuggesting || guidedMode.isWatching || ghostWitness.isFitting {
+                AIThinkingBadge()
+                    .padding(.top, 84)
+                    .padding(.trailing, showPageStrip ? 120 : 22)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    .allowsHitTesting(false)
+                    .animation(.spring(response: 0.35, dampingFraction: 0.85), value: tutor.isThinking || ambient.isChecking || ambient.isSuggesting || guidedMode.isWatching || ghostWitness.isFitting)
+            }
+
+            // Note title + creation time in the desk gutter above the first
+            // page (scrolls/zooms with the page) — never over ink.
+            if !distractionFree, let pageOrigin = canvasController.pageScreenOrigins.first {
+                Button(action: startRename) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(verbatim: note.title ?? "")
+                            .font(.fraunces(20, weight: .semibold, relativeTo: .title3))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                        Text(note.createdAt ?? .now, format: .dateTime.day().month().year().hour().minute())
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: 360, alignment: .leading)
+                    .fixedSize(horizontal: true, vertical: false)
+                }
+                .buttonStyle(.plain)
+                .offset(x: pageOrigin.x + 4, y: pageOrigin.y - 52)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
 
             // Audio playback tap-to-seek: tap any written mark to jump the recording
@@ -153,38 +349,26 @@ struct NoteEditorView: View {
                     }
             }
 
-            // Note title + creation date, anchored ABOVE the first page (in
-            // the desk gap, riding along with scroll/zoom) — never over ink.
-            if !distractionFree, let pageOrigin = canvasController.pageScreenOrigins.first {
-                Button {
-                    // Start empty when it's still the default "Untitled" name,
-                    // so the user types over nothing (commit keeps it if blank).
-                    let untitled = String(localized: "library.untitledNote")
-                    renameText = (note.title == untitled) ? "" : (note.title ?? "")
-                    showRenameAlert = true
-                } label: {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(verbatim: note.title ?? "")
-                            .font(.title3.weight(.bold))
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
-                        Text(note.createdAt ?? .now, format: .dateTime.day().month().year().hour().minute())
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: 360, alignment: .leading)
-                    .fixedSize(horizontal: true, vertical: false)
+            // Lasso CAPTURE overlay — draw-only now (the loop is captured by the
+            // engine's pencil gesture, so a finger still scrolls the page). It
+            // reads the live loop points and just renders the marching ants.
+            TransformLassoOverlay(
+                isActive: $transformLassoActive,
+                rectangular: canvasController.lassoRectangular,
+                transform: canvasController.canvasTransform(forPage: pageIndex),
+                points: canvasController.lassoPoints,
+                onCancel: { canvasController.select(.ballpoint) }
+            )
+
+            // Tap-to-define a concept (Lagrange, L'Hôpital, …).
+            if let hit = conceptHit {
+                ConceptDefinitionCard(hit: hit, transform: transform) {
+                    withAnimation { conceptHit = nil }
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(Text("library.renameNote"))
-                // Sits in the gutter just above the page, below the toolbar row.
-                .offset(x: pageOrigin.x + 4, y: pageOrigin.y - 52)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .zIndex(45)
             }
 
             if !distractionFree {
-                actionBar
-
                 FloatingToolbar(
                     controller: canvasController,
                     onInsertTextBox: insertTextBox,
@@ -238,32 +422,9 @@ struct NoteEditorView: View {
                                     }
                                 }
                         )
-                    } else {
-                        Button {
-                            Haptics.selection()
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showPageStrip = true }
-                        } label: {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(.secondary)
-                                .frame(width: 22, height: 52)
-                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 9))
-                                .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(SemanticColor.toolbarBorder, lineWidth: 0.5))
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.trailing, 3)
-                        .transition(.move(edge: .trailing).combined(with: .opacity))
-                        .accessibilityLabel(Text("page.showNavigator"))
-                        .gesture(
-                            DragGesture(minimumDistance: 16)
-                                .onEnded { value in
-                                    if value.translation.width < -24 {
-                                        Haptics.selection()
-                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showPageStrip = true }
-                                    }
-                                }
-                        )
                     }
+                    // Hidden by default with no pull-tab; reopen from the header
+                    // pages button (top bar).
                 }
 
                 // Two-stage drawer: first edge swipe shows the notes of the
@@ -349,11 +510,6 @@ struct NoteEditorView: View {
                 circleAskRegion = region
             }
 
-            // Select & rotate: lasso capture (freeform or marquee, switchable
-            // inline), then live rotation preview.
-            TransformLassoOverlay(isActive: $transformLassoActive, transform: transform, rectangular: canvasController.lassoRectangular) { polygon in
-                beginStrokeTransform(with: polygon)
-            }
             // Node editing for freshly created shapes.
             if editingShape != nil {
                 ShapeNodeOverlay(
@@ -361,8 +517,9 @@ struct NoteEditorView: View {
                         get: { editingShape! },
                         set: { editingShape = $0 }
                     ),
-                    transform: canvasController.transform(forPage: editingShape!.pageIndex),
-                    snap: snapMetrics,
+                    transform: canvasController.canvasTransform(forPage: editingShape!.pageIndex),
+                    snap: snapMetrics.map { SnapMetrics(stepX: $0.stepX.map { $0 * canvasController.inkScale },
+                                                        stepY: $0.stepY.map { $0 * canvasController.inkScale }) },
                     onChange: { _ in
                         // No engine write during the drag — the stroke is lifted
                         // out of the ink and the overlay preview is the only
@@ -386,22 +543,136 @@ struct NoteEditorView: View {
             if let selection = strokeSelection {
                 StrokeTransformOverlay(
                     selection: selection,
-                    transform: canvasController.transform(forPage: selection.pageIndex),
+                    transform: canvasController.canvasTransform(forPage: selection.pageIndex),
                     rotation: $strokeRotation,
                     translation: $strokeTranslation,
                     scale: $strokeScale,
                     onDone: applyStrokeTransform,
                     onCancel: {
-                        strokeSelection = nil
-                        strokeRotation = 0
-                        strokeTranslation = .zero
-                        strokeScale = 1
-                        rearmLassoIfActive()
+                        canvasController.engine?.cancelStrokeSelection()
+                        clearStrokeSelection()
+                    },
+                    canPaste: canvasController.hasPasteContent,
+                    onCut: { canvasController.engine?.cutStrokeSelection(selection); clearStrokeSelection() },
+                    onCopy: {
+                        let t = selectionTransform(selection)
+                        canvasController.engine?.copyStrokeSelection(rotation: t.0, scale: t.1, translation: t.2, selection: selection)
+                        clearStrokeSelection()
+                    },
+                    onPaste: { canvasController.engine?.pasteStrokes(); clearStrokeSelection() },
+                    onDuplicate: {
+                        let t = selectionTransform(selection)
+                        canvasController.engine?.duplicateStrokeSelection(rotation: t.0, scale: t.1, translation: t.2, selection: selection)
+                        clearStrokeSelection()
+                    },
+                    onDelete: { canvasController.engine?.deleteStrokeSelection(); clearStrokeSelection() },
+                    onCollapse: {
+                        // Keep the strokes (cancel restores the lifted ones); a cover
+                        // hides them. selection.bounds is canvas (inkScale×) space.
+                        let s = canvasController.inkScale
+                        let b = selection.bounds
+                        let pageRect = CGRect(x: b.minX / s, y: b.minY / s, width: b.width / s, height: b.height / s)
+                        canvasController.engine?.cancelStrokeSelection()
+                        withAnimation(.easeOut(duration: 0.25)) {
+                            foldedBlocks.append(FoldedBlock(rect: pageRect, count: selection.strokeIndices.count))
+                        }
+                        saveFolds()
+                        clearStrokeSelection()
                     }
                 )
             }
 
-            // Guided-mode bottom suggestion card (auto-dismisses after 8s).
+            // Smart Collapse covers — hide folded blocks; tap to expand.
+            ForEach(foldedBlocks) { block in
+                FoldedBlockCover(
+                    block: block,
+                    transform: canvasController.canvasTransform(forPage: pageIndex),
+                    onExpand: {
+                        withAnimation(.easeOut(duration: 0.2)) { foldedBlocks.removeAll { $0.id == block.id } }
+                        saveFolds()
+                    }
+                )
+                .zIndex(30)
+            }
+
+            // Finger-tap paste menu (our theme): tap empty space with something
+            // pasteable → Paste (ink) · Paste image · Insert space, right there.
+            if let pt = pastePoint {
+                // pastePoint is PAGE space, so map it through the PAGE transform —
+                // canvasTransform (inkScale× space) put the pill ~4× off the finger.
+                let screen = transform.toScreen(pt)
+                HStack(spacing: 0) {
+                    if canvasController.hasPasteContent {
+                        pasteMenuItem("media.paste") {
+                            // Paste the ink, then select it (transform mode) so it
+                            // can be moved/resized right away.
+                            if let bounds = canvasController.engine?.pasteStrokes(at: pt) {
+                                let r = bounds.insetBy(dx: -6, dy: -6)
+                                beginStrokeTransform(with: [
+                                    CGPoint(x: r.minX, y: r.minY), CGPoint(x: r.maxX, y: r.minY),
+                                    CGPoint(x: r.maxX, y: r.maxY), CGPoint(x: r.minX, y: r.maxY),
+                                ])
+                            }
+                            dismissPasteMenu()
+                        }
+                        if UIPasteboard.general.hasImages { pasteMenuDivider }
+                    }
+                    if UIPasteboard.general.hasImages {
+                        pasteMenuItem("media.pasteImage") { pasteImage(at: pt); dismissPasteMenu() }
+                    }
+                }
+                .background(.regularMaterial, in: Capsule())
+                .overlay(Capsule().strokeBorder(Color.primary.opacity(0.08)))
+                .shadow(color: .black.opacity(0.16), radius: 8, y: 2)
+                .fixedSize()
+                .position(x: screen.x, y: max(44, screen.y - 28))
+                // New identity per spot so it fades in fresh at the new point
+                // instead of sliding from the previous position.
+                .id(pt)
+                .transition(.opacity)
+                .zIndex(40)
+            }
+
+            // Ink-free lassoed region → copy / duplicate / delete pill (the lasso
+            // caught no editable strokes, so we treat the area as an image).
+            if let region = regionSelection {
+                let r = transform.toScreen(region.pageRect)
+                ZStack {
+                    // Same marching ants as the ink lasso (animated, same colour),
+                    // following the SHAPE as drawn (not a rectangle).
+                    TimelineView(.animation) { context in
+                        let secs = context.date.timeIntervalSinceReferenceDate
+                        let phase = -CGFloat(secs.truncatingRemainder(dividingBy: 0.5) / 0.5) * 12
+                        Path { p in
+                            let pts = region.polygon.map { transform.toScreen($0) }
+                            guard let f = pts.first else { return }
+                            p.move(to: f)
+                            for pt in pts.dropFirst() { p.addLine(to: pt) }
+                            p.closeSubpath()
+                        }
+                        .stroke(SemanticColor.aiCircleStroke,
+                                style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round, dash: [7, 5], dashPhase: phase))
+                    }
+                    .allowsHitTesting(false)
+                    HStack(spacing: 0) {
+                        pasteMenuItem("media.copy") { copyRegion(region); withAnimation { regionSelection = nil } }
+                        pasteMenuDivider
+                        pasteMenuItem("media.duplicate") { duplicateRegion(region); withAnimation { regionSelection = nil } }
+                        pasteMenuDivider
+                        pasteMenuItem("action.delete") { deleteRegion(region); withAnimation { regionSelection = nil } }
+                    }
+                    .background(.regularMaterial, in: Capsule())
+                    .overlay(Capsule().strokeBorder(Color.primary.opacity(0.08)))
+                    .shadow(color: .black.opacity(0.16), radius: 8, y: 2)
+                    .fixedSize()
+                    .position(x: r.midX, y: max(44, r.minY - 28))
+                }
+                .transition(.opacity)
+                .zIndex(41)
+            }
+
+            // Guided-mode bottom suggestion card. High zIndex so nothing (AI overlay,
+            // margin lane) can sit over it.
             if let suggestion = guidedMode.suggestion {
                 VStack {
                     Spacer()
@@ -413,6 +684,7 @@ struct NoteEditorView: View {
                     .padding(.bottom, 64)
                 }
                 .transition(.move(edge: .bottom).combined(with: .opacity))
+                .zIndex(60)
             }
 
             // Guided-mode status: transient banner on activation + a persistent
@@ -440,6 +712,9 @@ struct NoteEditorView: View {
                     Spacer()
                     HStack(spacing: 8) {
                         Button {
+                            // Stepping down to Subtle turns watching off (the
+                            // sensitivity is the single control now).
+                            ambient.sensitivity = .subtle
                             guidedMode.isEnabled = false
                         } label: {
                             Label("ai.guidedMode", systemImage: "lightbulb.fill")
@@ -501,8 +776,29 @@ struct NoteEditorView: View {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+        // Transparent header floating over the canvas (always visible) — it
+        // reserves no canvas height; the title/time sit in the gutter above
+        // the page instead.
+        .overlay(alignment: .top) { floatingHeader }
+        // Ambient: each new stroke invalidates the ghost and re-arms the idle
+        // timer; when the pen rests, the tutor suggests the next step.
+        .onChange(of: canvasController.drawingGestureBeganToken) { _, _ in
+            ambient.invalidateGhost()
+            scheduleGhostSuggestion()
+            if pastePoint != nil { pastePoint = nil }
+        }
+        // When the watcher produces a nudge, drop its "?" glyph at the student's
+        // LAST pen location (where they're working = what the nudge is about). The
+        // OCR is too garbled to text-match the model's clean match_string, so the
+        // pen position is the reliable anchor.
+        .onChange(of: guidedMode.suggestion) { _, suggestion in
+            guard let suggestion else { return }
+            let anchor = lastStrokeAnchor ?? CGPoint(x: 120, y: 160)
+            let rect = CGRect(x: anchor.x - 24, y: anchor.y - 14, width: 48, height: 28)
+            ambient.placeHint(pageIndex: pageIndex, anchorRect: rect, body: suggestion.text)
+        }
         // No system navigation bar — the canvas owns the full screen; actions
-        // live in the floating glass action bar (top-trailing).
+        // live in the fixed header + floating toolbar.
         .toolbar(.hidden, for: .navigationBar)
         .navigationBarBackButtonHidden(true)
         // Kill BOTH system "drag back to the library" gestures at the UIKit
@@ -546,9 +842,16 @@ struct NoteEditorView: View {
                 }
             }
             loadPage()
+            // Safety net: never let the loader stick if the ready signal is missed.
+            Task { try? await Task.sleep(nanoseconds: 1_500_000_000); canvasController.markReady() }
             tutor.attach(note: note)
             tutor.isDarkMode = colorScheme == .dark
             guidedMode.tutor = tutor
+            guidedMode.ambient = ambient
+            ghostWitness.tutor = tutor
+            // Guided Mode (proactive watching) is folded into the sensitivity:
+            // Helpful watches, Subtle/Off don't.
+            guidedMode.isEnabled = (ambient.sensitivity == .helpful)
             audio.attach(note: note)
             canvasController.onStroke = { index, stroke in
                 let center = CGPoint(x: stroke.renderBounds.midX, y: stroke.renderBounds.midY)
@@ -576,6 +879,82 @@ struct NoteEditorView: View {
                     guard pages.indices.contains(index) else { return nil }
                     return PageRenderer.Snapshot(page: pages[index])
                 }
+            }
+            // Finger-tap on empty canvas (no shape): select the topmost media
+            // under it (media is otherwise non-interactive so pan/zoom pass
+            // through), or deselect if the tap missed everything.
+            canvasController.onCanvasFingerTap = { point in
+                // A tap dismisses the ink-free region pill.
+                if regionSelection != nil {
+                    withAnimation { regionSelection = nil }
+                    rearmLassoIfActive()
+                    return
+                }
+                // Tap a recognised concept (Lagrange, L'Hôpital, …) → show its
+                // definition. Glossary match is instant; an unlisted term defers
+                // to the AI (silently — the card only appears if it IS a concept).
+                if let line = conceptOCRLines.first(where: { $0.rect.insetBy(dx: -10, dy: -10).contains(point) }) {
+                    if let (concept, hebrew) = ConceptGlossary.match(in: line.text) {
+                        Haptics.selection()
+                        let he = hebrew || preferHebrewDefinitions
+                        withAnimation {
+                            conceptHit = ConceptHit(term: concept.title, pageRect: line.rect,
+                                                    definition: he ? concept.definitionHE : concept.definitionEN)
+                        }
+                        return
+                    }
+                    if AIConfig.isConfigured,
+                       line.text.split(whereSeparator: { !$0.isLetter }).contains(where: { $0.count >= 4 }) {
+                        let rect = line.rect, text = line.text
+                        Task {
+                            if var hit = await ConceptLookup.defineWithAI(lineText: text) {
+                                hit.pageRect = rect
+                                await MainActor.run { Haptics.selection(); withAnimation { conceptHit = hit } }
+                            }
+                        }
+                    }
+                }
+                if conceptHit != nil { withAnimation { conceptHit = nil } }
+                if let hit = mediaItems.last(where: { $0.frame.contains(point) }) {
+                    Haptics.selection()
+                    selectedMediaID = hit.id
+                    pastePoint = nil
+                } else {
+                    selectedMediaID = nil
+                    if pastePoint != nil {
+                        // Menu already up → a tap elsewhere just dismisses it.
+                        withAnimation { pastePoint = nil }
+                    } else if canvasController.hasPasteContent || UIPasteboard.general.hasImages {
+                        // Empty-space tap with something pasteable → our paste menu.
+                        Haptics.selection()
+                        withAnimation(.easeOut(duration: 0.15)) { pastePoint = point }
+                    }
+                }
+            }
+            // The engine's pencil lasso gesture finished a loop (CANVAS-coord
+            // points — same space as canvas.drawing) → turn it into a selection.
+            // Freeform keeps its drawn shape; the marquee uses the bounding rect.
+            canvasController.onLassoComplete = { canvasPoints in
+                guard canvasPoints.count >= 3 else { return }
+                let polygon: [CGPoint]
+                if canvasController.lassoRectangular {
+                    let xs = canvasPoints.map(\.x), ys = canvasPoints.map(\.y)
+                    let rect = CGRect(x: xs.min()!, y: ys.min()!, width: xs.max()! - xs.min()!, height: ys.max()! - ys.min()!)
+                    polygon = [CGPoint(x: rect.minX, y: rect.minY), CGPoint(x: rect.maxX, y: rect.minY),
+                               CGPoint(x: rect.maxX, y: rect.maxY), CGPoint(x: rect.minX, y: rect.maxY)]
+                } else {
+                    polygon = canvasPoints
+                }
+                beginStrokeTransform(with: polygon)
+            }
+            // A NEW lasso loop is starting — commit/clear any prior selection so the
+            // second loop draws live and the first doesn't linger underneath (#3/#4).
+            canvasController.onLassoBegan = {
+                if strokeSelection != nil { applyStrokeTransform() }
+                if regionSelection != nil { regionSelection = nil }
+                // A region selection had hidden the lasso overlay — re-arm it so the
+                // new loop is visible while it's drawn.
+                rearmLassoIfActive()
             }
             // Fresh shapes commit clean and stay unselected — node editing
             // only opens when the user taps a shape with a finger.
@@ -608,9 +987,18 @@ struct NoteEditorView: View {
         }
         .onChange(of: colorScheme) { tutor.isDarkMode = colorScheme == .dark }
         .onChange(of: pageIndex) { oldIndex, newIndex in
-            // An open shape edit holds its stroke OUT of the ink — commit it
-            // before the page (and its drawing) is saved and swapped.
+            // An open shape edit or lasso selection holds strokes OUT of the ink —
+            // restore/commit them before the page (and its drawing) is saved and
+            // swapped, so nothing is lost.
             commitOpenShapeEdit()
+            if strokeSelection != nil {
+                applyStrokeTransform()
+                strokeSelection = nil
+            }
+            // A lasso selection belongs to the page it was drawn on — drop it on a
+            // page change so it doesn't follow you to the next page.
+            regionSelection = nil
+            canvasController.lassoPoints = []
             persistOverlays(to: page(at: oldIndex))
             canvasController.engine?.refreshPage(oldIndex)
             loadPage()
@@ -780,11 +1168,75 @@ struct NoteEditorView: View {
         ) {
             Haptics.selection()
             strokeSelection = selection
+            // Lift the selected strokes out of the live ink so dragging the
+            // selection doesn't leave a copy at the original position.
+            canvasController.engine?.liftStrokeSelection(selection.strokeIndices)
         } else {
-            Haptics.error()
-            // Empty loop — go straight back to capturing, no dead end.
-            rearmLassoIfActive()
+            // No editable ink in the loop — select the lassoed REGION (a chunk of
+            // PDF / printed problem) and offer copy / duplicate / delete via a pill,
+            // instead of auto-copying.
+            if let region = makeRegionSelection(canvasPolygon: polygon) {
+                Haptics.selection()
+                regionSelection = region
+                withAnimation { transformLassoActive = false }
+            } else {
+                Haptics.error()
+                rearmLassoIfActive()
+            }
         }
+    }
+
+    /// Render a flat image of the lassoed region (page background + PDF + media +
+    /// ink). The captured image is the RECTANGULAR bounding box of the loop (the
+    /// on-canvas outline still traces the freeform shape via `polygon`); copy /
+    /// duplicate produce a clean rectangle, not a clipped silhouette. `polygon` is
+    /// in the canvas's inkScale× space.
+    private func makeRegionSelection(canvasPolygon polygon: [CGPoint]) -> RegionSelection? {
+        guard let page = currentPage, polygon.count >= 3 else { return nil }
+        let s = canvasController.inkScale
+        let pagePoly = polygon.map { CGPoint(x: $0.x / s, y: $0.y / s) }   // page coords
+        let xs = pagePoly.map(\.x), ys = pagePoly.map(\.y)
+        guard let minX = xs.min(), let maxX = xs.max(), let minY = ys.min(), let maxY = ys.max(),
+              maxX - minX > 8, maxY - minY > 8 else { return nil }
+        let region = CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+        let scale: CGFloat = 3
+        let full = PageRenderer.render(PageRenderer.Snapshot(page: page), darkMode: colorScheme == .dark, scale: scale)
+        guard let cgFull = full.cgImage else { return nil }
+        let imgBounds = CGRect(x: 0, y: 0, width: cgFull.width, height: cgFull.height)
+        let px = CGRect(x: region.minX * scale, y: region.minY * scale,
+                        width: region.width * scale, height: region.height * scale).intersection(imgBounds)
+        guard !px.isEmpty, let cropped = cgFull.cropping(to: px) else { return nil }
+        // Crop straight from the rendered page's cgImage — already in display
+        // orientation, so the copy is upright (the mask path flipped it) and
+        // rectangular.
+        return RegionSelection(polygon: pagePoly, pageRect: region,
+                               image: UIImage(cgImage: cropped, scale: scale, orientation: .up))
+    }
+
+    private func copyRegion(_ region: RegionSelection) {
+        UIPasteboard.general.image = region.image
+        Haptics.success()
+    }
+
+    /// Drop the lassoed region back onto the page as a movable image.
+    private func duplicateRegion(_ region: RegionSelection) {
+        guard let data = region.image.pngData() ?? region.image.jpegData(compressionQuality: 0.9),
+              let name = MediaStore.save(data) else { Haptics.error(); return }
+        let r = region.pageRect
+        let item = MediaItemModel(fileName: name, x: r.minX + 24, y: r.minY + 24, width: r.width, height: r.height)
+        mediaItems.append(item)
+        persistOverlays()
+        selectedMediaID = item.id
+        Haptics.success()
+    }
+
+    /// Remove media whose center sits inside the lassoed region (the only
+    /// deletable content under an ink-free loop).
+    private func deleteRegion(_ region: RegionSelection) {
+        let r = region.pageRect
+        let before = mediaItems.count
+        mediaItems.removeAll { r.contains(CGPoint(x: $0.frame.midX, y: $0.frame.midY)) }
+        if mediaItems.count != before { persistOverlays(); Haptics.success() } else { Haptics.tap() }
     }
 
     /// Bake the previewed move + resize + rotation into the strokes, undoably.
@@ -796,19 +1248,19 @@ struct NoteEditorView: View {
             strokeScale = 1
             rearmLassoIfActive()
         }
-        guard let selection = strokeSelection, let canvas = canvasController.canvasView,
-              abs(strokeRotation) > 0.5 || strokeTranslation != .zero || abs(strokeScale - 1) > 0.01 else { return }
-        // The overlay drag is in screen points; convert to page space.
-        let zoom = canvasController.transform(forPage: selection.pageIndex).zoomScale
-        let pageTranslation = CGSize(width: strokeTranslation.width / zoom,
-                                     height: strokeTranslation.height / zoom)
-        let old = canvas.drawing
-        canvas.undoManager?.registerUndo(withTarget: canvas) { target in
-            target.drawing = old
+        guard let selection = strokeSelection else { return }
+        guard abs(strokeRotation) > 0.5 || strokeTranslation != .zero || abs(strokeScale - 1) > 0.01 else {
+            // No real change — just drop the lifted strokes back where they were.
+            canvasController.engine?.cancelStrokeSelection()
+            return
         }
-        canvas.drawing = StrokeSelector.applyTransform(
-            rotation: strokeRotation, scale: strokeScale, translation: pageTranslation, selection: selection, to: old
-        )
+        // The overlay drag is in screen points; convert to the canvas's own
+        // (inkScale×) coordinate space, where the selected strokes live.
+        let zoom = canvasController.canvasTransform(forPage: selection.pageIndex).zoomScale
+        let canvasTranslation = CGSize(width: strokeTranslation.width / zoom,
+                                       height: strokeTranslation.height / zoom)
+        canvasController.engine?.commitStrokeSelection(
+            rotation: strokeRotation, scale: strokeScale, translation: canvasTranslation, selection: selection)
         Haptics.success()
     }
 
@@ -821,6 +1273,24 @@ struct NoteEditorView: View {
         }
     }
 
+    /// The selection's live move/rotate/scale in the canvas's coordinate space
+    /// (screen drag → ÷ zoom), so copy/duplicate keep it where the user dragged.
+    private func selectionTransform(_ selection: StrokeSelection) -> (Double, CGFloat, CGSize) {
+        let zoom = canvasController.canvasTransform(forPage: selection.pageIndex).zoomScale
+        return (strokeRotation, strokeScale,
+                CGSize(width: strokeTranslation.width / zoom, height: strokeTranslation.height / zoom))
+    }
+
+    /// Reset the selection UI after an edit-menu action (the engine has already
+    /// applied it), and re-arm the lasso for the next loop.
+    private func clearStrokeSelection() {
+        strokeSelection = nil
+        strokeRotation = 0
+        strokeTranslation = .zero
+        strokeScale = 1
+        rearmLassoIfActive()
+    }
+
     private func sendAsk() {
         let question = askText.trimmingCharacters(in: .whitespacesAndNewlines)
         askText = ""
@@ -830,6 +1300,14 @@ struct NoteEditorView: View {
     }
 
     // MARK: - Ask bar
+}
+
+/// A lassoed region with no editable ink — a flat image of that page area
+/// (masked to the drawn shape), offered for copy / duplicate / delete via a pill.
+struct RegionSelection {
+    var polygon: [CGPoint]   // page coords — the lassoed shape, as drawn
+    var pageRect: CGRect     // bounding box (page coords) — pill anchor + crop
+    var image: UIImage       // masked to the polygon
 }
 
 /// Disables the interactive pop swipe and the split view's sidebar-reveal pan
@@ -1043,10 +1521,10 @@ extension NoteEditorView {
         [
             // The AI pen: arm Circle & Ask straight from the toolbar — circle
             // anything on the page and ask about it.
-            ToolbarExtraItem(id: "ask-ai", symbolName: "lasso.badge.sparkles", labelKey: "ai.circleAsk.title") {
+            ToolbarExtraItem(id: "ask-ai", symbolName: "wand.and.stars", labelKey: "ai.circleAsk.title") {
                 withAnimation { askLassoActive = true }
             },
-            ToolbarExtraItem(id: "ai-history", symbolName: "bubble.left.and.text.bubble.right", labelKey: "ai.history") {
+            ToolbarExtraItem(id: "ai-history", symbolName: "clock.arrow.circlepath", labelKey: "ai.history") {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                     tutor.panelBubbleID = nil
                     tutor.panelOpen.toggle()
@@ -1064,60 +1542,112 @@ extension NoteEditorView {
     }
 
     /// Floating glass action bar (top-trailing) — replaces the navigation bar.
-    private var actionBar: some View {
-        VStack {
-            HStack(alignment: .top) {
-                Button(action: { dismiss() }) {
-                    Image(systemName: "chevron.left")
-                        .frame(width: 34, height: 34)
-                }
-                .font(.system(size: 16, weight: .medium))
-                .padding(6)
-                .studyGlass(cornerRadius: 16)
-                .accessibilityLabel(Text("action.back"))
-                .padding(.leading, 12)
-
-                Spacer()
-
-                // Top-right, outermost to innermost: pages strip toggle,
-                // overflow menu, AI menu, recorder, redo, undo.
-                HStack(spacing: 2) {
-                    Button(action: canvasController.undo) {
-                        Image(systemName: "arrow.uturn.backward")
-                            .frame(width: 34, height: 34)
-                    }
-                    .disabled(!canvasController.canUndo)
-                    .accessibilityLabel(Text("action.undo"))
-
-                    Button(action: canvasController.redo) {
-                        Image(systemName: "arrow.uturn.forward")
-                            .frame(width: 34, height: 34)
-                    }
-                    .disabled(!canvasController.canRedo)
-                    .accessibilityLabel(Text("action.redo"))
-
-                    recorderMenu
-
-                    aiMenu
-
-                    overflowMenu
-
-                    Button {
-                        withAnimation { showPageStrip.toggle() }
-                    } label: {
-                        Image(systemName: "rectangle.trailingthird.inset.filled")
-                            .frame(width: 34, height: 34)
-                    }
-                    .accessibilityLabel(Text("page.toggleStrip"))
-                }
-                .font(.system(size: 16, weight: .medium))
-                .padding(6)
-                .studyGlass(cornerRadius: 16)
-                .padding(.trailing, 12)
+    /// Fixed Foolscap header bar (58pt): back · title/subtitle · recorder ·
+    /// more · pages · Tutor pill. Undo/redo now live on the floating toolbar.
+    private var editorHeader: some View {
+        HStack(spacing: 10) {
+            Button(action: { dismiss() }) {
+                headerSquare("chevron-left")
             }
-            .padding(.top, 8)
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text("action.back"))
 
+            Spacer(minLength: 8)
+
+            // Undo / redo always live here, top-right.
+            Button(action: { canvasController.undo() }) { headerSquare("undo-2") }
+                .buttonStyle(.plain)
+                .disabled(!canvasController.canUndo)
+                .accessibilityLabel(Text("action.undo"))
+            Button(action: { canvasController.redo() }) { headerSquare("redo-2") }
+                .buttonStyle(.plain)
+                .disabled(!canvasController.canRedo)
+                .accessibilityLabel(Text("action.redo"))
+
+            recorderMenu
+                .background(themePaper, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(SemanticColor.separator))
+            overflowMenu
+                .background(themePaper, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(SemanticColor.separator))
+            Button {
+                withAnimation { showPageStrip.toggle() }
+            } label: {
+                headerSquare("copy")
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text("page.toggleStrip"))
+            // The Tutor pill (AI menu) — the study partner's ochre.
+            aiMenu
+        }
+        .font(.system(size: 16, weight: .medium))
+        .padding(.horizontal, 14)
+        .frame(height: 44)
+        .frame(maxWidth: .infinity)
+        // Transparent header — it floats over the canvas, no solid bar / divider
+        // and reserves no canvas height (spec: compact 44pt, non-eating).
+    }
+
+    /// A 34pt rounded-square header button face — light paper so it reads on the
+    /// transparent (desk) header. Glyph is a bundled Lucide icon.
+    private func headerSquare(_ lucide: String) -> some View {
+        Lucide(lucide, size: 18)
+            .foregroundStyle(SemanticColor.textPrimary)
+            .frame(width: 34, height: 34)
+            .background(themePaper, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(SemanticColor.separator))
+    }
+
+    private func startRename() {
+        // Start empty when it's still the default "Untitled" name.
+        let untitled = String(localized: "library.untitledNote")
+        renameText = (note.title == untitled) ? "" : (note.title ?? "")
+        showRenameAlert = true
+    }
+
+    /// The tutor's amber ink colour — the design tags AI-written ink amber.
+    private var ambientInkHex: String { UIColor(AppTheme.current.aiAccent).hexString }
+
+    /// Tap-to-define shows the Hebrew definition when the device prefers Hebrew
+    /// (a Hebrew-script term always shows Hebrew regardless).
+    private var preferHebrewDefinitions: Bool {
+        (Locale.preferredLanguages.first ?? "en").hasPrefix("he")
+    }
+
+    /// Top-center result banner for the ambient tutor ("looks all good", an
+    /// error, "nothing to check"). The thinking state itself is the breathing
+    /// corner badge — see aiThinkingHUD.
+    @ViewBuilder
+    private var ambientStatusHUD: some View {
+        VStack {
+            if let notice = ambient.notice, !ambient.isChecking {
+                Text(notice)
+                    .font(.subheadline.weight(.medium))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+                    .background(.regularMaterial, in: Capsule())
+                    .overlay(Capsule().strokeBorder(SemanticColor.separator))
+                    .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
             Spacer()
+        }
+        .padding(.top, 84)
+        .frame(maxWidth: .infinity, alignment: .center)
+        .allowsHitTesting(false)
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: ambient.notice)
+    }
+
+    /// Debounced: when the pen rests ~2.5s after writing, the ambient tutor
+    /// suggests the next step (Helpful sensitivity only).
+    private func scheduleGhostSuggestion() {
+        ghostIdleTask?.cancel()
+        guard ambient.sensitivity == .helpful, !distractionFree else { return }
+        ghostIdleTask = Task {
+            try? await Task.sleep(nanoseconds: 3_200_000_000)
+            guard !Task.isCancelled else { return }
+            canvasController.commitPendingInk()
+            await ambient.suggestNext(note: note, pageIndex: pageIndex, darkMode: colorScheme == .dark, auto: true)
         }
     }
 
@@ -1127,9 +1657,8 @@ extension NoteEditorView {
         Button {
             showRecorderPopover = true
         } label: {
-            Image(systemName: "mic")
-                .symbolVariant(audio.isRecording ? .fill : .none)
-                .symbolEffect(.pulse, isActive: audio.isRecording)
+            Lucide("mic", size: 18)
+                .foregroundStyle(audio.isRecording ? Color.accentColor : SemanticColor.textPrimary)
                 .frame(width: 34, height: 34)
         }
         .tint(Color.accentColor)
@@ -1143,12 +1672,45 @@ extension NoteEditorView {
     /// AI tools, top-level in the action bar.
     private var aiMenu: some View {
         Menu {
+            // Ambient Tutor — check the page line-by-line; glyphs settle in the
+            // margin lane.
+            Button {
+                Task {
+                    // Flush the debounced ink save first, or the OCR renders the
+                    // PERSISTED page and misses everything just written — the
+                    // check would then find no lines and silently do nothing.
+                    canvasController.commitPendingInk()
+                    await ambient.checkWork(note: note, pageIndex: pageIndex, darkMode: colorScheme == .dark)
+                }
+            } label: { Label("ambient.check", systemImage: "sparkles.rectangle.stack") }
+            Button {
+                ambient.invalidateGhost()
+                Task {
+                    canvasController.commitPendingInk()
+                    await ambient.suggestNext(note: note, pageIndex: pageIndex, darkMode: colorScheme == .dark)
+                    // Manual press should never look like it did nothing.
+                    if ambient.ghost == nil { ambient.showNotice(String(localized: "ambient.notice.noSuggestion")) }
+                }
+            } label: { Label("ambient.suggest", systemImage: "wand.and.rays") }
+            Picker(selection: Binding(get: { ambient.sensitivity }, set: {
+                ambient.sensitivity = $0
+                guidedMode.isEnabled = ($0 == .helpful)   // Helpful = watch proactively
+            })) {
+                ForEach(AmbientSensitivity.allCases) { s in Text(s.labelKey).tag(s) }
+            } label: { Label("ambient.sensitivity", systemImage: "dial.medium") }
+            Divider()
             Button {
                 withAnimation { askLassoActive = true }
             } label: { Label("ai.circleAsk.title", systemImage: "lasso.badge.sparkles") }
             Button {
                 Task { await tutor.explainCurrentPage() }
             } label: { Label("ai.explainPage", systemImage: "doc.text.magnifyingglass") }
+            Button {
+                Task { await ghostWitness.fit(note: note, pageIndex: pageIndex, darkMode: colorScheme == .dark) }
+            } label: { Label("ai.fitSketch", systemImage: "scribble.variable") }
+            Button {
+                Task { await warpTunnel.showQuestion(note: note, currentPageIndex: pageIndex, darkMode: colorScheme == .dark) }
+            } label: { Label("ai.showQuestion", systemImage: "arrow.up.left.and.arrow.down.right.rectangle") }
             Button {
                 Task { await quiz.start(note: note, pageIndex: pageIndex, darkMode: colorScheme == .dark) }
             } label: { Label("ai.quizMe", systemImage: "questionmark.app") }
@@ -1160,12 +1722,18 @@ extension NoteEditorView {
                 aiSketchText = ""
                 showAISketchPrompt = true
             } label: { Label("ai.sketch", systemImage: "scribble") }
-            Toggle(isOn: $guidedMode.isEnabled) {
-                Label("ai.guidedMode", systemImage: "lightbulb")
-            }
+            // Guided Mode (proactive watching) is now folded into the Helpful
+            // sensitivity above — no separate toggle.
         } label: {
-            Image(systemName: "sparkles")
-                .frame(width: 34, height: 34)
+            HStack(spacing: 5) {
+                Lucide("wand-sparkles", size: 15)
+                Text("ai.tutorName")
+            }
+            .font(.callout.weight(.semibold))
+            .foregroundStyle(.white)
+            .frame(height: 34)
+            .padding(.horizontal, 12)
+            .background(aiAccent, in: Capsule())
         }
         .accessibilityLabel(Text("ai.menu"))
     }
@@ -1212,35 +1780,53 @@ extension NoteEditorView {
                 Label("page.settings", systemImage: "doc.badge.gearshape")
             }
         } label: {
-            Image(systemName: "ellipsis.circle")
+            Lucide("more-horizontal", size: 18)
+                .foregroundStyle(SemanticColor.textPrimary)
                 .frame(width: 34, height: 34)
         }
         .accessibilityLabel(Text("editor.more"))
     }
 
+    /// Page jump: each chevron tap advances one page immediately and animates the
+    /// scroll. (The live canvas only re-mounts when the scroll settles, so rapid
+    /// taps no longer glitch the ink.)
+    private func jumpPage(by delta: Int) {
+        let count = note.sortedPages.count
+        // Base the jump on the page the user currently SEES (live), so a tap after
+        // a free-scroll goes to the right neighbour.
+        let base = canvasController.visiblePageIndex
+        let target = max(0, min(count - 1, base + delta))
+        guard target != pageIndex else { return }
+        Haptics.tap()
+        pageIndex = target
+    }
+
     /// Bottom-right: current page out of total, with up/down paging.
     private var pageIndicator: some View {
-        VStack(spacing: 0) {
+        // The LIVE page under the viewport (updates while scrolling); the canvas
+        // still mounts at settle. Falls back to pageIndex before the first scroll.
+        let shown = canvasController.visiblePageIndex
+        return VStack(spacing: 0) {
             Button {
-                withAnimation { pageIndex = max(0, pageIndex - 1) }
+                jumpPage(by: -1)
             } label: {
                 Image(systemName: "chevron.up")
                     .frame(width: 34, height: 28)
             }
-            .disabled(pageIndex == 0)
+            .disabled(shown == 0)
             .accessibilityLabel(Text("page.previous"))
 
-            Text(verbatim: "\(pageIndex + 1)/\(note.sortedPages.count)")
+            Text(verbatim: "\(shown + 1)/\(note.sortedPages.count)")
                 .font(.caption2.monospacedDigit())
                 .foregroundStyle(.secondary)
 
             Button {
-                withAnimation { pageIndex = min(note.sortedPages.count - 1, pageIndex + 1) }
+                jumpPage(by: 1)
             } label: {
                 Image(systemName: "chevron.down")
                     .frame(width: 34, height: 28)
             }
-            .disabled(pageIndex >= note.sortedPages.count - 1)
+            .disabled(shown >= note.sortedPages.count - 1)
             .accessibilityLabel(Text("page.next"))
         }
         .font(.system(size: 14, weight: .medium))
@@ -1273,6 +1859,70 @@ extension NoteEditorView {
         mediaItems = currentPage?.mediaItems ?? []
         editingBoxID = nil
         selectedMediaID = nil
+        conceptHit = nil
+        foldedBlocks = loadFolds(pageIndex)
+        refreshConceptLines()
+    }
+
+    /// Re-OCR the current page (off main) so tap-to-define knows where each line
+    /// of writing sits. Cheap and cached; refreshed on page load and after edits.
+    private func refreshConceptLines() {
+        guard let page = currentPage else { conceptOCRLines = []; return }
+        Task { conceptOCRLines = await NoteContextBuilder.ocrLines(for: page) }
+    }
+
+    // MARK: - Smart Collapse persistence (per note + page, in UserDefaults)
+
+    private func foldsKey(_ index: Int) -> String? {
+        guard let id = note.id?.uuidString else { return nil }
+        return "folds.\(id).\(index)"
+    }
+    private func loadFolds(_ index: Int) -> [FoldedBlock] {
+        guard let key = foldsKey(index), let data = UserDefaults.standard.data(forKey: key) else { return [] }
+        return (try? JSONDecoder().decode([FoldedBlock].self, from: data)) ?? []
+    }
+    private func saveFolds() {
+        guard let key = foldsKey(pageIndex) else { return }
+        if foldedBlocks.isEmpty {
+            UserDefaults.standard.removeObject(forKey: key)
+        } else if let data = try? JSONEncoder().encode(foldedBlocks) {
+            UserDefaults.standard.set(data, forKey: key)
+        }
+    }
+
+    // MARK: - Finger-tap paste menu
+
+    private func dismissPasteMenu() {
+        Haptics.tap()
+        withAnimation { pastePoint = nil }
+    }
+
+    private func pasteMenuItem(_ key: LocalizedStringKey, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(key)
+                .font(.subheadline)
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 14).padding(.vertical, 9)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var pasteMenuDivider: some View {
+        Rectangle().fill(Color.primary.opacity(0.12)).frame(width: 1, height: 22)
+    }
+
+    /// Paste the system-clipboard image as a media item at the tap.
+    private func pasteImage(at pagePoint: CGPoint) {
+        guard let image = UIPasteboard.general.image,
+              let data = image.pngData() ?? image.jpegData(compressionQuality: 0.9),
+              let name = MediaStore.save(data) else { return }
+        let w = min(image.size.width, 320)
+        let h = w * (image.size.height / max(image.size.width, 1))
+        let item = MediaItemModel(fileName: name, x: pagePoint.x - w / 2, y: pagePoint.y - h / 2, width: w, height: h)
+        mediaItems.append(item)
+        persistOverlays()
+        selectedMediaID = item.id
     }
 
     /// Typing in a text box mutates state on every keystroke; encoding JSON,
@@ -1291,8 +1941,15 @@ extension NoteEditorView {
     private func persistOverlays(to target: Page? = nil) {
         overlaySaveTask?.cancel()
         guard let page = target ?? currentPage else { return }
-        if page.textBoxes != textBoxes { page.textBoxes = textBoxes }
-        if page.mediaItems != mediaItems { page.mediaItems = mediaItems }
+        // Only do the expensive work (rebuild the note's search index + write Core
+        // Data) when an overlay ACTUALLY changed. A plain page turn carries no
+        // change, so this short-circuits — without it, flipping pages quickly hit
+        // the disk and re-scanned every page each time, which is what made fast
+        // navigation stutter.
+        var changed = false
+        if page.textBoxes != textBoxes { page.textBoxes = textBoxes; changed = true }
+        if page.mediaItems != mediaItems { page.mediaItems = mediaItems; changed = true }
+        guard changed else { return }
         note.searchableText = SearchableTextBuilder.build(for: note)
         PersistenceController.shared.save()
     }
@@ -1323,7 +1980,12 @@ extension NoteEditorView {
             if index == pages.count - 1, !drawing.strokes.isEmpty {
                 _ = note.addPage()
             }
-            note.searchableText = SearchableTextBuilder.build(for: note)
+            // NOTE: the note's search index is NOT rebuilt here. Rebuilding it on
+            // every debounced stroke scanned every page on the main thread while
+            // the user was still writing — a real hiccup. Ink doesn't change the
+            // recognized TEXT until OCR runs, so the rebuild moved into the
+            // debounced OCR task (scheduleOCR), which only fires once writing
+            // settles. This save just persists the ink.
             PersistenceController.shared.save()
             scheduleOCR(for: pages[index])
         }
@@ -1333,10 +1995,19 @@ extension NoteEditorView {
     /// search (and AI targeting) fresh without OCR-ing every stroke.
     private func scheduleOCR(for page: Page) {
         ocrTask?.cancel()
-        ocrTask = Task {
+        ocrTask = Task { [weak note] in
             try? await Task.sleep(for: .seconds(4))
             guard !Task.isCancelled else { return }
             await OCRService.indexPage(page)
+            // Refresh the search index ONCE, after OCR actually changed the
+            // recognized text — moved off the per-stroke save path.
+            guard !Task.isCancelled, let note else { return }
+            await MainActor.run {
+                note.searchableText = SearchableTextBuilder.build(for: note)
+                PersistenceController.shared.save()
+            }
+            // Keep tap-to-define's line cache current with the latest writing.
+            if !Task.isCancelled { await MainActor.run { refreshConceptLines() } }
         }
     }
 

@@ -27,6 +27,7 @@ extension AITutorController {
     func drawSketch(request: String, on canvas: PKCanvasView?) async {
         guard let page = currentPage, let canvas else { return }
         let pageSize = page.canvasSize
+        beginTask(); defer { endTask() }
 
         do {
             let prompt = """
@@ -37,7 +38,7 @@ extension AITutorController {
             Connect points smoothly; prefer fewer, longer strokes over many tiny ones.
             """
             let raw = try await AIService.send(
-                system: SystemPrompt.tutor(subjectContext: note?.subjectContext ?? "calculus1"),
+                system: SystemPrompt.tutor(subjectContext: note?.subjectContext ?? "calculus1", directAnswer: true),
                 messages: [.user(text: prompt)],
                 maxTokens: 3000
             )
@@ -86,7 +87,7 @@ extension AITutorController {
                 errorMessage = String(localized: "ai.sketch.failed")
                 return
             }
-            canvas.drawing = canvas.drawing.appending(PKDrawing(strokes: strokes))
+            appendInkUndoably(strokes, to: canvas)
             Haptics.tap()
         } catch {
             errorMessage = error.localizedDescription
@@ -99,20 +100,22 @@ extension AITutorController {
     func answerInInk(request: String, on canvas: PKCanvasView?, colorHex: String, penWidth: Double) async {
         guard let note, let page = currentPage, let canvas else { return }
         let pageSize = page.canvasSize
+        beginTask(); defer { endTask() }
 
         do {
             let context = await NoteContextBuilder.build(note: note, currentPageIndex: currentPageIndex, darkMode: isDarkMode)
             var blocks = context.blocks
             blocks.append(.text("""
             INK ANSWER MODE: The student asked: "\(request)".
+            FIRST read any problem statement on the page (typed, printed, or a pasted screenshot/photo — possibly Hebrew/another language) that defines the function/task, so you answer the RIGHT question in context.
             Solve/answer it from the note's content (do the math properly; show the result, not the working, unless asked).
             Respond with ONLY a JSON object:
-            {"answer": "<the answer exactly as it should be written on the page — plain unicode (², ³, √, ∫, ×, ÷, π, fractions as 3/4), NEVER LaTeX, at most ~28 characters per line, \\n between lines, at most 4 lines>",
+            {"answer": "<the answer as it should be written on the page, as LaTeX: fractions \\\\frac{num}{den} (NOT a/b), exponents x^{2}, subscripts x_{0}, roots \\\\sqrt{...}, · for multiply; no $ delimiters; \\n between lines, at most 4 lines>",
              "anchor": "<the exact text of the question as it appears in the note OCR, copied verbatim, or null if unsure>"}
             """))
 
             let raw = try await AIService.send(
-                system: SystemPrompt.tutor(subjectContext: note.subjectContext ?? "calculus1"),
+                system: SystemPrompt.tutor(subjectContext: note.subjectContext ?? "calculus1", directAnswer: true),
                 messages: [.user(blocks)],
                 maxTokens: 800
             )
@@ -155,24 +158,151 @@ extension AITutorController {
             topLeft.x = min(topLeft.x, max(margin, pageSize.width - margin - textWidth))
             topLeft.x = max(topLeft.x, margin)
             topLeft.y = max(margin, min(topLeft.y, pageSize.height - margin - InkWriter.lineHeight(fontSize: fontSize) * 4))
+            // Don't land ON the student's work — slide down into a clear band.
+            let lineCount = max(1, answer.components(separatedBy: "\n").count)
+            let blockSize = CGSize(width: textWidth, height: InkWriter.lineHeight(fontSize: fontSize) * CGFloat(lineCount))
+            topLeft = clearSpot(near: topLeft, size: blockSize,
+                                avoiding: canvas.drawing.strokes.map(\.renderBounds),
+                                pageSize: pageSize, margin: margin)
 
-            // The student's current pen color, slightly thinner than their pen.
-            let ink = PKInk(.pen, color: UIColor(hex: colorHex) ?? .label)
+            // Adapt the colour the same way the pen does (iOS 26 renders ink
+            // colours literally, so the AI ink must already be the DISPLAY
+            // colour or it renders faint/wrong on the pinned-light canvas).
+            let base = InkColorAdapter.displayColor(UIColor(hex: colorHex) ?? .label, darkMode: isDarkMode)
+            let ink = PKInk(.pen, color: base)
+            // InkWriter traces the glyph CONTOUR, so the stroke must be ~the
+            // glyph's stem width or letters render hollow/outlined. Scale it to
+            // the font size for a solid, filled-in handwritten look.
             let strokes = InkWriter.strokes(
                 for: answer,
                 topLeft: topLeft,
                 fontSize: fontSize,
                 ink: ink,
-                strokeWidth: max(1.2, CGFloat(penWidth) * 0.45)
+                strokeWidth: max(1.8, fontSize * 0.105)
             )
             guard !strokes.isEmpty else {
                 errorMessage = String(localized: "ai.draw.failed")
                 return
             }
-            canvas.drawing = canvas.drawing.appending(PKDrawing(strokes: strokes))
+            appendInkUndoably(strokes, to: canvas)
             Haptics.tap()
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+}
+
+extension AITutorController {
+    /// Writes text as handwritten ink at an EXPLICIT page-space location. Used
+    /// by the ambient tutor, where the caller already knows exactly where the
+    /// ink goes (the glyph's line rect / the ghost's anchor) — so there's no AI
+    /// round-trip and no OCR anchor-matching to land it in the wrong place.
+    func writeInk(text: String, at pagePoint: CGPoint, fontSize: CGFloat = 22, colorHex: String, avoid: [CGRect] = [], center: Bool = false, on canvas: PKCanvasView?) {
+        guard let canvas, let page = currentPage else { return }
+        let pageSize = page.canvasSize
+        let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return }
+
+        let textWidth = InkWriter.width(of: cleaned, fontSize: fontSize)
+        let lineH = InkWriter.lineHeight(fontSize: fontSize)
+        let blockH = lineH * CGFloat(cleaned.components(separatedBy: "\n").count)
+        let margin: CGFloat = 24
+        var topLeft = pagePoint
+        // Inline placement (after a '='): treat pagePoint.y as the line's MIDDLE
+        // and lift a tall result (a fraction) so it straddles the line instead of
+        // hanging below into the next one.
+        if center {
+            let m = InkWriter.firstLineMetrics(of: cleaned, fontSize: fontSize)
+            topLeft.y = pagePoint.y - (m.ascent + m.descent) / 2
+        }
+        // Keep the whole block on the page.
+        topLeft.x = min(topLeft.x, max(margin, pageSize.width - margin - textWidth))
+        topLeft.x = max(topLeft.x, margin)
+        topLeft.y = max(margin, min(topLeft.y, pageSize.height - margin - blockH))
+
+        // Don't write over existing work. Avoid the ACTUAL ink on the canvas
+        // (every stroke's render bounds) — this captures a fraction's full height
+        // (numerator, rule, denominator), which OCR line rects miss, so the
+        // correction drops into a genuinely clear gap below. `intersects` is
+        // column-aware (needs x-overlap too). Inline completions (center) sit on
+        // their line on purpose, so they skip this.
+        if !center {
+            let occupied = avoid + canvas.drawing.strokes.map(\.renderBounds)
+            var guardCount = 0
+            while guardCount < 24 {
+                let block = CGRect(x: topLeft.x, y: topLeft.y, width: max(textWidth, 8), height: blockH)
+                guard let hit = occupied.filter({ $0.intersects(block) }).max(by: { $0.maxY < $1.maxY }) else { break }
+                let next = hit.maxY + fontSize * 0.35
+                if next + blockH > pageSize.height - margin { break } // no room; leave as is
+                topLeft.y = next
+                guardCount += 1
+            }
+        }
+
+        // Adapt the colour the way the pen does (iOS 26 renders ink colours
+        // literally on the pinned-light canvas), and trace with a stem-width
+        // stroke so the glyphs read solid rather than hollow outlines.
+        let base = InkColorAdapter.displayColor(UIColor(hex: colorHex) ?? .label, darkMode: isDarkMode)
+        let ink = PKInk(.pen, color: base)
+        let strokes = InkWriter.strokes(
+            for: cleaned,
+            topLeft: topLeft,
+            fontSize: fontSize,
+            ink: ink,
+            strokeWidth: max(2.4, fontSize * 0.135)   // stem-width so glyphs fill solid, not hollow
+        )
+        guard !strokes.isEmpty else { return }
+        appendInkUndoably(strokes, to: canvas)
+        Haptics.tap()
+    }
+
+    /// Slides a block down from `topLeft` into the nearest clear vertical band
+    /// (no overlap with existing ink), so AI ink never lands on the student's work.
+    func clearSpot(near topLeft: CGPoint, size: CGSize, avoiding occupied: [CGRect],
+                   pageSize: CGSize, margin: CGFloat) -> CGPoint {
+        let pad: CGFloat = 10
+        let maxY = max(margin, pageSize.height - margin - size.height)
+        func overlaps(_ y: CGFloat) -> Bool {
+            let r = CGRect(x: topLeft.x, y: y, width: size.width, height: size.height).insetBy(dx: -pad, dy: -pad)
+            return occupied.contains { $0.intersects(r) }
+        }
+        func scan(from startY: CGFloat) -> CGFloat? {
+            var y = startY, steps = 0
+            while y <= maxY, steps < 300 {
+                if !overlaps(y) { return y }
+                y += max(8, size.height * 0.2); steps += 1
+            }
+            return nil
+        }
+        if let y = scan(from: topLeft.y) { return CGPoint(x: topLeft.x, y: y) }
+        if let y = scan(from: margin) { return CGPoint(x: topLeft.x, y: y) }  // wrap to top
+        return CGPoint(x: topLeft.x, y: min(topLeft.y, maxY))                 // give up
+    }
+
+    /// Appends AI strokes to the canvas as a single undoable (and redoable) edit,
+    /// so the undo/redo buttons remove/restore the AI's writing like any stroke.
+    func appendInkUndoably(_ strokes: [PKStroke], to canvas: PKCanvasView) {
+        let before = canvas.drawing
+        registerInkUndo(restoring: before, on: canvas)
+        // The live canvas may be supersampled for native-sharp zoom (it carries a
+        // 1/inkScale transform); strokes are generated in page coordinates, so
+        // scale them up into the canvas's coordinate space. No-op (×1) when the
+        // canvas is at identity.
+        var added = PKDrawing(strokes: strokes)
+        let inv = canvas.transform.a
+        if inv > 0, abs(inv - 1) > 0.0001 {
+            added.transform(using: CGAffineTransform(scaleX: 1 / inv, y: 1 / inv))
+        }
+        canvas.drawing = before.appending(added)
+    }
+
+    /// Registers an undo that restores `drawing`; performing it re-registers the
+    /// inverse, so the manager's redo brings the AI ink back.
+    private func registerInkUndo(restoring drawing: PKDrawing, on canvas: PKCanvasView) {
+        canvas.undoManager?.registerUndo(withTarget: canvas) { [weak self] target in
+            let current = target.drawing
+            self?.registerInkUndo(restoring: current, on: target)
+            target.drawing = drawing
         }
     }
 }

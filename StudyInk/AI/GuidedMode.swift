@@ -20,10 +20,14 @@ final class GuidedModeController: ObservableObject {
     @Published var suggestion: GuidedSuggestion?
     /// Transient, non-tappable status text (e.g. "guided mode is watching").
     @Published var banner: String?
+    /// True while the watcher is evaluating the page — drives the breathing badge.
+    @Published var isWatching = false
     /// Every suggestion made this session, newest first (tappable later).
     @Published var log: [GuidedSuggestion] = []
 
     weak var tutor: AITutorController?
+    /// The margin lane — so a nudge can drop a "?" glyph at the line it's about.
+    weak var ambient: AmbientTutorController?
     private var penPauseTask: Task<Void, Never>?
     private var dismissTask: Task<Void, Never>?
     private var bannerTask: Task<Void, Never>?
@@ -53,6 +57,7 @@ final class GuidedModeController: ObservableObject {
         stopTasks()
         suggestion = nil
         banner = nil
+        ambient?.clearHints()
     }
 
     /// Called for every new stroke: (re)arms the pen-pause timer so evaluation
@@ -70,7 +75,14 @@ final class GuidedModeController: ObservableObject {
     func pageTurned() {
         guard isEnabled else { return }
         penPauseTask?.cancel()
-        Task { await checkPage(force: true) }
+        // Don't fire on every page while the user scrolls through an imported PDF
+        // — wait until they DWELL on a page, then evaluate (and checkPage still
+        // bails on pages with no student work of their own).
+        penPauseTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1.2))
+            guard !Task.isCancelled else { return }
+            await self?.checkPage(force: true)
+        }
     }
 
     private func stopTasks() {
@@ -100,43 +112,97 @@ final class GuidedModeController: ObservableObject {
         // Rate limit: at most one request per 30s, regardless of trigger.
         guard Date().timeIntervalSince(lastRequestAt) >= minRequestInterval else { return }
 
+        // CHEAP eligibility gate, BEFORE any OCR / render / Core Data save: only
+        // evaluate pages the STUDENT is actively working on — their handwriting or
+        // their own typed text. A pristine imported PDF page (printed Q&A they're
+        // just reading/scrolling) has OCR'd content but no work of their own, so
+        // skip it entirely — no heavy work, no hiccup (#5/#8).
+        let typed = page.textBoxes.map(\.text).joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        let strokeCount = page.drawing.strokes.count
+        guard strokeCount > 2 || typed.count > 8 else { return }
+
+        PerfMonitor.shared.setActivity("ai:guided")
+        defer { if PerfMonitor.shared.activity == "ai:guided" { PerfMonitor.shared.setActivity("idle") } }
         await OCRService.indexPage(page)
-        let typed = page.textBoxes.map(\.text).joined(separator: "\n")
         let content = [(page.ocrText ?? ""), typed].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-        guard content.count > 12, force || content != lastSeenText else { return }
-        lastSeenText = content
+        // Stroke count is part of the signature so we re-evaluate handwriting that
+        // OCR can't read (the model SEES the page image below regardless).
+        let signature = "\(content)#\(strokeCount)"
+        guard force || signature != lastSeenText else { return }       // and it changed
+        lastSeenText = signature
         lastRequestAt = Date()
         inFlight = true
-        defer { inFlight = false }
+        isWatching = true
+        defer { inFlight = false; isWatching = false }
+
+        // Render the page so the model can read handwriting visually, not just OCR.
+        let snapshot = PageRenderer.Snapshot(page: page)
+        let pageImage = await Task.detached(priority: .utility) {
+            // 2× so small handwriting (stacked fractions, limit subscripts) and a
+            // pasted question image are legible — at 1× the model can't read them.
+            PageRenderer.render(snapshot, darkMode: false, scale: 2)
+        }.value
 
         let hint = """
-        GUIDED MODE: You are passively watching the student write. Below is the OCR + typed text of the current page.
-        Decide whether ONE genuinely useful, proactive suggestion exists. A good suggestion:
-        - quotes or names the exact expression/line it is about (e.g. "you wrote lim x→0 sin(x)/x — want me to check the evaluation?")
-        - offers a concrete next action (check a step, verify a base case, test an edge case, finish a definition)
-        - is at most ~12 words, in the student's language
-        Do NOT comment on neat/complete work, restate the obvious, or suggest generic "keep going" encouragement.
-        Respond with ONLY a JSON object:
-        {"suggestion": "<the one-sentence suggestion>", "match_string": "<exact string copied verbatim from the page text it refers to — required whenever possible, else null>"}
-        If nothing clears that bar, respond with exactly {}.
+        GUIDED MODE — you are quietly watching the student work. Offer help ONLY when it is genuinely useful; you will be asked again as they keep writing, so stay SILENT when in doubt.
+        The image above is the student's CURRENT PAGE (read the handwriting from it — OCR is unreliable). First understand the PROBLEM / sub-question (typed, printed, or a pasted screenshot/photo; may be Hebrew/another language) and WHERE in the solution the student currently is.
+        Then, silently, WORK OUT the correct next step yourself. Now compare it to the student's LAST lines and decide if exactly one of these is clearly true:
+        - STUCK: an unfinished line they haven't progressed, a long pause, or the same step rewritten/erased.
+        - ERROR: they just made a mistake, or are about to take a wrong turn. Judge the EXACT value they wrote (sign, number, variable) against YOUR own solution — never excuse a wrong sign or root.
+        - MISSING: a key step or case is skipped.
+        Only then, give ONE concrete hint that:
+        - names the exact line/expression it is about,
+        - points to the next action or the error WITHOUT giving the full answer (a nudge, not the solution),
+        - is ≤12 words, written in \(SystemPrompt.languageTarget).
+        Do NOT comment on correct/complete/neat work, restate the obvious, or give generic encouragement.
+        Reason briefly if you need to, then output ONLY a JSON object (you may fence it in a ```json block):
+        {"suggestion": "<one sentence>", "match_string": "<exact string copied verbatim from the page it refers to, or null>"}
+        If nothing clears that bar, output exactly {}.
 
-        Page content:
+        OCR/typed text (may be empty or wrong):
         \(content.prefix(3000))
         """
 
+        var blocks: [AIContent] = []
+        if let imageBlock = AIContent.image(pageImage) {
+            blocks.append(.text("The student's current page:"))
+            blocks.append(imageBlock)
+        }
+        blocks.append(.text(hint))
+
         do {
             let raw = try await AIService.send(
-                system: SystemPrompt.tutor(subjectContext: note.subjectContext ?? "calculus1"),
-                messages: [.user(text: hint)],
-                maxTokens: 300
+                system: SystemPrompt.guidedWatcher,
+                messages: [.user(blocks)],
+                // Generous: Gemini 2.5 spends "thinking" tokens that count against
+                // this budget, so a tight cap (700) starved the actual output and
+                // truncated the {suggestion,…} JSON mid-string → nothing showed.
+                maxTokens: 2500
             )
-            guard let data = extractJSON(from: raw)?.data(using: .utf8),
-                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let text = object["suggestion"] as? String, !text.isEmpty else { return }
-            show(GuidedSuggestion(text: text, matchString: object["match_string"] as? String))
+            // Parse the watcher reply, tolerating a TRUNCATED JSON (a thinking model
+            // can cut it off mid-string): fall back to a regex on the values.
+            var suggestion: String?
+            var match: String?
+            if let data = extractJSON(from: raw)?.data(using: .utf8),
+               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                suggestion = object["suggestion"] as? String
+                match = object["match_string"] as? String
+            }
+            if suggestion?.isEmpty != false {
+                suggestion = Self.regexCapture(#""suggestion"\s*:\s*"((?:[^"\\]|\\.)*)""#, in: raw)
+                match = match ?? Self.regexCapture(#""match_string"\s*:\s*"((?:[^"\\]|\\.)*)""#, in: raw)
+            }
+            guard let text = suggestion, !text.isEmpty else { return }
+            let new = GuidedSuggestion(text: text, matchString: (match?.isEmpty == false && match != "null") ? match : nil)
+            show(new)
+            // The glyph is placed by the editor at the student's last pen location
+            // (the OCR is too garbled to text-match the model's clean match_string).
         } catch {
-            // Don't fail silently and don't alert every 10s: surface the error
-            // once and switch guided mode off so the user can fix the cause.
+            // A request superseded by newer writing is CANCELLED — that's the
+            // debounce working, not a failure. Keep watching.
+            if (error as? URLError)?.code == .cancelled || error is CancellationError { return }
+            // A real error (bad key, network): surface once and switch off so the
+            // user can fix the cause, rather than alerting every 10s.
             tutor.errorMessage = error.localizedDescription
             isEnabled = false
         }
@@ -151,7 +217,9 @@ final class GuidedModeController: ObservableObject {
         }
         dismissTask?.cancel()
         dismissTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(8))
+            // Linger: the watcher fires at most once per ~30s and the AI call takes
+            // ~10s, so a quick 8s card was easy to miss entirely.
+            try? await Task.sleep(for: .seconds(15))
             guard !Task.isCancelled else { return }
             withAnimation { self?.suggestion = nil }
         }
@@ -174,6 +242,15 @@ final class GuidedModeController: ObservableObject {
             }
             await tutor.ask(question: suggestion.text, anchor: anchor)
         }
+    }
+
+    /// First capture group of `pattern` in `s` (used to recover values from a
+    /// truncated JSON reply).
+    private static func regexCapture(_ pattern: String, in s: String) -> String? {
+        guard let re = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators]),
+              let m = re.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)),
+              m.numberOfRanges > 1, let r = Range(m.range(at: 1), in: s) else { return nil }
+        return String(s[r])
     }
 
     /// Tolerates fenced code blocks and surrounding prose around the JSON object.
@@ -199,13 +276,12 @@ struct GuidedSuggestionCard: View {
         HStack(spacing: 10) {
             Image(systemName: "lightbulb.fill")
                 .foregroundStyle(SemanticColor.aiCircleStroke)
-            Text(suggestion.text)
+            Text(suggestion.text.mathToUnicode())
                 .font(.subheadline)
                 .multilineTextAlignment(isRTL ? .trailing : .leading)
             Spacer(minLength: 6)
             Button(action: onDismiss) {
-                Image(systemName: "xmark")
-                    .font(.caption.weight(.semibold))
+                Lucide("x", size: 13)
                     .foregroundStyle(.secondary)
             }
             .accessibilityLabel(Text("ai.dismiss"))
@@ -241,7 +317,7 @@ struct GuidedLogView: View {
                         guidedMode.accept(item)
                     } label: {
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(item.text)
+                            Text(item.text.mathToUnicode())
                                 .font(.subheadline)
                                 .multilineTextAlignment(item.text.isMostlyRTL ? .trailing : .leading)
                                 .frame(maxWidth: .infinity, alignment: item.text.isMostlyRTL ? .trailing : .leading)

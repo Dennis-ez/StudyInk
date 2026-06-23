@@ -10,6 +10,7 @@ struct AskLassoOverlay: View {
     var onRegionSelected: (CGRect) -> Void   // SCREEN-space rect (page resolved by the caller)
 
     @State private var points: [CGPoint] = []
+    @Environment(\.aiAccent) private var aiAccent
 
     var body: some View {
         if isActive {
@@ -22,7 +23,7 @@ struct AskLassoOverlay: View {
                     for point in points.dropFirst() { path.addLine(to: point) }
                 }
                 .stroke(
-                    SemanticColor.accentBlue,
+                    aiAccent,
                     style: StrokeStyle(lineWidth: 2.5, lineCap: .round, dash: [7, 5])
                 )
 
@@ -31,7 +32,8 @@ struct AskLassoOverlay: View {
                         .font(.footnote)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
-                        .background(.regularMaterial, in: Capsule())
+                        .background(SemanticColor.surface, in: Capsule())
+                        .overlay(Capsule().strokeBorder(SemanticColor.separator))
                         .padding(.top, 70)
                     Spacer()
                 }
@@ -82,6 +84,7 @@ struct CircleAskSheet: View {
     let region: CGRect
     var onAsk: (String) -> Void
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.aiAccent) private var aiAccent
     @State private var question = ""
     @FocusState private var focused: Bool
 
@@ -107,8 +110,8 @@ struct CircleAskSheet: View {
                 // The prompt field, styled as a prominent rounded capsule with
                 // a sparkles cue and inline send.
                 HStack(alignment: .bottom, spacing: 10) {
-                    Image(systemName: "sparkles")
-                        .foregroundStyle(SemanticColor.accentBlue)
+                    Lucide("sparkles", size: 18)
+                        .foregroundStyle(aiAccent)
                         .padding(.bottom, 7)
                     TextField("ai.askPlaceholder", text: $question, axis: .vertical)
                         .textFieldStyle(.plain)
@@ -120,7 +123,7 @@ struct CircleAskSheet: View {
                     } label: {
                         Image(systemName: "arrow.up.circle.fill")
                             .font(.title2)
-                            .foregroundStyle(question.trimmingCharacters(in: .whitespaces).isEmpty ? Color.secondary : SemanticColor.accentBlue)
+                            .foregroundStyle(question.trimmingCharacters(in: .whitespaces).isEmpty ? Color.secondary : aiAccent)
                     }
                     .disabled(question.trimmingCharacters(in: .whitespaces).isEmpty)
                     .accessibilityLabel(Text("ai.ask"))
@@ -139,7 +142,7 @@ struct CircleAskSheet: View {
                             HStack(spacing: 7) {
                                 Image(systemName: suggestion.icon)
                                     .font(.caption)
-                                    .foregroundStyle(SemanticColor.accentBlue)
+                                    .foregroundStyle(aiAccent)
                                 Text(suggestion.key)
                                     .font(.caption.weight(.medium))
                                     .lineLimit(1)

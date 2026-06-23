@@ -1,138 +1,209 @@
 import SwiftUI
-import WebKit
+import SwiftMath
 
-/// Renders mixed text + LaTeX via KaTeX in a WKWebView. CSS variables switch with
-/// the app appearance (dark canvas text vs. light), injected at load and on change.
-struct KaTeXView: UIViewRepresentable {
-    let content: String
-    var isRTL = false
-    @Binding var contentHeight: CGFloat
-    @Environment(\.colorScheme) private var colorScheme
+// Math/markdown rendering for AI responses. Heavy math (fractions, integrals,
+// sums, roots, matrices, display math) is typeset in true 2D by SwiftMath's
+// MTMathUILabel — a native UIView, no WebView, no WebContent process churn.
+// Light inline math (x², a_i, \alpha) folds to unicode and stays in the prose
+// flow; **bold**/bullets render through AttributedString markdown.
 
-    func makeUIView(context: Context) -> WKWebView {
-        let config = WKWebViewConfiguration()
-        config.userContentController.add(context.coordinator, name: "height")
-        let webView = WKWebView(frame: .zero, configuration: config)
-        webView.isOpaque = false
-        webView.backgroundColor = .clear
-        webView.scrollView.isScrollEnabled = false
-        webView.navigationDelegate = context.coordinator
-        context.coordinator.markLoaded(content: content, dark: colorScheme == .dark)
-        load(into: webView)
-        return webView
-    }
-
-    func updateUIView(_ webView: WKWebView, context: Context) {
-        // Record what we're loading *before* kicking it off — recording only on
-        // didFinish meant every re-render mid-load restarted the load forever.
-        if context.coordinator.lastContent != content || context.coordinator.lastDark != (colorScheme == .dark) {
-            context.coordinator.markLoaded(content: content, dark: colorScheme == .dark)
-            load(into: webView)
-        }
-    }
-
-    private func load(into webView: WKWebView) {
-        let dark = colorScheme == .dark
-        let textColor = dark ? "#FFFFFF" : "#000000"
-        // Models (Gemini especially) often emit markdown-escaped delimiters like
-        // \$x\$ — KaTeX's auto-render doesn't treat those as math, so normalize
-        // them back to plain $ before shipping the text to the web view.
-        let normalized = content
-            .replacingOccurrences(of: "\\$", with: "$")
+extension String {
+    /// LaTeX → readable unicode for plain-text rendering. Handles delimited math
+    /// ($…$, $$…$$, \(…\), \[…\]) AND the bare \cdot / \int / x^{2} the model often
+    /// emits undelimited, via InkWriter's LaTeX parser (symbols, \frac, scripts).
+    /// Used for the prose blocks and the simpler standalone Text renderers
+    /// (guided mode); the rich bubble promotes heavy math to typeset blocks.
+    func mathToUnicode() -> String {
+        var s = replacingOccurrences(of: "\\$", with: "$")
             .replacingOccurrences(of: "￥", with: "$")
-        let escaped = normalized
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "`", with: "\\`")
-            .replacingOccurrences(of: "$", with: "\\$")
-
-        let html = """
-        <!DOCTYPE html><html dir="\(isRTL ? "rtl" : "ltr")"><head>
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-        <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
-        <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-        <style>
-          :root { color-scheme: \(dark ? "dark" : "light"); }
-          body {
-            margin: 0; padding: 2px;
-            font: -apple-system-body; font-size: 15px;
-            color: \(textColor); background: transparent;
-            direction: \(isRTL ? "rtl" : "ltr");
-            overflow-wrap: break-word;
-          }
-          .katex { font-size: 1.05em; }
-        </style></head><body><div id="c"></div>
-        <script>
-          const raw = `\(escaped)`;
-          // Minimal markdown: HTML-escape first, then bold / bullets / breaks.
-          // Math delimiters pass through untouched for KaTeX's auto-render.
-          let html = raw
-            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-            .replace(/\\*\\*([^*\\n]+)\\*\\*/g, '<b>$1</b>')
-            .replace(/(^|\\n)[ \\t]*[*•-][ \\t]+/g, '$1&bull; ')
-            .replace(/\\n/g, '<br>');
-          document.getElementById('c').innerHTML = html;
-          window.addEventListener('load', () => {
-            renderMathInElement(document.getElementById('c'), {
-              delimiters: [
-                {left: '$$', right: '$$', display: true},
-                {left: '\\\\[', right: '\\\\]', display: true},
-                {left: '$', right: '$', display: false},
-                {left: '\\\\(', right: '\\\\)', display: false}
-              ],
-              throwOnError: false
-            });
-            window.webkit.messageHandlers.height.postMessage(document.body.scrollHeight);
-          });
-        </script></body></html>
-        """
-        webView.loadHTMLString(html, baseURL: nil)
-    }
-
-    func makeCoordinator() -> Coordinator { Coordinator(self) }
-
-    final class Coordinator: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
-        let parent: KaTeXView
-        private(set) var lastContent: String = ""
-        private(set) var lastDark = false
-
-        init(_ parent: KaTeXView) { self.parent = parent }
-
-        func markLoaded(content: String, dark: Bool) {
-            lastContent = content
-            lastDark = dark
+        guard s.contains("$") || s.contains("\\") else { return s }
+        for delimiter in ["$$", "$", "\\(", "\\)", "\\[", "\\]"] {
+            s = s.replacingOccurrences(of: delimiter, with: " ")
         }
-
-        func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
-            if message.name == "height", let height = message.body as? CGFloat {
-                DispatchQueue.main.async {
-                    let clamped = max(height, 20)
-                    // Ignore sub-point jitter so height updates can't ping-pong layout.
-                    if abs(self.parent.contentHeight - clamped) > 1 {
-                        self.parent.contentHeight = clamped
-                    }
-                }
-            }
-        }
+        return InkWriter.plainText(from: s)
     }
 }
 
-/// Drop-in rich text view: plain SwiftUI Text normally, KaTeX WebView when the
-/// content carries LaTeX. Handles RTL alignment for Hebrew responses.
+// MARK: - Message segmentation
+
+/// One piece of an AI message: prose (possibly with light inline math already
+/// folded to unicode) or a heavy LaTeX expression to typeset in 2D.
+enum MathSegment {
+    case text(String)
+    case math(latex: String, display: Bool)
+}
+
+struct IndexedMathSegment: Identifiable {
+    let id: Int
+    let segment: MathSegment
+}
+
+enum MathSegmenter {
+    // Ordered alternation: display $$…$$ (g1) · display \[…\] (g2) ·
+    // inline $…$ (g3) · inline \(…\) (g4). dotall so display math may wrap lines.
+    private static let pattern =
+        "\\$\\$([\\s\\S]+?)\\$\\$" +
+        "|\\\\\\[([\\s\\S]+?)\\\\\\]" +
+        "|\\$([^$]+?)\\$" +
+        "|\\\\\\(([\\s\\S]+?)\\\\\\)"
+
+    private static let regex = try? NSRegularExpression(pattern: pattern)
+
+    /// Heavy constructs read far better typeset in 2D than folded to a line.
+    private static func isComplex(_ latex: String) -> Bool {
+        let heavy = ["\\frac", "\\dfrac", "\\tfrac", "\\int", "\\iint", "\\oint",
+                     "\\sum", "\\prod", "\\lim", "\\sqrt", "\\binom", "\\begin",
+                     "\\matrix", "\\cases", "\\over", "\\partial", "\\\\"]
+        if heavy.contains(where: latex.contains) { return true }
+        // Multi-symbol scripts (x^{n+1}, a_{ij}) stack better than inline.
+        return latex.contains("^{") || latex.contains("_{")
+    }
+
+    /// A heavy expression is only promoted to a typeset block if SwiftMath can
+    /// actually parse it — otherwise it falls back to the unicode prose path.
+    private static func parses(_ latex: String) -> Bool {
+        var error: NSError?
+        let list = MTMathListBuilder.build(fromString: latex, error: &error)
+        return error == nil && list != nil
+    }
+
+    static func segments(from raw: String) -> [IndexedMathSegment] {
+        let s = raw.replacingOccurrences(of: "\\$", with: "$")
+            .replacingOccurrences(of: "￥", with: "$")
+        guard let regex else { return [IndexedMathSegment(id: 0, segment: .text(s))] }
+
+        let ns = s as NSString
+        var out: [MathSegment] = []
+        var pending = ""   // prose + folded light inline math, flushed before a block
+        var last = 0
+
+        func flushText() {
+            if !pending.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                out.append(.text(pending))
+            }
+            pending = ""
+        }
+
+        for m in regex.matches(in: s, range: NSRange(location: 0, length: ns.length)) {
+            if m.range.location > last {
+                pending += ns.substring(with: NSRange(location: last, length: m.range.location - last))
+            }
+            last = m.range.location + m.range.length
+
+            let display = m.range(at: 1).location != NSNotFound || m.range(at: 2).location != NSNotFound
+            var latex = ""
+            for g in 1...4 where m.range(at: g).location != NSNotFound {
+                latex = ns.substring(with: m.range(at: g)); break
+            }
+
+            if (display || isComplex(latex)), parses(latex) {
+                flushText()
+                out.append(.math(latex: latex, display: display))
+            } else {
+                // Light inline math stays in the sentence, folded to unicode.
+                pending += InkWriter.plainText(from: latex)
+            }
+        }
+        if last < ns.length { pending += ns.substring(from: last) }
+        flushText()
+
+        if out.isEmpty { out = [.text(s)] }
+        return out.enumerated().map { IndexedMathSegment(id: $0.offset, segment: $0.element) }
+    }
+}
+
+// MARK: - Typeset math block (SwiftMath)
+
+/// Renders one LaTeX expression as native 2D math. Wrapped in a horizontal
+/// scroller by the caller so a wide equation never clips.
+struct MathBlockView: UIViewRepresentable {
+    let latex: String
+    let display: Bool
+    let color: UIColor
+    let fontSize: CGFloat
+
+    func makeUIView(context: Context) -> MTMathUILabel {
+        let label = MTMathUILabel()
+        label.backgroundColor = .clear
+        label.displayErrorInline = false
+        label.contentInsets = UIEdgeInsets(top: 1, left: 0, bottom: 1, right: 0)
+        configure(label)
+        return label
+    }
+
+    func updateUIView(_ label: MTMathUILabel, context: Context) {
+        configure(label)
+    }
+
+    private func configure(_ label: MTMathUILabel) {
+        label.latex = latex
+        label.labelMode = display ? .display : .text
+        label.textColor = color
+        label.fontSize = fontSize
+        label.textAlignment = .left
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView label: MTMathUILabel, context: Context) -> CGSize? {
+        configure(label)
+        let size = label.intrinsicContentSize
+        return CGSize(width: max(size.width, 1), height: max(size.height, fontSize))
+    }
+}
+
+// MARK: - Rich AI text
+
+/// Rich text for AI answers: prose (markdown + folded inline math) interleaved
+/// with typeset 2D math blocks. RTL-aware for Hebrew. No WebView.
 struct AIRichText: View {
     let content: String
-    @State private var height: CGFloat = 24
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var rtl: Bool { content.isMostlyRTL }
+    private var mathColor: UIColor {
+        UIColor.label.resolvedColor(with: UITraitCollection(userInterfaceStyle: colorScheme == .dark ? .dark : .light))
+    }
 
     var body: some View {
-        if content.containsLaTeX {
-            KaTeXView(content: content, isRTL: content.isMostlyRTL, contentHeight: $height)
-                .frame(height: height)
-        } else {
-            Text(content)
-                .font(.subheadline)
-                .multilineTextAlignment(content.isMostlyRTL ? .trailing : .leading)
-                .frame(maxWidth: .infinity, alignment: content.isMostlyRTL ? .trailing : .leading)
-                .environment(\.layoutDirection, content.isMostlyRTL ? .rightToLeft : .leftToRight)
+        VStack(alignment: rtl ? .trailing : .leading, spacing: 6) {
+            ForEach(MathSegmenter.segments(from: content)) { item in
+                switch item.segment {
+                case .text(let text):
+                    ProseBlock(text: text, rtl: rtl)
+                case .math(let latex, let display):
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        MathBlockView(latex: latex, display: display,
+                                      color: mathColor, fontSize: display ? 19 : 17)
+                    }
+                    .frame(maxWidth: .infinity, alignment: rtl ? .trailing : .leading)
+                }
+            }
         }
+        .frame(maxWidth: .infinity, alignment: rtl ? .trailing : .leading)
+    }
+}
+
+/// A prose paragraph: bare/inline math folded to unicode, line-start bullets
+/// normalised, inline **bold** etc. via AttributedString markdown.
+private struct ProseBlock: View {
+    let text: String
+    let rtl: Bool
+
+    private var attributed: AttributedString {
+        var t = text.mathToUnicode()
+        t = t.replacingOccurrences(
+            of: "(?m)^[ \\t]*[*•\\-][ \\t]+", with: "•  ", options: .regularExpression)
+        t = t.trimmingCharacters(in: .whitespacesAndNewlines)
+        var options = AttributedString.MarkdownParsingOptions()
+        options.interpretedSyntax = .inlineOnlyPreservingWhitespace
+        return (try? AttributedString(markdown: t, options: options)) ?? AttributedString(t)
+    }
+
+    var body: some View {
+        Text(attributed)
+            .font(.subheadline)
+            .multilineTextAlignment(rtl ? .trailing : .leading)
+            .frame(maxWidth: .infinity, alignment: rtl ? .trailing : .leading)
+            .environment(\.layoutDirection, rtl ? .rightToLeft : .leftToRight)
+            .textSelection(.enabled)
     }
 }

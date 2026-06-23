@@ -14,10 +14,11 @@ struct NotesPane: View {
     enum Tab: String, CaseIterable {
         case subject, all, recents, favorites
 
-        var symbolName: String {
+        /// Bundled Lucide glyph name (matches the library sidebar's icon set).
+        var lucideName: String {
             switch self {
             case .subject: return "folder"
-            case .all: return "tray.full"
+            case .all: return "layers"
             case .recents: return "clock"
             case .favorites: return "star"
             }
@@ -34,6 +35,10 @@ struct NotesPane: View {
     }
 
     @State private var tab: Tab = .subject
+
+    // Warm, full-height spine — the same surface as the library sidebar so the
+    // drawer reads as a slim version of it.
+    @Environment(\.themeSidebar) private var themeSidebar
 
     @FetchRequest(
         entity: PersistenceController.model.entitiesByName["Note"]!,
@@ -61,37 +66,67 @@ struct NotesPane: View {
     }
 
     var body: some View {
+        // Opaque warm spine behind the rows — the slim sibling of the library
+        // sidebar (§1.4 / §3.1). No glass of its own: the editor wraps notes +
+        // subjects panes in ONE container so the drawer reads as a single panel.
+        ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 2) {
-                // Sidebar-style section rows, like the main screen's sidebar.
+                // Smart/section rows, styled like the main screen's sidebar.
                 if let subject = shownSubject {
                     sectionRow(.subject, name: subject.name ?? "",
                                dot: Color(hex: subject.colorHex ?? "#0A84FF") ?? .accentColor)
                 }
-                sectionRow(.all, tint: .accentColor)
-                sectionRow(.recents, tint: .accentColor)
-                sectionRow(.favorites, tint: .yellow)
+                sectionRow(.all)
+                sectionRow(.recents)
+                sectionRow(.favorites)
 
-                Text(headerTitle)
-                    .font(.caption.smallCaps())
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .padding(.horizontal, 14)
-                    .padding(.top, 14)
-                    .padding(.bottom, 6)
+                // Serif micro-header for the visible list, with a count.
+                HStack(spacing: DS.Space.sm) {
+                    Text(headerTitle)
+                        .font(.fraunces(13, weight: .semibold, relativeTo: .footnote))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    Text(verbatim: "\(visibleNotes.count)")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(SemanticColor.textMutedColor)
+                }
+                .padding(.horizontal, DS.Space.md)
+                .padding(.top, DS.Space.lg)
+                .padding(.bottom, DS.Space.xs)
 
                 ForEach(visibleNotes, id: \.objectID) { note in
-                    noteCell(note)
+                    noteRow(note)
+                        .id(note.objectID)
                 }
             }
-            .padding(.horizontal, 10)
-            .padding(.top, 12)
-            .padding(.bottom, 12)
+            .padding(.horizontal, DS.Space.sm)
+            // Clear the status bar + breathing room (the drawer ignores the
+            // top safe area, so the content sat too high).
+            .padding(.top, 56)
+            .padding(.bottom, DS.Space.md)
         }
-        // No glass of its own — the editor wraps notes + subjects panes in
-        // ONE container so the drawer reads as a single sidebar.
-        .frame(width: 216)
+        // Scroll the pane to the note currently open in the editor.
+        .onAppear {
+            DispatchQueue.main.async {
+                withAnimation(.none) { proxy.scrollTo(currentNote.objectID, anchor: .center) }
+            }
+        }
+        .onChange(of: currentNote.objectID) { _, id in
+            withAnimation { proxy.scrollTo(id, anchor: .center) }
+        }
+        }
+        .frame(width: 236)
         .frame(maxHeight: .infinity)
+        .background(themeSidebar.ignoresSafeArea())
+        // 1px warm hairline along the trailing edge, like the library spine.
+        .overlay(alignment: .trailing) {
+            Rectangle()
+                .fill(SemanticColor.separator)
+                .frame(width: DS.Stroke.hairline)
+                .ignoresSafeArea()
+        }
     }
 
     private var headerTitle: LocalizedStringKey {
@@ -113,39 +148,49 @@ struct NotesPane: View {
         }
     }
 
-    private func sectionRow(_ t: Tab, name: String? = nil, dot: Color? = nil, tint: Color = .accentColor) -> some View {
+    private func sectionRow(_ t: Tab, name: String? = nil, dot: Color? = nil) -> some View {
         let selected = tab == t
         return Button {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { tab = t }
         } label: {
-            HStack(spacing: 10) {
+            HStack(spacing: 11) {
+                // A subject row gets its color dot; smart rows get a Lucide glyph
+                // tinting to accent when selected — exactly like the library.
                 if let dot {
-                    Circle().fill(dot).frame(width: 13, height: 13).frame(width: 24, height: 24)
-                } else {
-                    Image(systemName: t.symbolName)
-                        .font(.subheadline)
-                        .foregroundStyle(tint)
+                    Circle()
+                        .fill(dot)
+                        .frame(width: 11, height: 11)
                         .frame(width: 24, height: 24)
+                } else {
+                    Lucide(t.lucideName, size: 19)
+                        .foregroundStyle(selected ? Color.accentColor : .secondary)
+                        .frame(width: 24)
                 }
                 Group {
                     if let name { Text(verbatim: name) } else { Text(t.labelKey) }
                 }
-                .font(.subheadline.weight(.medium))
+                .font(.callout.weight(selected ? .semibold : .regular))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 Spacer(minLength: 0)
                 Text(verbatim: "\(count(for: t))")
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(.quaternary.opacity(0.5), in: Capsule())
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(SemanticColor.textMutedColor)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
+            .frame(height: 40)
+            .padding(.horizontal, DS.Space.sm)
+            // Selected = subtle fill + a 3pt accent bar inset at the leading edge.
             .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(selected ? Color.accentColor.opacity(0.14) : .clear)
+                RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
+                    .fill(selected ? SemanticColor.fillSelected : .clear)
+                    .overlay(alignment: .leading) {
+                        if selected {
+                            RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                                .fill(Color.accentColor)
+                                .frame(width: DS.Stroke.thick)
+                                .padding(.vertical, 6)
+                        }
+                    }
             )
             .contentShape(Rectangle())
         }
@@ -153,30 +198,47 @@ struct NotesPane: View {
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
-    private func noteCell(_ note: Note) -> some View {
+    private func noteRow(_ note: Note) -> some View {
+        // Slim list row — title + date + subject dot — echoing the library's
+        // note footer (NoteGridView). The currently-open note gets the sidebar's
+        // selected treatment: a soft fill plus a 3pt accent leading bar.
         let isCurrent = note.objectID == currentNote.objectID
         return Button {
             onSelect(note)
         } label: {
-            VStack(alignment: .leading, spacing: 5) {
-                if let first = note.sortedPages.first {
-                    PageThumbnailView(page: first)
-                        .frame(height: 110)
-                        .frame(maxWidth: .infinity)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6)
-                                .strokeBorder(isCurrent ? Color.accentColor : Color.primary.opacity(0.1), lineWidth: isCurrent ? 2 : 1)
-                        )
+            HStack(spacing: DS.Space.sm) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(verbatim: note.title ?? "")
+                        .font(.callout.weight(isCurrent ? .semibold : .regular))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text(note.modifiedAt ?? .now, style: .date)
+                        .font(.caption2)
+                        .foregroundStyle(SemanticColor.textMutedColor)
+                        .lineLimit(1)
                 }
-                Text(verbatim: note.title ?? "")
-                    .font(.caption.weight(isCurrent ? .semibold : .regular))
-                    .foregroundStyle(isCurrent ? Color.accentColor : .primary)
-                    .lineLimit(1)
-                Text(note.modifiedAt ?? .now, style: .date)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                Spacer(minLength: DS.Space.xs)
+                if let subject = note.subject {
+                    Circle()
+                        .fill(Color(hex: subject.colorHex ?? "#0A84FF") ?? .accentColor)
+                        .frame(width: 9, height: 9)
+                }
             }
+            .padding(.horizontal, DS.Space.sm)
+            .padding(.vertical, 7)
+            .background(
+                RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
+                    .fill(isCurrent ? SemanticColor.fillSelected : .clear)
+                    .overlay(alignment: .leading) {
+                        if isCurrent {
+                            RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                                .fill(Color.accentColor)
+                                .frame(width: DS.Stroke.thick)
+                                .padding(.vertical, 6)
+                        }
+                    }
+            )
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text(verbatim: note.title ?? ""))

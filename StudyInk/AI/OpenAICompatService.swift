@@ -34,6 +34,7 @@ enum OpenAICompatService {
     private struct RequestBody: Encodable {
         let model: String
         let max_tokens: Int
+        let temperature: Double
         let messages: [Message]
     }
 
@@ -45,7 +46,7 @@ enum OpenAICompatService {
         let choices: [Choice]
     }
 
-    static func send(system: String, messages: [AIMessage], maxTokens: Int = 1500) async throws -> String {
+    static func send(system: String, messages: [AIMessage], maxTokens: Int = 1500, temperature: Double = 0.3) async throws -> String {
         guard let apiKey = AIConfig.apiKey(for: .custom) else { throw AIServiceError.missingKey(.custom) }
 
         var request = URLRequest(url: AIConfig.customEndpoint(path: "chat/completions"))
@@ -59,7 +60,7 @@ enum OpenAICompatService {
             Message(role: message.role.rawValue, content: message.content.map(ContentBlock.from))
         }
         request.httpBody = try JSONEncoder().encode(
-            RequestBody(model: AIConfig.model(for: .custom), max_tokens: maxTokens, messages: wireMessages)
+            RequestBody(model: AIConfig.model(for: .custom), max_tokens: maxTokens, temperature: temperature, messages: wireMessages)
         )
 
         let data = try await perform(request)

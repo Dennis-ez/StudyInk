@@ -169,7 +169,7 @@ struct QuizView: View {
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)
-                    .tint(.red)
+                    .tint(SemanticColor.destructive)
 
                     Button {
                         quiz.grade(correct: true)
@@ -178,7 +178,7 @@ struct QuizView: View {
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
-                    .tint(.green)
+                    .tint(SemanticColor.success)
                 }
             } else {
                 Button {

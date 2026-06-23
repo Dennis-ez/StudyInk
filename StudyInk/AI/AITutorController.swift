@@ -9,7 +9,16 @@ final class AITutorController: ObservableObject {
     @Published var bubbles: [AIBubbleModel] = []
     @Published var history: [AIBubbleModel] = []
     @Published var loadingBubbleIDs: Set<UUID> = []
+    /// In-flight non-bubble AI work (Answer in Ink, Draw on Canvas, …) so the
+    /// editor can show one "thinking" indicator for any AI activity.
+    @Published private(set) var pendingTasks = 0
     @Published var errorMessage: String?
+
+    /// True whenever the tutor is working on anything (a bubble or an ink task).
+    var isThinking: Bool { pendingTasks > 0 || !loadingBubbleIDs.isEmpty }
+
+    func beginTask() { pendingTasks += 1 }
+    func endTask() { pendingTasks = max(0, pendingTasks - 1) }
     @Published var panelOpen = false
     @Published var panelBubbleID: UUID?
 
@@ -70,7 +79,8 @@ final class AITutorController: ObservableObject {
                 currentPageIndex: currentPageIndex,
                 darkMode: isDarkMode,
                 focusRegion: focusRegion,
-                focusImage: focusImage
+                focusImage: focusImage,
+                focusAnchor: anchor   // where the student is working → orient the answer
             )
             var blocks = context.blocks
             blocks.append(.text("Student question: \(question)"))
@@ -78,7 +88,8 @@ final class AITutorController: ObservableObject {
 
             let raw = try await AIService.send(
                 system: SystemPrompt.tutor(subjectContext: note.subjectContext ?? "calculus1"),
-                messages: [.user(blocks)]
+                messages: [.user(blocks)],
+                maxTokens: 2400   // room for a full worked explanation (was truncating mid-$…$)
             )
             let parsed = AIResponseParser.parse(raw)
             let lines = await NoteContextBuilder.ocrLines(for: page)
@@ -101,7 +112,8 @@ final class AITutorController: ObservableObject {
 
         do {
             let context = await NoteContextBuilder.build(
-                note: note, currentPageIndex: currentPageIndex, darkMode: isDarkMode
+                note: note, currentPageIndex: currentPageIndex, darkMode: isDarkMode,
+                focusAnchor: CGPoint(x: bubbles[index].anchorX, y: bubbles[index].anchorY)
             )
             var messages: [AIMessage] = [.user(context.blocks)]
             // Replay the thread so the model has the bubble's conversation.
@@ -116,7 +128,8 @@ final class AITutorController: ObservableObject {
 
             let raw = try await AIService.send(
                 system: SystemPrompt.tutor(subjectContext: note.subjectContext ?? "calculus1"),
-                messages: messages
+                messages: messages,
+                maxTokens: 2400
             )
             let parsed = AIResponseParser.parse(raw)
             let lines = await NoteContextBuilder.ocrLines(for: page)

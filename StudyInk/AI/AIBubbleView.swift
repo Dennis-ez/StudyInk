@@ -12,22 +12,42 @@ struct AIBubbleView: View {
 
     @State private var followUpText = ""
     @State private var dragStart: CGPoint?
-    @State private var resizeStartWidth: Double?
-    @State private var resizeStartHeight: Double?
     @State private var appeared = false
+    @State private var shimmerPhase = false
     @FocusState private var followUpFocused: Bool
+    @Environment(\.aiAccent) private var aiAccent
+    @Environment(\.colorScheme) private var colorScheme
+
+    /// Frosted card fill over the live canvas: lighter in light mode, denser in
+    /// dark so text stays legible against the page.
+    private var cardMaterial: Material {
+        colorScheme == .dark ? .regularMaterial : .ultraThinMaterial
+    }
+
+    /// The tone strip colour, per the v2 redline:
+    /// teaching → primary accent · correct → success · correction → aiCircle ·
+    /// error → destructive. Mapped from the model's existing tone cases.
+    private var toneColor: Color {
+        switch bubble.tone {
+        case .explanation:   return Color.accentColor
+        case .encouragement: return SemanticColor.success
+        case .correction:    return AppTheme.current.aiCircleColor
+        case .error:         return SemanticColor.destructive
+        }
+    }
 
     private var isRTL: Bool { bubble.latestAnswer.isMostlyRTL }
 
-    /// Bubbles scale with the page (clamped for legibility) so they read as
-    /// page content, not floating chrome.
-    private var pageZoom: CGFloat {
-        min(max(transform.zoomScale, 0.6), 1.8)
-    }
+    /// The bubble is a FIXED-size chat card (like the check-my-work note) — it
+    /// stays anchored to its page point as you scroll/zoom, but never scales with
+    /// the zoom, so its text stays a consistent, readable size.
+    private var pageZoom: CGFloat { 1 }
 
     var body: some View {
         let screenPos = transform.toScreen(CGPoint(x: bubble.x, y: bubble.y))
-        let cardWidth = max(bubble.width, 260)
+        // v2 redline: keep the bubble compact (~304). Honour a user resize but
+        // never balloon into a panel.
+        let cardWidth = min(max(bubble.width, 304), 320)
 
         Group {
             if bubble.isCollapsed {
@@ -40,7 +60,7 @@ struct AIBubbleView: View {
         .position(x: screenPos.x + cardWidth * pageZoom / 2, y: screenPos.y + 90 * pageZoom)
         .opacity(appeared ? 1 : 0)
         .onAppear {
-            withAnimation(.spring(response: 0.2, dampingFraction: 0.7)) { appeared = true }
+            withAnimation(DS.Motion.bubbleAppear) { appeared = true }
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text("ai.bubble.accessibility"))
@@ -58,12 +78,16 @@ struct AIBubbleView: View {
                 Text(String(bubble.latestAnswer.prefix(20)))
                     .font(.caption2)
                     .lineLimit(1)
+                Lucide("chevron-down", size: 14)
+                    .foregroundStyle(SemanticColor.textMutedColor)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .studyGlassCapsule()
         }
         .buttonStyle(.plain)
+        // Draggable while pinned/collapsed — re-anchors like the full card.
+        .simultaneousGesture(dragGesture)
     }
 
     // MARK: - Card
@@ -77,115 +101,89 @@ struct AIBubbleView: View {
             askMoreField
             footer
         }
-        // Paper styling: the bubble reads as part of the page — same paper
-        // color, template-line border, tone shown as a thin top rule.
-        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color("canvasBackground")))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color("templateLine"), lineWidth: 1)
+        // v2 redline: frosted `surface` material over the live canvas, r18 with a
+        // 1px `separator` hairline and an e3 lift. A 4px full-height tone strip
+        // sits flush against the leading edge; the body padding (inline-start 18)
+        // clears it.
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(SemanticColor.surface.opacity(colorScheme == .dark ? 0.94 : 0.88))
+                .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(cardMaterial))
         )
-        .overlay(alignment: .top) {
-            Capsule()
-                .fill(Color(bubble.tone.colorToken))
-                .frame(height: 3)
-                .padding(.horizontal, 14)
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(toneColor)
+                .frame(width: 4)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(alignment: .bottomTrailing) { resizeHandle }
-        .shadow(color: .black.opacity(0.10), radius: 4, y: 2)
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(SemanticColor.separator, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .elevation(.e3)
         .environment(\.layoutDirection, isRTL ? .rightToLeft : .leftToRight)
-    }
-
-    /// Bottom-corner grip resizes width and thread height together.
-    private var resizeHandle: some View {
-        Image(systemName: "arrow.up.left.and.arrow.down.right")
-            .font(.system(size: 9, weight: .bold))
-            .foregroundStyle(.tertiary)
-            .padding(6)
-            .contentShape(Rectangle().scale(2))
-            .gesture(
-                DragGesture(minimumDistance: 2)
-                    .onChanged { value in
-                        if resizeStartWidth == nil {
-                            resizeStartWidth = bubble.width
-                            resizeStartHeight = bubble.maxHeight ?? 320
-                        }
-                        guard let start = resizeStartWidth else { return }
-                        tutor.resize(
-                            bubbleID: bubble.id,
-                            width: start + value.translation.width / pageZoom,
-                            maxHeight: (resizeStartHeight ?? 320) + value.translation.height / pageZoom
-                        )
-                    }
-                    .onEnded { _ in
-                        resizeStartWidth = nil
-                        resizeStartHeight = nil
-                    }
-            )
-            .accessibilityLabel(Text("media.resize"))
     }
 
     private var header: some View {
         HStack(spacing: 8) {
-            Image(systemName: "line.3.horizontal")
-                .font(.caption2)
-                .foregroundStyle(.quaternary)
             avatar
             Text("ai.tutorName")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-            Circle()
-                .fill(Color(bubble.tone.colorToken))
-                .frame(width: 7, height: 7)
-            Spacer()
-            Button {
+                .font(.fraunces(13, weight: .medium, relativeTo: .footnote))
+                .foregroundStyle(SemanticColor.textMutedColor)
+            Spacer(minLength: 4)
+            // Pin keeps an SF Symbol — there is no bundled Lucide pin glyph.
+            headerButton(bubble.isPinned ? "pin.fill" : "pin", label: "ai.pin") {
                 Haptics.tap()
                 tutor.pin(bubbleID: bubble.id)
-            } label: {
-                Image(systemName: bubble.isPinned ? "pin.fill" : "pin")
-                    .font(.caption)
-                    .frame(width: 28, height: 28)
-                    .contentShape(Rectangle())
             }
-            .accessibilityLabel(Text("ai.pin"))
             Button {
                 Haptics.tap()
                 withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
                     tutor.dismiss(bubbleID: bubble.id)
                 }
             } label: {
-                Image(systemName: "xmark")
-                    .font(.caption.weight(.semibold))
-                    .frame(width: 28, height: 28)
+                Lucide("x", size: 16)
+                    .foregroundStyle(SemanticColor.textMutedColor)
+                    .frame(width: 24, height: 24)
                     .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
             .accessibilityLabel(Text("ai.dismiss"))
         }
-        .padding(.horizontal, 14)
-        .padding(.top, 10)
-        .padding(.bottom, 4)
+        .padding(.leading, 18)
+        .padding(.trailing, 15)
+        .padding(.top, 13)
+        .padding(.bottom, 5)
         .contentShape(Rectangle())
         // The header is the drag handle — the scrollable thread below would
         // otherwise swallow drags.
         .highPriorityGesture(dragGesture)
     }
 
+    /// Soft circular header control — pin.
+    private func headerButton(_ symbol: String, label: LocalizedStringKey, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 22, height: 22)
+                .background(Circle().fill(.ultraThinMaterial))
+                .overlay(Circle().strokeBorder(.black.opacity(0.06)))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(label))
+    }
+
+    /// 22pt AI-accent circle with a radiant white sparkles glyph.
     private var avatar: some View {
         Circle()
-            .fill(
-                LinearGradient(
-                    colors: [SemanticColor.accentBlue, Color(red: 0.62, green: 0.36, blue: 0.96)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-            .frame(width: 26, height: 26)
+            .fill(aiAccent)
+            .frame(width: 22, height: 22)
             .overlay(
-                Image(systemName: "sparkles")
-                    .font(.system(size: 12, weight: .semibold))
+                Lucide("sparkles", size: 12)
                     .foregroundStyle(.white)
             )
-            .shadow(color: SemanticColor.accentBlue.opacity(0.4), radius: 4, y: 1)
     }
 
     /// Natural height for short threads; scrolls once content exceeds the
@@ -195,37 +193,76 @@ struct AIBubbleView: View {
             threadContent
             ScrollView { threadContent }
         }
-        .frame(maxHeight: bubble.maxHeight ?? 320)
+        .frame(maxHeight: 360)   // fixed, scrollable thread (no resize handle)
     }
 
     private var threadContent: some View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(bubble.thread) { exchange in
                 if let question = exchange.question, !question.isEmpty {
+                    // Q → right-aligned accent chip.
                     Text(question)
-                        .font(.caption)
+                        .font(.footnote)
                         .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(SemanticColor.userMessageBubble.opacity(0.16), in: RoundedRectangle(cornerRadius: 8))
+                        .padding(.vertical, 5)
+                        .background(aiAccent.opacity(0.13), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                        .frame(maxWidth: .infinity, alignment: .trailing)
                 }
                 if !exchange.answer.isEmpty {
+                    // A → left-aligned body (AIRichText owns its own typography
+                    // and inline KaTeX; kept as-is per spec).
                     AIRichText(content: exchange.answer)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 6)
+        .padding(.leading, 18)
+        .padding(.trailing, 15)
+        .padding(.vertical, 4)
     }
 
+    /// Thinking state (spec): two shimmer placeholder bars + three tone-colored
+    /// pulsing dots, in place of the answer body.
     private var loadingRow: some View {
-        HStack(spacing: 8) {
-            ProgressView().controlSize(.small)
-            Text("ai.thinking")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 8) {
+            shimmerBar(widthFraction: 1.0)
+            HStack(spacing: 8) {
+                shimmerBar(widthFraction: 0.55)
+                thinkingDots
+            }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 6)
+        .padding(.leading, 18)
+        .padding(.trailing, 15)
+        .padding(.vertical, 8)
+        .accessibilityLabel(Text("ai.thinking"))
+    }
+
+    private func shimmerBar(widthFraction: CGFloat) -> some View {
+        RoundedRectangle(cornerRadius: 5, style: .continuous)
+            .fill(aiAccent.opacity(0.12))
+            .frame(height: 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .scaleEffect(x: widthFraction, anchor: .leading)
+            .opacity(shimmerPhase ? 0.5 : 1)
+            .animation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true), value: shimmerPhase)
+    }
+
+    private var thinkingDots: some View {
+        HStack(spacing: 4) {
+            ForEach(0..<3, id: \.self) { i in
+                Circle()
+                    .fill(toneColor)
+                    .frame(width: 5, height: 5)
+                    .opacity(shimmerPhase ? 0.3 : 1)
+                    .animation(
+                        .easeInOut(duration: 0.6)
+                            .repeatForever(autoreverses: true)
+                            .delay(Double(i) * 0.18),
+                        value: shimmerPhase
+                    )
+            }
+        }
+        .onAppear { shimmerPhase = true }
     }
 
     /// Quick-reply chips Claude suggested; horizontal scroll when they overflow.
@@ -237,72 +274,92 @@ struct AIBubbleView: View {
                         Haptics.tap()
                         sendFollowUp(chip)
                     } label: {
+                        // chip/13/medium · surface fill · 1px separator · pill ·
+                        // AI-accent text.
                         Text(chip)
-                            .font(.caption)
+                            .font(.system(size: 13, weight: .medium))
                             .lineLimit(1)
-                            .foregroundStyle(SemanticColor.accentBlue)
-                            .padding(.horizontal, 11)
-                            .padding(.vertical, 6)
-                            .background(.thinMaterial, in: Capsule())
-                            .overlay(Capsule().strokeBorder(SemanticColor.accentBlue.opacity(0.35), lineWidth: 0.8))
+                            .foregroundStyle(aiAccent)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 4)
+                            .background(SemanticColor.surface, in: Capsule())
+                            .overlay(Capsule().strokeBorder(SemanticColor.separator, lineWidth: 1))
                     }
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 14)
+            .padding(.leading, 18)
+            .padding(.trailing, 15)
         }
         .padding(.vertical, 4)
     }
 
     private var askMoreField: some View {
-        HStack(spacing: 8) {
+        let canSend = !followUpText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isLoading
+        return HStack(spacing: 8) {
             TextField("ai.askMore", text: $followUpText, axis: .vertical)
-                .font(.caption)
+                .font(.system(size: 13))
                 .textFieldStyle(.plain)
                 .focused($followUpFocused)
                 .lineLimit(1...3)
                 .onSubmit { sendFollowUp(followUpText) }
+            // Trailing circular send in the AI accent.
             Button {
                 sendFollowUp(followUpText)
             } label: {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.title3)
-                    .foregroundStyle(followUpText.isEmpty ? Color.secondary : SemanticColor.accentBlue)
+                Lucide("arrow-up", size: 14)
+                    .foregroundStyle(.white)
+                    .frame(width: 23, height: 23)
+                    .background(Circle().fill(canSend ? aiAccent : Color.secondary.opacity(0.4)))
             }
-            .disabled(followUpText.isEmpty || isLoading)
+            .disabled(!canSend)
             .accessibilityLabel(Text("ai.send"))
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
-        .background(.thinMaterial, in: Capsule())
-        .overlay(Capsule().strokeBorder(SemanticColor.aiBubbleBorder.opacity(0.6), lineWidth: 0.5))
-        .padding(.horizontal, 12)
+        .padding(.leading, 12)
+        .padding(.trailing, 5)
+        .padding(.vertical, 4)
+        .background(SemanticColor.surface, in: Capsule())
+        .overlay(Capsule().strokeBorder(SemanticColor.separator, lineWidth: 1))
+        .padding(.leading, 18)
+        .padding(.trailing, 15)
         .padding(.vertical, 6)
     }
 
     private var footer: some View {
         HStack {
+            // Insert into note → AI accent.
             Button {
                 if let box = tutor.insertAnswerIntoNote(bubbleID: bubble.id) {
                     onInsertTextBox(box)
                 }
             } label: {
-                Label("ai.insertIntoNote", systemImage: "text.badge.plus")
-                    .font(.caption2)
+                Text("ai.insertIntoNote")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(aiAccent)
             }
+            .buttonStyle(.plain)
             .disabled(bubble.latestAnswer.isEmpty)
             Spacer()
+            // Open in panel → primary accent.
             Button {
                 tutor.panelBubbleID = bubble.id
                 tutor.panelOpen = true
             } label: {
-                Label("ai.openInPanel", systemImage: "sidebar.trailing")
-                    .font(.caption2)
+                HStack(spacing: 3) {
+                    Text("ai.openInPanel")
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 10, weight: .semibold))
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.accentColor)
             }
+            .buttonStyle(.plain)
             .accessibilityLabel(Text("ai.openInPanel"))
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.leading, 18)
+        .padding(.trailing, 15)
+        .padding(.top, 6)
+        .padding(.bottom, 13)
     }
 
     // MARK: - Actions
@@ -316,7 +373,11 @@ struct AIBubbleView: View {
     }
 
     private var dragGesture: some Gesture {
-        DragGesture(minimumDistance: 6)
+        // Measure translation in GLOBAL space, not the bubble's own (moving) frame.
+        // A local DragGesture reads translation relative to the view it's on — but
+        // that view moves as we drag it, so the reference frame shifts under the
+        // finger and the bubble vibrates. Global space is stable.
+        DragGesture(minimumDistance: 6, coordinateSpace: .global)
             .onChanged { value in
                 if dragStart == nil { dragStart = CGPoint(x: bubble.x, y: bubble.y) }
                 guard let start = dragStart else { return }

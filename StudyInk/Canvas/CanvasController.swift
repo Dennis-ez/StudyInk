@@ -45,10 +45,30 @@ final class CanvasController: NSObject, ObservableObject {
     @Published var pageScreenOrigins: [CGPoint] = []
     /// The page under the viewport center; the live canvas follows it.
     @Published var currentPageIndex = 0
+    /// The page under the viewport center, updated LIVE while scrolling (the page
+    /// navigator reads this). The live canvas still mounts only at settle
+    /// (currentPageIndex), so this never triggers a re-mount.
+    @Published var visiblePageIndex = 0
+    /// Live lasso loop points (screen coords) captured by the engine's PENCIL
+    /// lasso gesture; the lasso overlay reads these to draw the marching-ants loop.
+    /// Driven by the engine so a finger can still scroll while the lasso is armed.
+    @Published var lassoPoints: [CGPoint] = []
+    /// Fired when a lasso loop finishes (CANVAS-coord points) — the editor turns
+    /// it into a selection.
+    var onLassoComplete: (([CGPoint]) -> Void)?
+    /// Fired when a new lasso loop STARTS — the editor commits/clears any prior
+    /// selection so a second lasso doesn't sit on top of the first.
+    var onLassoBegan: (() -> Void)?
     /// Page to scroll to on first layout (restores where the user left off).
     var initialPageIndex = 0
     /// Lasso capture shape: false = freeform loop, true = drag a rectangle.
     @Published var lassoRectangular = false
+
+    /// False until the active page's content (snapshot + ink) is up. The editor
+    /// shows a loader over the canvas until then — which also masks the brief
+    /// stale-ink flash when rebuilding for a different note.
+    @Published var isContentReady = false
+    func markReady() { if !isContentReady { isContentReady = true } }
 
     var isDarkMode = false {
         didSet {
@@ -107,9 +127,19 @@ final class CanvasController: NSObject, ObservableObject {
     var onShapeCreated: ((Int, Int, ShapeRecognizer.Shape, PKInk, Double, String) -> Void)?
     /// Finger-tap on a committed shape — the only path that opens node editing.
     var onShapeTapped: ((Int, Int, ShapeRecognizer.Shape, PKInk, Double, String) -> Void)?
+    /// Finger-tap on the canvas that didn't hit a shape — page coordinates. Used
+    /// to select/deselect media (which is otherwise non-interactive so pan/zoom
+    /// pass through).
+    var onCanvasFingerTap: ((CGPoint) -> Void)?
     /// The engine pulls page content through these (set by the editor).
     var drawingProvider: ((Int) -> PKDrawing)?
     var snapshotProvider: ((Int) -> PageRenderer.Snapshot?)?
+
+    /// Lasso clipboard: strokes copied/cut from a selection (live-canvas, i.e.
+    /// inkScale, coordinates), for in-app paste. Cross-app copy goes to the
+    /// system pasteboard as an image.
+    var strokeClipboard: [PKStroke]?
+    var hasPasteContent: Bool { (strokeClipboard?.isEmpty == false) }
 
     override init() {
         if let data = UserDefaults.standard.data(forKey: "tools.perKind"),
@@ -126,6 +156,15 @@ final class CanvasController: NSObject, ObservableObject {
     func transform(forPage pageIndex: Int) -> CanvasTransform {
         let origin = pageScreenOrigins.indices.contains(pageIndex) ? pageScreenOrigins[pageIndex] : .zero
         return CanvasTransform(zoomScale: zoomScale, contentOffset: CGPoint(x: -origin.x, y: -origin.y))
+    }
+
+    /// Maps the live canvas's inkScale× coordinates into editor screen space —
+    /// for overlays that read raw canvas geometry (lasso selection/transform)
+    /// rather than page-space data. Same screen result, but the values it
+    /// round-trips are canvas coordinates, so they line up with canvas.drawing.
+    func canvasTransform(forPage pageIndex: Int) -> CanvasTransform {
+        let t = transform(forPage: pageIndex)
+        return CanvasTransform(zoomScale: t.zoomScale / inkScale, contentOffset: t.contentOffset)
     }
 
     func scrollToPage(_ index: Int, animated: Bool = true) {
@@ -180,6 +219,11 @@ final class CanvasController: NSObject, ObservableObject {
         }
     }
 
+    /// The live canvas's supersample factor for native-sharp zoom, set by the
+    /// engine. Tool widths are multiplied by it so a 4pt pen still looks 4pt in
+    /// the canvas's inkScale× coordinate space.
+    var inkScale: CGFloat = 1
+
     func attach(_ canvas: PKCanvasView) {
         canvasView = canvas
         applyTool()
@@ -188,11 +232,20 @@ final class CanvasController: NSObject, ObservableObject {
     }
 
     func applyTool() {
-        canvasView?.tool = toolState.pkTool(darkMode: isDarkMode)
+        canvasView?.tool = toolState.pkTool(darkMode: isDarkMode, widthScale: inkScale)
         // Hand tool: nothing draws, one finger pans regardless of pencil-only.
         let isHand = toolState.kind == .hand
-        canvasView?.drawingGestureRecognizer.isEnabled = !isHand
+        // Lasso: our TransformLassoOverlay owns selection, so the canvas's drawing
+        // gesture must be OFF — otherwise the built-in PKLassoTool starts a SECOND
+        // (native) selection, which spawns the system edit menu and a stroke-group
+        // index crash. Disabling the gesture (not just hit-testing) is the reliable
+        // way to keep the native lasso from ever engaging.
+        let drawingDisabled = isHand || toolState.kind == .lasso
+        canvasView?.drawingGestureRecognizer.isEnabled = !drawingDisabled
         engine?.panGestureRecognizer.minimumNumberOfTouches = (isHand || pencilOnly) ? 1 : 2
+        // The lasso loop is captured by a dedicated PENCIL gesture on the canvas
+        // (so a finger still scrolls); enable it only for the lasso tool.
+        engine?.setLassoGestureActive(toolState.kind == .lasso)
     }
 
     func undo() { canvasView?.undoManager?.undo(); refreshUndoState() }

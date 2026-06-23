@@ -6,15 +6,20 @@ import CoreData
 struct NoteGridView: View {
     let section: LibrarySection
     let searchText: String
-    let gridLayout: Bool
-    let sort: LibrarySort
+    @Binding var gridLayout: Bool
+    @Binding var sortRaw: String
     /// Multi-select mode — owned by the library (entered via its ⋯ menu).
     @Binding var selecting: Bool
     var onNoteOpened: () -> Void = {}
     /// Fired when the editor pops — the library restores its sidebar.
     var onNoteClosed: () -> Void = {}
+    var onNewNote: () -> Void = {}
+    var onImportPDF: () -> Void = {}
+
+    private var sort: LibrarySort { LibrarySort(rawValue: sortRaw) ?? .dateModified }
 
     @Environment(\.managedObjectContext) private var context
+    @Environment(\.themePaper) private var themePaper
     @FetchRequest(
         entity: PersistenceController.model.entitiesByName["Note"]!,
         sortDescriptors: [NSSortDescriptor(key: "modifiedAt", ascending: false)]
@@ -22,6 +27,7 @@ struct NoteGridView: View {
 
     @State private var renamingNote: Note?
     @State private var renameText = ""
+    @FocusState private var noteRenameFocused: Bool
     @State private var autoOpenNote: Note?
     @State private var selectedIDs: Set<NSManagedObjectID> = []
     /// Pending delete awaiting the user's confirmation.
@@ -42,11 +48,14 @@ struct NoteGridView: View {
     }
     @Namespace private var zoomNamespace
 
-    private var inTrash: Bool { section == .deleted }
+    /// Trash mode (restore/permanent-delete actions, no import/new): the old
+    /// sidebar section OR the new "Recently Deleted" chip under All Notes.
+    private var inTrash: Bool { section == .deleted || (section == .all && allTab == .deleted) }
 
-    /// Sub-filter tabs shown only in All Notes.
+    /// Sub-filter tabs shown only in All Notes. Recently Deleted lives here now
+    /// instead of in the sidebar.
     enum AllTab: String, CaseIterable {
-        case all, recents, favorites, unfiled
+        case all, recents, favorites, unfiled, deleted
 
         var labelKey: LocalizedStringKey {
             switch self {
@@ -54,6 +63,7 @@ struct NoteGridView: View {
             case .recents: return "library.recents"
             case .favorites: return "library.favorites"
             case .unfiled: return "library.unfiled"
+            case .deleted: return "library.recentlyDeleted"
             }
         }
     }
@@ -64,17 +74,21 @@ struct NoteGridView: View {
         var result: [Note]
         switch section {
         case .all:
-            result = allNotes.filter { $0.deletedAt == nil }
-            switch allTab {
-            case .all:
-                break
-            case .recents:
-                let cutoff = Date().addingTimeInterval(-7 * 24 * 3600)
-                result = result.filter { ($0.modifiedAt ?? .distantPast) > cutoff }
-            case .favorites:
-                result = result.filter(\.isFavorite)
-            case .unfiled:
-                result = result.filter { $0.subject == nil }
+            if allTab == .deleted {
+                result = allNotes.filter { $0.deletedAt != nil }
+            } else {
+                result = allNotes.filter { $0.deletedAt == nil }
+                switch allTab {
+                case .all, .deleted:
+                    break
+                case .recents:
+                    let cutoff = Date().addingTimeInterval(-7 * 24 * 3600)
+                    result = result.filter { ($0.modifiedAt ?? .distantPast) > cutoff }
+                case .favorites:
+                    result = result.filter(\.isFavorite)
+                case .unfiled:
+                    result = result.filter { $0.subject == nil }
+                }
             }
         case .recents:
             let cutoff = Date().addingTimeInterval(-7 * 24 * 3600)
@@ -107,21 +121,130 @@ struct NoteGridView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Sub-filters live under the All Notes title — only there.
-            if section == .all {
-                Picker("library.allNotes", selection: $allTab) {
-                    ForEach(AllTab.allCases, id: \.self) { tab in
-                        Text(tab.labelKey).tag(tab)
-                    }
+            // Big serif title (Paper & Ink), in the content not the nav bar.
+            HStack(spacing: 10) {
+                Group {
+                    if case .subject(let s) = section { Text(verbatim: s.name ?? "") }
+                    else { Text(section.titleKey) }
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .padding(.horizontal, 20)
-                .padding(.top, 6)
-                .padding(.bottom, 2)
+                .font(.fraunces(30, weight: .semibold, relativeTo: .largeTitle))
+                .foregroundStyle(.primary)
+                Spacer(minLength: 12)
+                if !selecting { headerActions }
+            }
+            .padding(.horizontal, 28)
+            .padding(.top, 24)
+            // Sub-filters live under the All Notes title — only there. Pill
+            // tabs (Paper & Ink), not the iOS segmented control.
+            if section == .all {
+                HStack(spacing: 6) {
+                    ForEach(AllTab.allCases, id: \.self) { tab in
+                        let on = allTab == tab
+                        Button {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { allTab = tab }
+                        } label: {
+                            Text(tab.labelKey)
+                                .font(.callout.weight(on ? .semibold : .regular))
+                                .foregroundStyle(on ? Color(.systemBackground) : .secondary)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 7)
+                                .background(
+                                    Capsule().fill(on ? AnyShapeStyle(Color.primary) : AnyShapeStyle(SemanticColor.sidebarBackground))
+                                )
+                                .overlay(
+                                    Capsule().strokeBorder(on ? Color.clear : SemanticColor.separator)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 28)
+                .padding(.top, 10)
+                .padding(.bottom, 4)
             }
             content
         }
+        .background(themePaper.ignoresSafeArea())
+    }
+
+    /// Top-right action cluster on the title row (design layout): Ask AI pill ·
+    /// Import · More · New note.
+    @ViewBuilder
+    private var headerActions: some View {
+        if !inTrash {
+            gridCircleButton("file-up", label: "media.importPDF", action: onImportPDF)
+        }
+
+        Menu {
+            Button { gridLayout.toggle() } label: {
+                Label(
+                    gridLayout ? "library.layout.list" : "library.layout.grid",
+                    systemImage: gridLayout ? "list.bullet" : "square.grid.2x2"
+                )
+            }
+            Button { selecting = true } label: { Label("library.selectNotes", systemImage: "checkmark.circle") }
+            Menu {
+                Picker("library.sort", selection: $sortRaw) {
+                    ForEach(LibrarySort.allCases, id: \.rawValue) { s in
+                        Text(s.labelKey).tag(s.rawValue)
+                    }
+                }
+            } label: {
+                Label("library.sort", systemImage: "arrow.up.arrow.down")
+                Text(sort.labelKey)
+            }
+        } label: {
+            gridCircleLabel("more-horizontal")
+        }
+        .accessibilityLabel(Text("library.sort"))
+
+        if !inTrash {
+            Button(action: onNewNote) {
+                Lucide("square-pen", size: 16)
+                    .foregroundStyle(.white)
+                    .frame(width: 38, height: 38)
+                    .background(Color.accentColor, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text("library.newNote"))
+        }
+    }
+
+    private func gridCircleLabel(_ lucide: String) -> some View {
+        Lucide(lucide, size: 16)
+            .foregroundStyle(SemanticColor.textPrimary)
+            .frame(width: 38, height: 38)
+            .background(themePaper, in: Circle())
+            .overlay(Circle().strokeBorder(SemanticColor.separator))
+    }
+
+    private func gridCircleButton(_ lucide: String, label: LocalizedStringKey, action: @escaping () -> Void) -> some View {
+        Button(action: action) { gridCircleLabel(lucide) }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text(label))
+    }
+
+    /// Spec empty state: a sparkles glyph in a soft circle + serif heading.
+    private var emptyState: some View {
+        VStack(spacing: DS.Space.md) {
+            Circle()
+                .fill(SemanticColor.surface2)
+                .frame(width: 56, height: 56)
+                .overlay(Lucide("sparkles", size: 24).foregroundStyle(Color.accentColor))
+            Text("library.empty")
+                .font(.fraunces(20, weight: .semibold, relativeTo: .title3))
+                .foregroundStyle(.primary)
+            Text("library.empty.subtitle")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            Button(action: createNote) {
+                Label("library.newNote", systemImage: "square.and.pencil")
+            }
+            .buttonStyle(.borderedProminent)
+            .padding(.top, DS.Space.xs)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     @ViewBuilder
@@ -137,27 +260,17 @@ struct NoteGridView: View {
                         Text("library.trashEmpty.subtitle")
                     }
                 } else {
-                    ContentUnavailableView {
-                        Label("library.empty", systemImage: "pencil.and.outline")
-                    } description: {
-                        Text("library.empty.subtitle")
-                    } actions: {
-                        Button {
-                            createNote()
-                        } label: {
-                            Label("library.newNote", systemImage: "square.and.pencil")
-                        }
-                        .buttonStyle(.borderedProminent)
-                    }
+                    emptyState
                 }
             } else if gridLayout {
                 ScrollView {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 22)], spacing: 26) {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 240), spacing: DS.Space.xl)], spacing: DS.Space.xl) {
                         ForEach(notes, id: \.objectID) { note in
                             noteCell(note)
                         }
                     }
-                    .padding(20)
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 22)
                 }
             } else {
                 List {
@@ -190,28 +303,15 @@ struct NoteGridView: View {
                 .scrollContentBackground(.hidden)
             }
         }
-        // Freshly created notes open straight into the editor.
-        .navigationDestination(isPresented: Binding(
+        // Full-screen (window-level) presentation: the editor covers everything,
+        // so it's never constrained to the content-column width (which caused the
+        // desk to flash on the right during entry). No sidebar collapse needed.
+        .fullScreenCover(isPresented: Binding(
             get: { autoOpenNote != nil },
             set: { if !$0 { autoOpenNote = nil } }
         )) {
             if let note = autoOpenNote {
                 NoteEditorContainer(note: note)
-                    .onAppear(perform: onNoteOpened)
-                    .onDisappear(perform: onNoteClosed)
-            }
-        }
-        .alert(Text("library.renameNote"), isPresented: renamingBinding) {
-            TextField("library.noteTitle", text: $renameText)
-            Button("action.cancel", role: .cancel) { renamingNote = nil }
-            Button("action.done") {
-                let trimmed = renameText.trimmingCharacters(in: .whitespaces)
-                if !trimmed.isEmpty {
-                    renamingNote?.title = trimmed
-                    renamingNote?.touch()
-                    PersistenceController.shared.save()
-                }
-                renamingNote = nil
             }
         }
         .onChange(of: section) {
@@ -316,8 +416,41 @@ struct NoteGridView: View {
             .padding(6)
     }
 
-    private var renamingBinding: Binding<Bool> {
-        Binding(get: { renamingNote != nil }, set: { if !$0 { renamingNote = nil } })
+    private func openNote(_ note: Note) {
+        // The editor is presented full-screen (window level), so it's independent
+        // of the content-column width — no sidebar-collapse dance, no desk strip.
+        autoOpenNote = note
+    }
+
+    private func commitNoteRename() {
+        guard let note = renamingNote else { return }
+        let trimmed = renameText.trimmingCharacters(in: .whitespaces)
+        if !trimmed.isEmpty {
+            note.title = trimmed
+            note.touch()
+            PersistenceController.shared.save()
+        }
+        renamingNote = nil
+    }
+
+    /// The note's title — an inline editable field while renaming (no popup),
+    /// otherwise plain text.
+    @ViewBuilder
+    private func noteTitleView(_ note: Note, font: Font) -> some View {
+        if renamingNote == note {
+            TextField("library.noteTitle", text: $renameText)
+                .font(font)
+                .focused($noteRenameFocused)
+                .submitLabel(.done)
+                .onSubmit(commitNoteRename)
+                .onAppear { DispatchQueue.main.async { noteRenameFocused = true } }
+                .onChange(of: noteRenameFocused) { _, focused in if !focused { commitNoteRename() } }
+        } else {
+            Text(verbatim: note.title ?? "")
+                .font(font)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+        }
     }
 
     private func createNote() {
@@ -343,14 +476,13 @@ struct NoteGridView: View {
             .buttonStyle(.plain)
             .accessibilityLabel(Text(verbatim: note.title ?? ""))
         } else {
-            NavigationLink {
-                NoteEditorContainer(note: note)
-                    .onAppear(perform: onNoteOpened)
-                    .onDisappear(perform: onNoteClosed)
-                    .noteZoomDestination(id: note.objectID, in: zoomNamespace)
+            // Binding-driven push (not NavigationLink) so the library sidebar can
+            // re-expand at the START of the back gesture — see the shared
+            // navigationDestination below — instead of after the pop completes.
+            Button {
+                if renamingNote != note { openNote(note) }
             } label: {
                 gridCellLabel(note)
-                    .noteZoomSource(id: note.objectID, in: zoomNamespace)
             }
             .buttonStyle(.plain)
             .draggable((note.id ?? UUID()).uuidString)
@@ -360,57 +492,48 @@ struct NoteGridView: View {
     }
 
     private func gridCellLabel(_ note: Note) -> some View {
-        ZStack(alignment: .bottom) {
+        VStack(spacing: 0) {
+            // Cover: the top of the first page, like a real notebook cover. A
+            // portrait 4:5 window (taller than wide) so the card reads as a
+            // notebook, not a landscape tile.
             Group {
                 if let first = note.sortedPages.first {
-                    // Portrait, like a page — not a square box.
                     PageThumbnailView(page: first)
+                        .aspectRatio(3 / 4, contentMode: .fill)
                 } else {
                     Rectangle().fill(SemanticColor.sidebarBackground)
                 }
             }
-            .aspectRatio(3 / 4, contentMode: .fit)
+            .frame(maxWidth: .infinity)
+            .aspectRatio(9 / 10, contentMode: .fit)
+            .clipped()
+            .overlay(alignment: .bottom) {
+                Rectangle().fill(SemanticColor.cardEdge).frame(height: 1)
+            }
 
-            // Name + details overlaid on the page, over a legibility scrim.
-            VStack(alignment: .leading, spacing: 2) {
-                Text(verbatim: note.title ?? "")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                HStack(spacing: 6) {
-                    Text(note.modifiedAt ?? .now, style: .date)
-                    Text(verbatim: "·")
-                    Text("library.pageCount \(note.sortedPages.count)")
+            // Footer on the card's paper: name + subject dot, then date.
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 7) {
+                    noteTitleView(note, font: .callout.weight(.semibold))
+                    Spacer(minLength: 2)
+                    if let subject = note.subject {
+                        Circle()
+                            .fill(Color(hex: subject.colorHex ?? "#0A84FF") ?? .accentColor)
+                            .frame(width: 9, height: 9)
+                    }
                 }
-                .font(.caption2)
-                .foregroundStyle(.white.opacity(0.85))
+                Text(note.modifiedAt ?? .now, style: .date)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 10)
-            .padding(.top, 24)
-            .padding(.bottom, 9)
-            .background(LinearGradient(colors: [.clear, .black.opacity(0.62)], startPoint: .top, endPoint: .bottom))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
         }
-        .aspectRatio(3 / 4, contentMode: .fit)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        // Subject tag pinned to the bottom-trailing corner of the thumbnail.
-        .overlay(alignment: .bottomTrailing) {
-            if let subject = note.subject {
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(Color(hex: subject.colorHex ?? "#0A84FF") ?? .accentColor)
-                        .frame(width: 6, height: 6)
-                    Text(verbatim: subject.name ?? "")
-                        .font(.caption2.weight(.semibold))
-                        .lineLimit(1)
-                }
-                .padding(.horizontal, 7)
-                .padding(.vertical, 3)
-                .background(.ultraThinMaterial, in: Capsule())
-                .padding(8)
-            }
-        }
-        .shadow(color: .black.opacity(0.14), radius: 6, y: 3)
+        .background(SemanticColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(SemanticColor.cardEdge))
+        .elevation(.e1)
     }
 
     @ViewBuilder
@@ -426,15 +549,12 @@ struct NoteGridView: View {
             }
             .buttonStyle(.plain)
         } else {
-            NavigationLink {
-                NoteEditorContainer(note: note)
-                    .onAppear(perform: onNoteOpened)
-                    .onDisappear(perform: onNoteClosed)
-                    .noteZoomDestination(id: note.objectID, in: zoomNamespace)
+            Button {
+                if renamingNote != note { openNote(note) }
             } label: {
                 listRowLabel(note)
-                    .noteZoomSource(id: note.objectID, in: zoomNamespace)
             }
+            .buttonStyle(.plain)
             // No .draggable here: its horizontal drag swallowed the swipe
             // gesture, so swipe-to-delete never triggered in list mode.
             // (Drag-to-file-into-a-subject still works from the grid.)
@@ -449,8 +569,7 @@ struct NoteGridView: View {
                     .frame(width: 56, height: 74)
             }
             VStack(alignment: .leading, spacing: 3) {
-                Text(verbatim: note.title ?? "")
-                    .font(.body.weight(.medium))
+                noteTitleView(note, font: .body.weight(.medium))
                 HStack(spacing: 8) {
                     Text("library.created \(dateString(note.createdAt))")
                     Text("library.modified \(dateString(note.modifiedAt))")

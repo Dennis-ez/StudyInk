@@ -21,14 +21,18 @@ enum ToolbarDock: String, CaseIterable, Codable {
 struct FloatingToolbar: View {
     @ObservedObject var controller: CanvasController
     @AppStorage("toolbar.dock") private var dockRaw = ToolbarDock.top.rawValue
-    // v2: hand tool added, eraser collapsed to one slot (object/pixel toggles inline).
-    @AppStorage("toolbar.tools.v2") private var enabledToolsRaw = ToolKind.allCases
-        .filter { $0 != .eraserObject }
+    // v3: default to the five core tools that fit the bar without paging —
+    // pen, highlighter, pencil, eraser, lasso. The rest (fountain, monoline,
+    // hand) stay available via Customize.
+    @AppStorage("toolbar.tools.v3") private var enabledToolsRaw =
+        [ToolKind.ballpoint, .highlighter, .pencil, .eraserPixel, .lasso]
         .map(\.rawValue).joined(separator: ",")
-    /// Removable non-tool buttons: ruler, text box, and the editor's extras.
-    @AppStorage("toolbar.accessories") private var enabledAccessoriesRaw = "ruler,textbox,ask-ai,ai-history"
+    /// Removable non-tool buttons. v2: dropped the ruler + text-box defaults so
+    /// eraser/lasso own those slots; both are re-addable via Customize.
+    @AppStorage("toolbar.accessories.v2") private var enabledAccessoriesRaw = "ask-ai,ai-history"
     /// The quick strip (colors/sizes) — opened by re-tapping the active tool.
     @State private var showInlineOptions = false
+    @Environment(\.aiAccent) private var aiAccent
     /// Measured bar size — the dock placeholders mirror it.
     @State private var barSize: CGSize = .zero
     @State private var showCustomize = false
@@ -46,6 +50,8 @@ struct FloatingToolbar: View {
     /// Extra trailing inset so a trailing-docked bar isn't covered by the
     /// page-navigator strip.
     var trailingInset: CGFloat = 0
+    /// Extra top inset so a top-docked bar clears the floating editor header.
+    var topInset: CGFloat = 0
 
     private var dock: ToolbarDock { ToolbarDock(rawValue: dockRaw) ?? .top }
     private var enabledTools: [ToolKind] {
@@ -54,17 +60,18 @@ struct FloatingToolbar: View {
     private var enabledAccessories: Set<String> {
         Set(enabledAccessoriesRaw.split(separator: ",").map(String.init))
     }
-    /// Bar slots: both eraser variants collapse into one button that shows the
-    /// variant currently in use (inline strip switches between them).
+    /// Bar slots: the scrolling section is the inking tools only — eraser and
+    /// lasso are PINNED separately (always visible), so they never page off.
     private var displayTools: [ToolKind] {
-        var eraserShown = false
-        return enabledTools.compactMap { kind in
-            guard kind == .eraserPixel || kind == .eraserObject else { return kind }
-            if eraserShown { return nil }
-            eraserShown = true
-            let active = controller.toolState.kind
-            return (active == .eraserPixel || active == .eraserObject) ? active : controller.lastEraserKind
-        }
+        enabledTools.filter { $0 != .eraserPixel && $0 != .eraserObject && $0 != .lasso }
+    }
+
+    /// Always-visible tools, pinned next to the AI pen: the current eraser
+    /// variant + the lasso.
+    private var pinnedTools: [ToolKind] {
+        let active = controller.toolState.kind
+        let eraser = (active == .eraserPixel || active == .eraserObject) ? active : controller.lastEraserKind
+        return [eraser, .lasso]
     }
 
     var body: some View {
@@ -83,6 +90,8 @@ struct FloatingToolbar: View {
                     .padding(12)
                     // Step aside when the pages strip shares the trailing edge.
                     .padding(.trailing, dock == .trailing ? trailingInset : 0)
+                    // Clear the floating editor header when docked at the top.
+                    .padding(.top, dock == .top ? topInset : 0)
                     .animation(.spring(response: 0.3, dampingFraction: 0.8), value: dockRaw)
                     .animation(.spring(response: 0.3, dampingFraction: 0.8), value: trailingInset)
             }
@@ -175,26 +184,49 @@ struct FloatingToolbar: View {
 
         layout {
             grip
+            // Undo / redo moved to the top-right header (always visible there).
             toolsSection
-            if !enabledAccessories.isEmpty {
-                Divider().frame(maxHeight: 22).frame(maxWidth: 22)
+            // Eraser + lasso are pinned here — always visible, never paged off.
+            // No divider — flows straight into the AI pen + accessories.
+            ForEach(pinnedTools) { kind in
+                toolButton(kind)
             }
             if enabledAccessories.contains("ruler") {
                 Button(action: { controller.isRulerActive.toggle() }) {
-                    Image(systemName: "ruler")
-                        .symbolVariant(controller.isRulerActive ? .fill : .none)
+                    Lucide("ruler", size: 18)
+                        .foregroundStyle(controller.isRulerActive ? Color.accentColor : Color.primary)
                 }
                 .accessibilityLabel(Text("tool.ruler"))
             }
             if enabledAccessories.contains("textbox") {
                 Button(action: onInsertTextBox) {
-                    Image(systemName: "textbox")
+                    Lucide("type", size: 18)
                 }
                 .accessibilityLabel(Text("tool.textbox"))
             }
             ForEach(extraItems.filter { enabledAccessories.contains($0.id) }) { item in
-                Button(action: item.action) { Image(systemName: item.symbolName) }
+                if item.id == "ask-ai" {
+                    // The AI pen: a teal pill (sparkles + label) — the study
+                    // partner, set apart from the ink tools.
+                    Button(action: item.action) {
+                        HStack(spacing: 5) {
+                            Image(systemName: item.symbolName)
+                            if dock.isHorizontal { Text("ai.pen") }
+                        }
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, dock.isHorizontal ? 11 : 7)
+                        .padding(.vertical, 6)
+                        .background(aiAccent, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
                     .accessibilityLabel(Text(item.labelKey))
+                } else {
+                    Button(action: item.action) {
+                        Image(systemName: item.symbolName).foregroundStyle(.primary)
+                    }
+                    .accessibilityLabel(Text(item.labelKey))
+                }
             }
             Menu {
                 Button { showCustomize = true } label: { Label("toolbar.customize", systemImage: "slider.horizontal.3") }
@@ -202,7 +234,7 @@ struct FloatingToolbar: View {
                 Toggle(isOn: $controller.autoShapes) { Label("tool.autoShapes", systemImage: "square.on.circle") }
                 Toggle(isOn: $controller.snapToGrid) { Label("tool.snapToGrid", systemImage: "grid") }
             } label: {
-                Image(systemName: "ellipsis.circle")
+                Lucide("more-horizontal", size: 18)
             }
         }
         .buttonStyle(ToolbarButtonStyle())
@@ -258,7 +290,10 @@ struct FloatingToolbar: View {
     }
 
     private var grip: some View {
-        Image(systemName: "line.3.horizontal")
+        // Vertical dots for a vertical bar; rotate to horizontal dots when the
+        // bar is docked horizontally.
+        Lucide("grip-vertical", size: 18)
+            .rotationEffect(.degrees(dock.isHorizontal ? 90 : 0))
             .foregroundStyle(.tertiary)
             // Full button-sized hit target — the bare glyph was ~16pt and
             // nearly impossible to grab.
@@ -274,7 +309,7 @@ struct FloatingToolbar: View {
                         withAnimation(.easeOut(duration: 0.15)) { gripDragLocation = nil }
                         // One animated transaction: the bar glides from its
                         // dragged position into the new dock.
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        withAnimation(DS.Motion.toolbarDock) {
                             dragOffset = .zero
                             dockRaw = nearestDock(for: value.location).rawValue
                         }
@@ -319,23 +354,20 @@ struct FloatingToolbar: View {
             }
         } label: {
             let ink = controller.inkColor(for: kind)
-            ZStack(alignment: .bottom) {
-                Image(systemName: kind.symbolName)
-                    // Ink tools wear their own color; others use the accent when active.
-                    .foregroundStyle(ink ?? (isActive ? Color.accentColor : Color.primary))
-                    .background(
-                        RoundedRectangle(cornerRadius: 7)
-                            .fill(isActive ? (ink ?? Color.accentColor).opacity(0.16) : .clear)
-                            .frame(width: 28, height: 28)
-                    )
-                // Current-color indicator dot, centered under the tool.
-                if let ink {
-                    Circle()
-                        .fill(ink)
-                        .frame(width: 6, height: 6)
-                        .overlay(Circle().strokeBorder(Color(.systemBackground), lineWidth: 1))
-                        .offset(y: 5)
+            ZStack {
+                // Selection = an accent squircle wash behind the icon (matches
+                // the press/hover squircle shape — not a circle).
+                if isActive {
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(Color.accentColor.opacity(0.16))
+                        .frame(width: 30, height: 30)
                 }
+                // The icon IS the colour indicator: a pen tool's glyph is tinted
+                // with its own ink colour (even when selected, so its colour is
+                // always visible). Tools with no ink (hand/eraser/lasso) go accent
+                // when active, neutral otherwise.
+                Lucide(kind.lucideName, size: 18)
+                    .foregroundStyle(ink ?? (isActive ? Color.accentColor : SemanticColor.textPrimary))
             }
         }
         .accessibilityLabel(Text(kind.labelKey))
@@ -356,7 +388,7 @@ private struct InkOptionsStrip: View {
         "#000000", "#FFFFFF", "#0A84FF", "#FF453A", "#30D158",
         "#FFD60A", "#FF9F0A", "#BF5AF2", "#5E5CE6", "#8E8E93",
     ]
-    private static let widths: [Double] = [2, 4, 7, 11, 16]
+    private static let widths: [Double] = [2, 3.5, 7, 11, 16]
 
     var body: some View {
         let layout = horizontal ? AnyLayout(HStackLayout(spacing: 10)) : AnyLayout(VStackLayout(spacing: 10))
@@ -512,14 +544,14 @@ private struct EraserOptionsStrip: View {
             modeButton(.eraserPixel)
             modeButton(.eraserObject)
 
-            if controller.toolState.kind == .eraserPixel {
-                Divider().frame(
-                    maxWidth: horizontal ? nil : 22,
-                    maxHeight: horizontal ? 22 : nil
-                )
-                ForEach(Self.widths, id: \.self) { width in
-                    sizeDot(width)
-                }
+            // Both erasers are resizable now (pixel = erase radius, object =
+            // hit radius for whole-stroke erase).
+            Divider().frame(
+                maxWidth: horizontal ? nil : 22,
+                maxHeight: horizontal ? 22 : nil
+            )
+            ForEach(Self.widths, id: \.self) { width in
+                sizeDot(width)
             }
         }
         .padding(.horizontal, horizontal ? 12 : 6)
@@ -581,7 +613,7 @@ private struct ToolbarButtonStyle: ButtonStyle {
         configuration.label
             .font(.system(size: 15, weight: .medium))
             .frame(width: 30, height: 30)
-            .background(configuration.isPressed ? Color.primary.opacity(0.08) : .clear, in: RoundedRectangle(cornerRadius: 7))
+            .background(configuration.isPressed ? Color.primary.opacity(0.08) : .clear, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
             .contentShape(Rectangle())
     }
 }

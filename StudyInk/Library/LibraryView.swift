@@ -34,6 +34,8 @@ enum LibrarySection: Hashable {
 /// sidebar, notes in a grid or list, full-text + handwriting-OCR search.
 struct LibraryView: View {
     @Environment(\.managedObjectContext) private var context
+    @Environment(\.themePaper) private var themePaper
+    @Environment(\.themeSidebar) private var themeSidebar
     // ALL subjects, not just roots: the fetch request is what makes SwiftUI
     // re-render — fetching only roots meant a nested folder's color change
     // never refreshed until its parent collapsed/expanded.
@@ -55,7 +57,8 @@ struct LibraryView: View {
     @State private var selection: LibrarySection = .all
     /// Subjects whose children are hidden in the sidebar.
     @State private var collapsedSubjects: Set<NSManagedObjectID> = []
-    @State private var columnVisibility = NavigationSplitViewVisibility.all
+    /// Collapses the sidebar column so the editor takes the whole screen.
+    @State private var sidebarCollapsed = false
     @State private var searchText = ""
     @AppStorage("library.layout.grid") private var gridLayout = true
     @AppStorage("library.sort") private var sortRaw = LibrarySort.dateModified.rawValue
@@ -71,48 +74,73 @@ struct LibraryView: View {
     @State private var selectingNotes = false
 
     var body: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
+        // A real grid shell (non-negotiable #1): the sidebar is a fixed,
+        // full-bleed column flush at the leading edge — NOT NavigationSplitView's
+        // iOS 26 Liquid-Glass floating column. It collapses to give the editor
+        // the whole screen.
+        HStack(spacing: 0) {
+            // Always in the hierarchy (just width-collapsed when a note is open)
+            // so it's present the instant you return — no re-insertion delay.
             sidebar
-        } detail: {
-            // Explicit stack: navigationDestination/push inside a split view's
-            // detail column needs one, or it targets a non-existent next column
-            // (console was full of "navigationDestination is misplaced").
+                .frame(width: sidebarCollapsed ? 0 : 264)
+                .clipped()
+            Rectangle()
+                .fill(SemanticColor.separator)
+                .frame(width: sidebarCollapsed ? 0 : 1)
+                .ignoresSafeArea()
+            // The content column owns navigation (grid → editor push).
             NavigationStack {
                 NoteGridView(
                     section: selection,
                     searchText: searchText,
-                    gridLayout: gridLayout,
-                    sort: LibrarySort(rawValue: sortRaw) ?? .dateModified,
+                    gridLayout: $gridLayout,
+                    sortRaw: $sortRaw,
                     selecting: $selectingNotes,
                     onNoteOpened: {
-                        // The canvas deserves the whole screen.
-                        withAnimation { columnVisibility = .detailOnly }
+                        // Collapse the spine INSTANTLY (no animation) so the content
+                        // column is already full width when the editor pushes in —
+                        // otherwise the desk flashes in a strip on the right.
+                        withAnimation(nil) { sidebarCollapsed = true }
                     },
                     onNoteClosed: {
-                        // Instant — animating left the sidebar missing for a
-                        // beat after returning from the editor.
-                        columnVisibility = .all
-                    }
+                        sidebarCollapsed = false
+                    },
+                    onNewNote: addNote,
+                    onImportPDF: { importingPDF = true }
                 )
-                .navigationTitle(detailTitle)
-                .toolbar { detailToolbar }
+                // The title AND the action cluster live in the content header
+                // now; the nav bar only appears to host the multi-select tools.
+                .navigationTitle("")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbarBackground(.hidden, for: .navigationBar)
+                .toolbar(selectingNotes ? .visible : .hidden, for: .navigationBar)
                 .fileImporter(isPresented: $importingPDF, allowedContentTypes: [.pdf]) { result in
                     if case .success(let url) = result { importPDFAsNote(from: url) }
                 }
-                // The toolbar's New Note goes straight into the editor.
-                .navigationDestination(isPresented: Binding(
+                // The toolbar's New Note opens the editor full-screen (window
+                // level) — same as tapping a note — so no sidebar collapse needed.
+                .fullScreenCover(isPresented: Binding(
                     get: { autoOpenNote != nil },
                     set: { if !$0 { autoOpenNote = nil } }
                 )) {
                     if let note = autoOpenNote {
                         NoteEditorContainer(note: note)
-                            .onAppear { withAnimation { columnVisibility = .detailOnly } }
-                            .onDisappear { columnVisibility = .all }
                     }
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .sheet(isPresented: $showSettings) { SettingsView() }
+        // The sidebar's own fill is clipped to the safe area by the width-collapse
+        // .clipped(), leaving the top/bottom safe-area gaps showing themePaper.
+        // Paint the sidebar colour full-height behind the leading column so the
+        // whole spine is one uniform colour.
+        .background(alignment: .leading) {
+            themeSidebar
+                .frame(width: sidebarCollapsed ? 0 : 264)
+                .ignoresSafeArea()
+        }
+        .background(themePaper.ignoresSafeArea())
+        .fullScreenCover(isPresented: $showSettings) { SettingsView() }
         .onAppear(perform: purgeExpiredNotes)
         .alert(Text("library.deleteSubject.confirm"), isPresented: Binding(
             get: { subjectPendingDelete != nil },
@@ -158,27 +186,57 @@ struct LibraryView: View {
     // MARK: - Sidebar
 
     private var sidebar: some View {
-        // Explicit selection buttons: List(selection:) silently stopped
-        // selecting once rows became custom HStacks.
-        List {
+        // Opaque warm spine behind the rows — covers the iOS 26 Liquid Glass
+        // sidebar material so it reads as a solid, full-height panel.
+        ZStack {
+            themeSidebar.ignoresSafeArea()
+            // Explicit selection buttons: List(selection:) silently stopped
+            // selecting once rows became custom HStacks.
+            List {
+
+            // Search — a rounded paper field with a ⌘K hint chip.
+            HStack(spacing: DS.Space.sm) {
+                Lucide("search", size: 16).foregroundStyle(.secondary)
+                TextField("library.searchPrompt", text: $searchText)
+                    .textFieldStyle(.plain)
+                    .font(.callout)
+                if searchText.isEmpty {
+                    Text(verbatim: "⌘K")
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 5).padding(.vertical, 2)
+                        .background(SemanticColor.separator.opacity(0.5), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                } else {
+                    Button { searchText = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                        .buttonStyle(.plain)
+                }
+            }
+            .frame(height: 38)
+            .padding(.horizontal, DS.Space.md)
+            .background(themePaper, in: RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous).strokeBorder(SemanticColor.separator))
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+
             Section {
-                // One tint across the smart sections — the sidebar reads as a
-                // set, not a rainbow.
-                sectionRow(.all, systemName: "tray.full.fill", count: activeNotes.count)
-                sectionRow(.recents, systemName: "clock.fill", count: recentsCount)
-                sectionRow(.favorites, systemName: "star.fill", count: favoritesCount)
+                // Just All Notes at the top — Recents / Favorites / Recently
+                // Deleted live as filter chips under the All Notes title instead.
+                sectionRow(.all, lucide: "layers", count: activeNotes.count)
             }
             Section(header:
                 HStack {
-                    Text("library.subjects").font(.caption.smallCaps()).foregroundStyle(.secondary)
+                    Text("library.subjects")
+                        .font(.system(size: 11.5, weight: .bold))
+                        .tracking(1.1)
+                        .textCase(.uppercase)
+                        .foregroundStyle(.secondary)
                     Spacer()
                     // New folder/divider lives next to its section title.
                     Menu {
                         Button { addSubject(kind: "folder") } label: { Label("library.newSubject", systemImage: "folder.badge.plus") }
                         Button { addSubject(kind: "divider") } label: { Label("library.newDivider", systemImage: "minus") }
                     } label: {
-                        Image(systemName: "plus.circle")
-                            .font(.subheadline)
+                        Lucide("plus", size: 16)
                     }
                     .accessibilityLabel(Text("library.newSubject"))
                 }
@@ -202,43 +260,71 @@ struct LibraryView: View {
                     subjectRows(subject, depth: 0)
                 }
             }
-            Section {
-                sectionRow(.deleted, systemName: "trash.fill", count: deletedCount)
-            }
         }
-        .searchable(text: $searchText, placement: .sidebar, prompt: Text("library.searchPrompt"))
-        .scrollContentBackground(.hidden)
-        .background(SemanticColor.sidebarBackground)
-        // The sidebar is the library's spine — it can't be hidden from the
-        // main screen (the editor still takes the full screen when a note opens).
-        .hideSidebarToggle()
-        // Single fixed width = the user can't drag-resize the sidebar.
-        .navigationSplitViewColumnWidth(280)
-        // No app-name header — the sidebar speaks for itself.
-        .toolbarTitleDisplayMode(.inline)
-        .toolbar {
-            // Settings lives top-LEFT of the sidebar.
-            ToolbarItem(placement: .topBarLeading) {
-                Button { showSettings = true } label: { Image(systemName: "gearshape") }
-                    .accessibilityLabel(Text("settings.title"))
+            .scrollContentBackground(.hidden)
+            // Plain (not .sidebar) = edge-to-edge rows, no grouped inset.
+            .listStyle(.plain)
+            .environment(\.defaultMinListRowHeight, 44)
+            // Settings pinned to the very bottom of the sidebar.
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                Button { showSettings = true } label: {
+                    HStack(spacing: 11) {
+                        Lucide("settings", size: 16).frame(width: 22)
+                        Text("settings.title").font(.subheadline.weight(.medium))
+                        Spacer()
+                    }
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 14)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity)
+                // Opaque sidebar fill + a top hairline so scrolling rows pass
+                // BEHIND the pinned button instead of bleeding through it.
+                .background(alignment: .top) {
+                    themeSidebar
+                        .ignoresSafeArea(edges: .bottom)
+                        .overlay(alignment: .top) {
+                            Rectangle().fill(SemanticColor.separator).frame(height: 0.5)
+                        }
+                }
             }
         }
     }
 
-    private func sectionRow(_ section: LibrarySection, systemName: String, count: Int) -> some View {
-        Button {
+    private func sectionRow(_ section: LibrarySection, lucide: String, count: Int) -> some View {
+        let selected = selection == section
+        return Button {
             selection = section
         } label: {
-            HStack(spacing: 10) {
-                iconTile(systemName: systemName, tint: .accentColor)
+            HStack(spacing: 11) {
+                Lucide(lucide, size: 19)
+                    .foregroundStyle(selected ? Color.accentColor : .secondary)
+                    .frame(width: 24)
                 Text(section.titleKey)
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(.primary)
+                    .font(.callout.weight(selected ? .semibold : .regular))
                 Spacer()
-                countBadge(count)
+                Text(verbatim: "\(count)")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
             }
+            .foregroundStyle(.primary)
+            .frame(height: 40)
         }
-        .listRowBackground(selection == section ? roundedRowBackground(Color.accentColor.opacity(0.14)) : nil)
+        .buttonStyle(SidebarRowButtonStyle())
+        // Selected = subtle fill + a 3pt accent bar inset at the leading edge.
+        .listRowBackground(
+            roundedRowBackground(selected ? SemanticColor.fillSelected : .clear)
+                .overlay(alignment: .leading) {
+                    if selected {
+                        // Flush at the sidebar's leading edge (per the design).
+                        Rectangle().fill(Color.accentColor)
+                            .frame(width: 3)
+                    }
+                }
+        )
+        .listRowSeparator(.hidden)
     }
 
     private func roundedRowBackground(_ color: Color) -> some View {
@@ -253,6 +339,7 @@ struct LibraryView: View {
         AnyView(
             Group {
                 subjectRow(subject, depth: depth)
+                    .listRowSeparator(.hidden)
                 if !collapsedSubjects.contains(subject.objectID) {
                     ForEach(sortedChildren(of: subject), id: \.objectID) { child in
                         subjectRows(child, depth: depth + 1)
@@ -269,10 +356,10 @@ struct LibraryView: View {
             // immediately so the keyboard comes up with it.
             HStack(spacing: 10) {
                 if !subject.isDivider {
-                    Circle()
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
                         .fill(Color(hex: subject.colorHex ?? "#0A84FF") ?? .accentColor)
-                        .frame(width: 13, height: 13)
-                        .frame(width: 30, height: 30)
+                        .frame(width: 11, height: 11)
+                        .frame(width: 24, height: 24)
                 }
                 TextField("library.subjectName", text: $renameText)
                     .focused($renameFieldFocused)
@@ -280,6 +367,13 @@ struct LibraryView: View {
                     .onSubmit(commitInlineRename)
             }
             .padding(.leading, CGFloat(depth) * 20)
+            // Same rounded, subject-tinted row background as a normal subject row
+            // — not the default full-bleed white (which bled over Settings below).
+            .listRowBackground(
+                roundedRowBackground((Color(hex: subject.colorHex ?? "#0A84FF") ?? .accentColor).opacity(0.18))
+                    .padding(.leading, CGFloat(depth) * 20)
+            )
+            .listRowSeparator(.hidden)
             // Focus on the next runloop so the field is in the responder chain
             // first — otherwise the keyboard doesn't come up for a just-added
             // subject (the row is still being inserted when onAppear fires).
@@ -295,10 +389,21 @@ struct LibraryView: View {
                     .foregroundStyle(.secondary)
                 VStack { Divider() }
             }
+            // Hebrew/Arabic dividers mirror so the label sits on the right.
+            .environment(\.layoutDirection, nameDirection(subject.name))
             .padding(.leading, CGFloat(depth) * 20)
             .contentShape(Rectangle())
+            // Clear row fill — the List's default dark row background read as a
+            // weird black band behind the divider in dark mode.
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
             .draggable("subject:\(subject.id?.uuidString ?? "")")
             .contextMenu { subjectContextMenu(subject) }
+            // A divider is a container for OTHER subjects/dividers — accept those
+            // (notes are ignored: a divider can't be selected to view its notes).
+            .dropDestination(for: String.self) { ids, _ in
+                handleDrop(ids.filter { $0.hasPrefix("subject:") }, into: subject)
+            }
         } else {
             let tint = Color(hex: subject.colorHex ?? "#0A84FF") ?? .accentColor
             let isSelected = selection == .subject(subject)
@@ -306,12 +411,13 @@ struct LibraryView: View {
                 selection = .subject(subject)
             } label: {
                 HStack(spacing: 10) {
-                    // The subject IS its color — a plain dot, not a folder glyph.
-                    Circle()
+                    // The subject IS its color — a rounded chip, not a folder glyph.
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
                         .fill(tint)
-                        .frame(width: 13, height: 13)
-                        .frame(width: 30, height: 30)
+                        .frame(width: 11, height: 11)
+                        .frame(width: 24, height: 24)
                     Text(verbatim: subject.name ?? "")
+                        .font(.callout)
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                     Spacer()
@@ -325,8 +431,7 @@ struct LibraryView: View {
                                 }
                             }
                         } label: {
-                            Image(systemName: "chevron.down")
-                                .font(.caption.weight(.semibold))
+                            Lucide("chevron-down", size: 14)
                                 .foregroundStyle(.secondary)
                                 .rotationEffect(.degrees(collapsedSubjects.contains(subject.objectID) ? -90 : 0))
                                 .frame(width: 24, height: 24)
@@ -336,6 +441,8 @@ struct LibraryView: View {
                         .accessibilityLabel(Text("library.toggleChildren"))
                     }
                 }
+                // Hebrew/Arabic names mirror the row so the name reads from the right.
+                .environment(\.layoutDirection, nameDirection(subject.name))
             }
             .padding(.leading, CGFloat(depth) * 20)
             // Subject rows carry their color as a soft wash; selection darkens
@@ -409,9 +516,19 @@ struct LibraryView: View {
         return changed
     }
 
-    /// A subject can't be nested into itself or any of its descendants.
+    /// A name beginning with a Hebrew/Arabic letter reads right-to-left, so its
+    /// row mirrors (name on the right). Falls back to LTR for English/numbers.
+    private func nameDirection(_ name: String?) -> LayoutDirection {
+        guard let scalar = name?.unicodeScalars.first(where: { CharacterSet.letters.contains($0) })
+        else { return .leftToRight }
+        return (0x0590...0x08FF).contains(scalar.value) ? .rightToLeft : .leftToRight
+    }
+
+    /// A subject/divider can be nested into any other subject OR divider — the
+    /// only rule is it can't go into itself or one of its own descendants (that
+    /// would orphan a cycle).
     private func canNest(_ dragged: Subject, into target: Subject) -> Bool {
-        guard !target.isDivider else { return false }
+        guard dragged != target else { return false }
         var node: Subject? = target
         while let current = node {
             if current == dragged { return false }
@@ -464,6 +581,26 @@ struct LibraryView: View {
             } label: { Label("library.moveOut", systemImage: "arrow.up.left") }
         }
 
+        // Reliable reparent (dragging a row onto another is finicky inside a
+        // List): move this subject/divider INTO any other one.
+        let nestTargets = allSubjects.filter { canNest(subject, into: $0) && $0 != subject.parent }
+        if !nestTargets.isEmpty {
+            Menu {
+                ForEach(nestTargets, id: \.objectID) { target in
+                    Button {
+                        withAnimation { subject.parent = target }
+                        PersistenceController.shared.save()
+                    } label: {
+                        Label {
+                            Text(verbatim: target.name ?? "—")
+                        } icon: {
+                            Image(systemName: target.isDivider ? "minus" : "folder")
+                        }
+                    }
+                }
+            } label: { Label("library.moveInto", systemImage: "arrow.turn.down.right") }
+        }
+
         if !subject.isDivider {
             Menu {
                 ForEach(Self.subjectColors, id: \.hex) { option in
@@ -508,50 +645,6 @@ struct LibraryView: View {
         for note in subject.notes ?? [] { note.deletedAt = Date() }
         for child in subject.children ?? [] { softDelete(child) }
         context.delete(subject)
-    }
-
-    @ToolbarContentBuilder
-    private var detailToolbar: some ToolbarContent {
-        // Rightmost: New Note. To its left: the ⋯ menu with view toggle,
-        // Select Notes, and a Sort By submenu showing the current choice.
-        ToolbarItemGroup(placement: .primaryAction) {
-            Menu {
-                Button {
-                    gridLayout.toggle()
-                } label: {
-                    Label(
-                        gridLayout ? "library.layout.list" : "library.layout.grid",
-                        systemImage: gridLayout ? "list.bullet" : "square.grid.2x2"
-                    )
-                }
-                Button {
-                    selectingNotes = true
-                } label: { Label("library.selectNotes", systemImage: "checkmark.circle") }
-                if selection != .deleted {
-                    Button {
-                        importingPDF = true
-                    } label: { Label("media.importPDF", systemImage: "doc.badge.plus") }
-                }
-                Menu {
-                    Picker("library.sort", selection: $sortRaw) {
-                        ForEach(LibrarySort.allCases, id: \.rawValue) { sort in
-                            Text(sort.labelKey).tag(sort.rawValue)
-                        }
-                    }
-                } label: {
-                    Label("library.sort", systemImage: "arrow.up.arrow.down")
-                    Text((LibrarySort(rawValue: sortRaw) ?? .dateModified).labelKey)
-                }
-            } label: {
-                Image(systemName: "ellipsis.circle")
-            }
-            .accessibilityLabel(Text("library.sort"))
-
-            if selection != .deleted {
-                Button(action: addNote) { Image(systemName: "square.and.pencil") }
-                    .accessibilityLabel(Text("library.newNote"))
-            }
-        }
     }
 
     // MARK: - Actions

@@ -31,6 +31,7 @@ enum ClaudeService {
     private struct RequestBody: Encodable {
         let model: String
         let max_tokens: Int
+        let temperature: Double
         let system: String
         let messages: [Message]
     }
@@ -43,7 +44,7 @@ enum ClaudeService {
         let content: [Content]
     }
 
-    static func send(system: String, messages: [AIMessage], maxTokens: Int = 1500) async throws -> String {
+    static func send(system: String, messages: [AIMessage], maxTokens: Int = 1500, temperature: Double = 0.3) async throws -> String {
         guard let apiKey = AIConfig.claudeKey else { throw AIServiceError.missingKey(.claude) }
 
         var request = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!)
@@ -56,6 +57,7 @@ enum ClaudeService {
             RequestBody(
                 model: AIConfig.model(for: .claude),
                 max_tokens: maxTokens,
+                temperature: temperature,
                 system: system,
                 messages: messages.map { message in
                     Message(role: message.role.rawValue, content: message.content.map(ContentBlock.from))

@@ -1,0 +1,1216 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700;9..144,900&family=Caveat:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  @keyframes sk-shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+  @keyframes sk-pulse { 0%,100% { opacity: 0.35; } 50% { opacity: 1; } }
+  @keyframes sk-think { 0%,80%,100% { transform: scale(0.6); opacity: 0.4; } 40% { transform: scale(1); opacity: 1; } }
+</style>
+</helmet>
+
+<div style="min-height:100vh; background: radial-gradient(120% 100% at 50% 0%, #ECE7DE 0%, #E0DACF 55%, #D6CFC1 100%); padding: 72px 64px 120px; font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif; color:#2B2722;">
+
+  <!-- ============ BOARD HEADER ============ -->
+  <div style="max-width:1180px; margin:0 auto 8px;">
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:20px;">
+      <div style="width:34px;height:34px;border-radius:9px;background:#2E4057;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(46,64,87,.3);">
+        <div style="width:13px;height:13px;border-radius:50%;background:#F2C94C;"></div>
+      </div>
+      <span style="font-family:'Fraunces',serif; font-weight:600; font-size:19px; letter-spacing:.2px;">Inkling</span>
+      <span style="font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:#8A8073; font-weight:600; padding:4px 10px; border:1px solid #C9BFAC; border-radius:999px;">Design Exploration</span>
+    </div>
+    <h1 style="font-family:'Fraunces',serif; font-weight:600; font-size:58px; line-height:1.02; margin:0 0 18px; letter-spacing:-.5px; max-width:18ch;">Three directions for a study tool you want to live in.</h1>
+    <p style="font-size:18px; line-height:1.55; color:#5C5447; max-width:64ch; margin:0;">Each direction is a complete, opinionated system — not a recolor. They differ in typographic voice, density, shape language, how papery vs digital they feel, and how the AI tutor announces itself on the page. Below: hero mockups of the <strong style="color:#2B2722;">library</strong> and <strong style="color:#2B2722;">editor</strong> for each, the <strong style="color:#2B2722;">AI bubble</strong> (the heart), token swatches, and a one-line thesis. Pick a global winner — or mix surfaces across directions.</p>
+    <div style="display:flex; gap:10px; margin-top:26px; flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:#5C5447;padding:7px 13px;background:#FBF7EF;border:1px solid #D8CEBC;border-radius:999px;"><span style="width:9px;height:9px;border-radius:50%;background:#2E4057;"></span>01 · Foolscap</div>
+      <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:#5C5447;padding:7px 13px;background:#FBF7EF;border:1px solid #D8CEBC;border-radius:999px;"><span style="width:9px;height:9px;border-radius:50%;background:#2D6BFF;"></span>02 · Atelier</div>
+      <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:#5C5447;padding:7px 13px;background:#FBF7EF;border:1px solid #D8CEBC;border-radius:999px;"><span style="width:9px;height:9px;border-radius:50%;background:#F4502E;"></span>03 · Marginalia</div>
+    </div>
+  </div>
+
+  <!-- ============ DIRECTION 01 — FOOLSCAP ============ -->
+  <div style="max-width:1700px; margin:84px auto 0;">
+    <div style="display:flex; align-items:flex-end; justify-content:space-between; gap:24px; border-top:2px solid #2B2722; padding-top:18px; margin-bottom:8px;">
+      <div style="display:flex; align-items:baseline; gap:18px;">
+        <span style="font-family:'Fraunces',serif; font-size:15px; font-weight:600; color:#8A8073;">01</span>
+        <h2 style="font-family:'Fraunces',serif; font-weight:600; font-size:40px; margin:0; letter-spacing:-.3px;">Foolscap</h2>
+      </div>
+      <p style="font-family:'Fraunces',serif; font-style:italic; font-size:21px; color:#5C5447; margin:0; max-width:42ch; text-align:right;">Real paper, warm light, and an AI that writes in the margin like a patient tutor.</p>
+    </div>
+    <div style="display:flex; gap:18px; margin-bottom:34px; flex-wrap:wrap;">
+      <span style="font-size:12.5px; color:#6B6354;"><strong style="color:#2B2722;">Voice</strong> &nbsp;Fraunces display · SF body</span>
+      <span style="font-size:12.5px; color:#6B6354;"><strong style="color:#2B2722;">Density</strong> &nbsp;Airy</span>
+      <span style="font-size:12.5px; color:#6B6354;"><strong style="color:#2B2722;">Shape</strong> &nbsp;Soft, 16–20pt radii</span>
+      <span style="font-size:12.5px; color:#6B6354;"><strong style="color:#2B2722;">Feel</strong> &nbsp;Analog · Muji-calm</span>
+      <span style="font-size:12.5px; color:#6B6354;"><strong style="color:#2B2722;">AI</strong> &nbsp;Handwritten marginalia</span>
+    </div>
+
+    <!-- Library hero -->
+    <div style="margin-bottom:14px; display:flex; align-items:baseline; gap:10px;">
+      <span style="font-size:13px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:#2B2722;">Library</span>
+      <span style="font-size:13px; color:#8A8073;">— Light · iPad Pro 12.9″ (1366 × 1024 pt)</span>
+    </div>
+    {{ foolscapLibrary }}
+
+    <!-- Editor heroes light + dark -->
+    <div style="margin:46px 0 14px; display:flex; align-items:baseline; gap:10px;">
+      <span style="font-size:13px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:#2B2722;">Editor</span>
+      <span style="font-size:13px; color:#8A8073;">— Floating toolbar · on-page AI marginalia · light & dark</span>
+    </div>
+    <div style="display:flex; gap:26px; flex-wrap:wrap; align-items:flex-start;">
+      <div>{{ foolscapEditor }}<div style="font-size:12.5px; color:#8A8073; margin-top:10px;">Light · circle-and-ask in context</div></div>
+      <div>{{ foolscapEditorDark }}<div style="font-size:12.5px; color:#8A8073; margin-top:10px;">Dark · ink adapts light-on-charcoal; paper stays its own surface</div></div>
+    </div>
+
+    <!-- AI bubble closeups + tokens -->
+    <div style="display:grid; grid-template-columns: 1.15fr 1fr; gap:34px; margin-top:48px; align-items:start;">
+      <div>
+        <div style="margin-bottom:16px; display:flex; align-items:baseline; gap:10px;">
+          <span style="font-size:13px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:#2B2722;">AI Bubble</span>
+          <span style="font-size:13px; color:#8A8073;">— compact card · the heart · 3 states</span>
+        </div>
+        <div style="display:flex; gap:22px; flex-wrap:wrap; align-items:flex-start; background:#E0DACF; border-radius:18px; padding:28px; background-image: radial-gradient(circle at 12px 12px, rgba(120,110,90,.12) 1.5px, transparent 1.6px); background-size:24px 24px;">
+          <div>{{ fcBubbleDefault }}<div style="font-size:12px; color:#6b6354; margin-top:9px; max-width:300px;"><strong>Default.</strong> Tone strip = correct (green). Sparkle avatar, highlighted term, chips, ask-field, insert / open.</div></div>
+          <div>{{ fcBubbleLoading }}<div style="font-size:12px; color:#6b6354; margin-top:9px; max-width:300px;"><strong>Thinking.</strong> Shimmer body + animated tone-colored dots.</div></div>
+          <div style="background:#1A1814; padding:20px; border-radius:16px;">{{ fcBubbleDark }}<div style="font-size:12px; color:#9a9082; margin-top:9px; max-width:300px;"><strong>Dark · correction tone (orange).</strong> Frosted charcoal material.</div></div>
+        </div>
+        <div style="font-size:13px; color:#5C5447; margin-top:18px; line-height:1.6; max-width:62ch;">Anatomy — <strong>304pt</strong> wide, frosted material (<code style="font-family:ui-monospace,monospace;font-size:12px;background:#EDE6D7;padding:1px 5px;border-radius:4px;">.ultraThinMaterial</code> over canvas), <strong>4pt</strong> left tone strip, <strong>18pt</strong> radius, speech-tail toward the anchored region. Tone accent per answer: <span style="color:#2E4057;font-weight:600;">teaching</span> · <span style="color:#6B8E4E;font-weight:600;">correct</span> · <span style="color:#C2683D;font-weight:600;">correction</span> · <span style="color:#B23A2E;font-weight:600;">error</span>.</div>
+      </div>
+      <div>
+        <div style="margin-bottom:16px; display:flex; align-items:baseline; gap:10px;">
+          <span style="font-size:13px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:#2B2722;">Tokens</span>
+          <span style="font-size:13px; color:#8A8073;">— Foolscap theme values</span>
+        </div>
+        {{ foolscapTokens }}
+        <p style="font-family:'Fraunces',serif; font-size:16px; line-height:1.6; color:#4f4839; margin:22px 0 0;"><strong style="font-weight:600;">Why it fits.</strong> <span style="font-style:italic;">Foolscap leans all the way into paper.</span> The warm cream chrome, ruled surface, and Fraunces display make the app feel like a beautiful notebook you reach for — low-stimulation, easy on the eyes for long sessions. The AI never opens a panel by default; it writes in the margin in the tutor's hand, so help feels like a colleague leaning over your shoulder rather than software interrupting you. Calm, warm, and unmistakably analog.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ FOOLSCAP THEME SYSTEM ============ -->
+  <div style="max-width:1700px; margin:84px auto 0;">
+    <div style="display:flex; align-items:flex-end; justify-content:space-between; gap:24px; border-top:2px solid #2B2722; padding-top:18px; margin-bottom:8px;">
+      <div style="display:flex; align-items:baseline; gap:18px;">
+        <span style="display:inline-flex; align-items:center; gap:7px; font-size:12px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:#fff; background:#2E4057; padding:5px 11px; border-radius:999px;"><span style="width:7px;height:7px;border-radius:50%;background:#F2C94C;"></span>Selected direction</span>
+        <h2 style="font-family:'Fraunces',serif; font-weight:600; font-size:40px; margin:0; letter-spacing:-.3px;">Foolscap — theme system</h2>
+      </div>
+      <p style="font-family:'Fraunces',serif; font-style:italic; font-size:21px; color:#5C5447; margin:0; max-width:46ch; text-align:right;">Six selectable themes. Each pairs your ink with your tutor's color, tints the chrome, and swaps the app icon — the paper never changes.</p>
+    </div>
+    <p style="font-size:15px; line-height:1.6; color:#5C5447; max-width:74ch; margin:18px 0 30px;">Every theme is the <strong>same token contract</strong> with different values, so it drops into one Swift enum. <code style="font-family:ui-monospace,monospace;font-size:13px;background:#EDE6D7;padding:1px 5px;border-radius:4px;">you.accent</code> is your UI tint &amp; default ink; <code style="font-family:ui-monospace,monospace;font-size:13px;background:#EDE6D7;padding:1px 5px;border-radius:4px;">ai.accent</code> is the tutor's color. <code style="font-family:ui-monospace,monospace;font-size:13px;background:#EDE6D7;padding:1px 5px;border-radius:4px;">pagePaper</code> and note thumbnails stay constant — only sidebar / chrome / editorDesk pick up the theme tint.</p>
+
+    <div style="margin-bottom:14px; display:flex; align-items:baseline; gap:10px;"><span style="font-size:13px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:#2B2722;">Settings → Appearance</span><span style="font-size:13px; color:#8A8073;">— the live theme picker · Foolscap selected</span></div>
+    {{ foolscapSettings }}
+
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:34px; margin-top:46px; align-items:start;">
+      <div>
+        <div style="margin-bottom:16px; display:flex; align-items:baseline; gap:10px;"><span style="font-size:13px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:#2B2722;">App icons</span><span style="font-size:13px; color:#8A8073;">— one per theme · swaps with selection</span></div>
+        {{ iconSetPanel }}
+        <p style="font-size:13px; color:#5C5447; line-height:1.6; margin:16px 0 0; max-width:60ch;">Icon = a squircle in the theme's <em>you.accent</em> with a cream ruled page and an <em>ai.accent</em> tutor dot. SwiftUI: alternate app icons via <code style="font-family:ui-monospace,monospace;font-size:12px;background:#EDE6D7;padding:1px 5px;border-radius:4px;">UIApplication.setAlternateIconName</code>, keyed to the selected theme.</p>
+      </div>
+      <div>
+        <div style="margin-bottom:16px; display:flex; align-items:baseline; gap:10px;"><span style="font-size:13px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:#2B2722;">Theme tokens</span><span style="font-size:13px; color:#8A8073;">— light values · drop into the enum</span></div>
+        {{ themeTokenTable }}
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ DIRECTION 02 — ATELIER ============ -->
+  <div style="max-width:1700px; margin:96px auto 0;">
+    <div style="display:flex; align-items:flex-end; justify-content:space-between; gap:24px; border-top:2px solid #2B2722; padding-top:18px; margin-bottom:8px;">
+      <div style="display:flex; align-items:baseline; gap:18px;">
+        <span style="font-family:'Fraunces',serif; font-size:15px; font-weight:600; color:#8A8073;">02</span>
+        <h2 style="font-family:-apple-system,'SF Pro Display',system-ui,sans-serif; font-weight:700; font-size:40px; margin:0; letter-spacing:-1px; color:#2B2722;">Atelier</h2>
+      </div>
+      <p style="font-family:'Fraunces',serif; font-style:italic; font-size:21px; color:#5C5447; margin:0; max-width:44ch; text-align:right;">A precision instrument in glass — cool, dense, iOS&nbsp;26 Liquid&nbsp;Glass, with a tutor that arrives as a crisp frosted card.</p>
+    </div>
+    <div style="display:flex; gap:18px; margin-bottom:34px; flex-wrap:wrap;">
+      <span style="font-size:12.5px; color:#6B6354;"><strong style="color:#2B2722;">Voice</strong> &nbsp;SF Pro · SF Mono tags</span>
+      <span style="font-size:12.5px; color:#6B6354;"><strong style="color:#2B2722;">Density</strong> &nbsp;Dense / pro</span>
+      <span style="font-size:12.5px; color:#6B6354;"><strong style="color:#2B2722;">Shape</strong> &nbsp;Crisp, 11–14pt radii</span>
+      <span style="font-size:12.5px; color:#6B6354;"><strong style="color:#2B2722;">Feel</strong> &nbsp;Digital · Liquid Glass</span>
+      <span style="font-size:12.5px; color:#6B6354;"><strong style="color:#2B2722;">AI</strong> &nbsp;Frosted precision card · violet</span>
+    </div>
+    <div style="margin-bottom:14px; display:flex; align-items:baseline; gap:10px;"><span style="font-size:13px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:#2B2722;">Library</span><span style="font-size:13px; color:#8A8073;">— Light · segmented filters · tinted cover thumbnails</span></div>
+    {{ atLibrary }}
+    <div style="margin:46px 0 14px; display:flex; align-items:baseline; gap:10px;"><span style="font-size:13px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:#2B2722;">Editor</span><span style="font-size:13px; color:#8A8073;">— Glass toolbar · violet AI · light & dark</span></div>
+    <div style="display:flex; gap:26px; flex-wrap:wrap; align-items:flex-start;">
+      <div>{{ atEditor }}<div style="font-size:12.5px; color:#8A8073; margin-top:10px;">Light · floating Liquid-Glass toolbar</div></div>
+      <div>{{ atEditorDark }}<div style="font-size:12.5px; color:#8A8073; margin-top:10px;">Dark · glass deepens, paper stays charcoal</div></div>
+    </div>
+    <div style="display:grid; grid-template-columns: 1.15fr 1fr; gap:34px; margin-top:48px; align-items:start;">
+      <div>
+        <div style="margin-bottom:16px; display:flex; align-items:baseline; gap:10px;"><span style="font-size:13px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:#2B2722;">AI Bubble</span><span style="font-size:13px; color:#8A8073;">— frosted glass · model chip · 3 states</span></div>
+        <div style="display:flex; gap:22px; flex-wrap:wrap; align-items:flex-start; background:#D9DEE6; border-radius:18px; padding:28px; background-image: linear-gradient(135deg, #E7ECF4 0%, #DCE2EC 100%);">
+          <div>{{ atBubbleDefault }}<div style="font-size:12px; color:#5b616e; margin-top:9px; max-width:300px;"><strong>Default.</strong> Violet AI tone · GPT-4o chip · squircle avatar · 3pt strip.</div></div>
+          <div>{{ atBubbleLoading }}<div style="font-size:12px; color:#5b616e; margin-top:9px; max-width:300px;"><strong>Thinking.</strong> Cool shimmer + tone dots.</div></div>
+          <div style="background:#16171A; padding:20px; border-radius:16px;">{{ atBubbleDark }}<div style="font-size:12px; color:#8A909C; margin-top:9px; max-width:300px;"><strong>Dark · correction tone.</strong> Deep frosted glass.</div></div>
+        </div>
+        <div style="font-size:13px; color:#5C5447; margin-top:18px; line-height:1.6; max-width:62ch;">Anatomy — <strong>300pt</strong> wide, <code style="font-family:ui-monospace,monospace;font-size:12px;background:#E5E8EF;padding:1px 5px;border-radius:4px;">.regularMaterial</code> with <strong>26pt</strong> blur + saturation, <strong>16pt</strong> radius, <strong>3pt</strong> tone strip, monospace provider chip. Tone: <span style="color:#7A5CFF;font-weight:600;">teaching</span> · <span style="color:#1FAA6B;font-weight:600;">correct</span> · <span style="color:#FF9F0A;font-weight:600;">correction</span> · <span style="color:#FF453A;font-weight:600;">error</span>.</div>
+      </div>
+      <div>
+        <div style="margin-bottom:16px; display:flex; align-items:baseline; gap:10px;"><span style="font-size:13px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:#2B2722;">Tokens</span><span style="font-size:13px; color:#8A8073;">— Atelier theme values</span></div>
+        {{ atTokens }}
+        <p style="font-family:'Fraunces',serif; font-size:16px; line-height:1.6; color:#4f4839; margin:22px 0 0;"><strong style="font-weight:600;">Why it fits.</strong> <span style="font-style:italic;">Atelier treats studying like precision work.</span> Cool neutrals and real iOS&nbsp;26 Liquid Glass make the chrome recede so the ink leads; SF and a tight grid keep dense screens legible at a glance. The violet AI accent stays distinct from your cobalt ink, so you always know who's "speaking." It feels like a pro creative tool — fast, exact, and quietly powerful.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ DIRECTION 03 — MARGINALIA ============ -->
+  <div style="max-width:1700px; margin:96px auto 0;">
+    <div style="display:flex; align-items:flex-end; justify-content:space-between; gap:24px; border-top:2px solid #2B2722; padding-top:18px; margin-bottom:8px;">
+      <div style="display:flex; align-items:baseline; gap:18px;">
+        <span style="font-family:'Fraunces',serif; font-size:15px; font-weight:600; color:#8A8073;">03</span>
+        <h2 style="font-family:'Fraunces',serif; font-weight:600; font-size:44px; margin:0; letter-spacing:-.6px; color:#2B2722;">Marginalia</h2>
+      </div>
+      <p style="font-family:'Fraunces',serif; font-style:italic; font-size:21px; color:#5C5447; margin:0; max-width:44ch; text-align:right;">Editorial and generous — big type, lots of air, and a warm coral study-partner who lives in your margins.</p>
+    </div>
+    <div style="display:flex; gap:18px; margin-bottom:34px; flex-wrap:wrap;">
+      <span style="font-size:12.5px; color:#6B6354;"><strong style="color:#2B2722;">Voice</strong> &nbsp;Big Fraunces · SF body</span>
+      <span style="font-size:12.5px; color:#6B6354;"><strong style="color:#2B2722;">Density</strong> &nbsp;Airy / editorial</span>
+      <span style="font-size:12.5px; color:#6B6354;"><strong style="color:#2B2722;">Shape</strong> &nbsp;Sharp, 6–12pt radii</span>
+      <span style="font-size:12.5px; color:#6B6354;"><strong style="color:#2B2722;">Feel</strong> &nbsp;Warm paper · magazine</span>
+      <span style="font-size:12.5px; color:#6B6354;"><strong style="color:#2B2722;">AI</strong> &nbsp;Coral study-partner</span>
+    </div>
+    <div style="margin-bottom:14px; display:flex; align-items:baseline; gap:10px;"><span style="font-size:13px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:#2B2722;">Library</span><span style="font-size:13px; color:#8A8073;">— Light · oversized serif title · underline tabs · coral Ask AI</span></div>
+    {{ mgLibrary }}
+    <div style="margin:46px 0 14px; display:flex; align-items:baseline; gap:10px;"><span style="font-size:13px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:#2B2722;">Editor</span><span style="font-size:13px; color:#8A8073;">— Coral AI marginalia · serif headers · light & dark</span></div>
+    <div style="display:flex; gap:26px; flex-wrap:wrap; align-items:flex-start;">
+      <div>{{ mgEditor }}<div style="font-size:12.5px; color:#8A8073; margin-top:10px;">Light · warm paper, coral tutor</div></div>
+      <div>{{ mgEditorDark }}<div style="font-size:12.5px; color:#8A8073; margin-top:10px;">Dark · espresso chrome, paper stays charcoal</div></div>
+    </div>
+    <div style="display:grid; grid-template-columns: 1.15fr 1fr; gap:34px; margin-top:48px; align-items:start;">
+      <div>
+        <div style="margin-bottom:16px; display:flex; align-items:baseline; gap:10px;"><span style="font-size:13px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:#2B2722;">AI Bubble</span><span style="font-size:13px; color:#8A8073;">— coral partner · serif name · 5pt strip · 3 states</span></div>
+        <div style="display:flex; gap:22px; flex-wrap:wrap; align-items:flex-start; background:#E7DECB; border-radius:18px; padding:28px; background-image: radial-gradient(circle at 12px 12px, rgba(120,100,70,.1) 1.5px, transparent 1.6px); background-size:24px 24px;">
+          <div>{{ mgBubbleDefault }}<div style="font-size:12px; color:#6b6354; margin-top:9px; max-width:300px;"><strong>Default.</strong> Coral tone · serif tutor name · square chips · 5pt strip.</div></div>
+          <div>{{ mgBubbleLoading }}<div style="font-size:12px; color:#6b6354; margin-top:9px; max-width:300px;"><strong>Thinking.</strong> Warm shimmer + coral dots.</div></div>
+          <div style="background:#121110; padding:20px; border-radius:16px;">{{ mgBubbleDark }}<div style="font-size:12px; color:#9a9184; margin-top:9px; max-width:300px;"><strong>Dark · correction tone.</strong> Espresso card.</div></div>
+        </div>
+        <div style="font-size:13px; color:#5C5447; margin-top:18px; line-height:1.6; max-width:62ch;">Anatomy — <strong>300pt</strong> wide, solid warm card (no glass — editorial flatness), <strong>14pt</strong> radius, <strong>5pt</strong> coral tone strip, serif tutor name, square <strong>7pt</strong> chips. Tone: <span style="color:#F4502E;font-weight:600;">teaching</span> · <span style="color:#1FAA6B;font-weight:600;">correct</span> · <span style="color:#FF9F0A;font-weight:600;">correction</span> · <span style="color:#FF453A;font-weight:600;">error</span>.</div>
+      </div>
+      <div>
+        <div style="margin-bottom:16px; display:flex; align-items:baseline; gap:10px;"><span style="font-size:13px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:#2B2722;">Tokens</span><span style="font-size:13px; color:#8A8073;">— Marginalia theme values</span></div>
+        {{ mgTokens }}
+        <p style="font-family:'Fraunces',serif; font-size:16px; line-height:1.6; color:#4f4839; margin:22px 0 0;"><strong style="font-weight:600;">Why it fits.</strong> <span style="font-style:italic;">Marginalia makes studying feel like reading a beautiful book.</span> Oversized Fraunces titles and generous whitespace lower the stakes and invite focus; the single coral accent gives the AI a warm, friendly identity that reads as a study partner rather than a system. High contrast keeps long sessions crisp. It's the most branded, most human of the three.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ RTL / HEBREW ============ -->
+  <div style="max-width:1700px; margin:96px auto 0;">
+    <div style="display:flex; align-items:flex-end; justify-content:space-between; gap:24px; border-top:2px solid #2B2722; padding-top:18px; margin-bottom:8px;">
+      <div style="display:flex; align-items:baseline; gap:18px;">
+        <span style="font-family:'Fraunces',serif; font-size:15px; font-weight:600; color:#8A8073;">RTL</span>
+        <h2 style="font-family:'Fraunces',serif; font-weight:600; font-size:40px; margin:0; letter-spacing:-.3px;">Hebrew &amp; right-to-left</h2>
+      </div>
+      <p style="font-family:'Fraunces',serif; font-style:italic; font-size:21px; color:#5C5447; margin:0; max-width:46ch; text-align:right;">Native, not translated. The whole chrome mirrors on the leading/trailing axis — shown here on the Foolscap base.</p>
+    </div>
+    <div style="margin:26px 0 14px; display:flex; align-items:baseline; gap:10px;"><span style="font-size:13px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:#2B2722;">Library — mirrored</span><span style="font-size:13px; color:#8A8073;">— sidebar on the right, reading order RTL</span></div>
+    <div style="display:flex; gap:34px; flex-wrap:wrap; align-items:flex-start;">
+      <div>{{ rtlLibrary }}</div>
+      <div style="flex:1; min-width:300px; max-width:420px;">
+        <div style="display:flex; gap:22px; align-items:flex-start; flex-wrap:wrap; margin-bottom:22px;">
+          <div>{{ rtlBubble }}<div style="font-size:12px; color:#6b6354; margin-top:9px; max-width:300px;"><strong>Bubble · RTL light.</strong> Tone strip + tail flip to the trailing side; chips scroll RTL; math stays an LTR island.</div></div>
+          <div style="background:#1A1814; padding:20px; border-radius:16px;">{{ rtlBubbleDark }}<div style="font-size:12px; color:#9a9082; margin-top:9px; max-width:300px;"><strong>Bubble · RTL dark.</strong></div></div>
+        </div>
+        <div style="background:#FBF7EF; border:1px solid #E0D6C2; border-radius:16px; padding:18px 20px;">
+          <div style="font-size:11px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:#8A8073; margin-bottom:12px;">Mirroring rules</div>
+          <ul style="margin:0; padding-left:18px; font-size:13.5px; line-height:1.7; color:#4f4839;">
+            <li>Sidebar → trailing edge; grid + content reflow to leading. Use <code style="font-family:ui-monospace,monospace;font-size:12px;">leading/trailing</code>, never left/right.</li>
+            <li>Selected-row accent bar, bubble tone strip, and speech tail all flip sides.</li>
+            <li>Directional glyphs mirror (undo/redo, send, chevrons); tool icons keep meaning.</li>
+            <li>Math &amp; code render as LTR islands inside RTL prose; user ink direction follows the keyboard/pencil.</li>
+            <li>SwiftUI: <code style="font-family:ui-monospace,monospace;font-size:12px;">.environment(\.layoutDirection, .rightToLeft)</code> + SF Symbols auto-mirror.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ SYSTEM & HANDOFF ============ -->
+  <div style="max-width:1180px; margin:104px auto 0;">
+    <div style="border-top:2px solid #2B2722; padding-top:18px; margin-bottom:30px;">
+      <h2 style="font-family:'Fraunces',serif; font-weight:600; font-size:40px; margin:0 0 14px; letter-spacing:-.3px;">System &amp; engineering handoff</h2>
+      <p style="font-size:17px; line-height:1.55; color:#5C5447; max-width:70ch; margin:0;">The cross-cutting system below is specified once and applies to every direction — only the <em>token values</em> differ per theme. Themes drop into a single Swift enum, each supplying a <code style="font-family:ui-monospace,monospace;font-size:13px;background:#EDE6D7;padding:1px 5px;border-radius:4px;">Palette</code>; one reactive accessor resolves light/dark.</p>
+    </div>
+
+    <!-- recommendation -->
+    <div style="background:#2B2722; color:#F2ECE0; border-radius:18px; padding:30px 32px; margin-bottom:34px;">
+      <div style="font-size:11px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:#B5762A; margin-bottom:12px;">My recommendation</div>
+      <p style="font-family:'Fraunces',serif; font-size:23px; line-height:1.4; margin:0 0 16px; color:#FCFAF5; max-width:60ch;">Ship <strong>Foolscap</strong> as the global base — it best matches “calm, warm, paper-like, focused” — and borrow <strong>Atelier’s Liquid-Glass</strong> material for the floating toolbar and AI bubble, where the iOS&nbsp;26 frost genuinely earns its place.</p>
+      <p style="font-size:14.5px; line-height:1.6; color:#C9C2B4; margin:0; max-width:72ch;">Marginalia’s oversized serif library title is a great optional “focus” skin. The three share one token contract, so mixing is a values swap, not a rebuild. If you want maximum brand distinctiveness over calm, lead with Marginalia instead.</p>
+    </div>
+
+    <!-- mix grid -->
+    <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:44px;">
+      <div style="background:#FBF7EF; border:1px solid #E0D6C2; border-radius:14px; padding:18px;"><div style="font-size:12px; font-weight:700; color:#8A8073; text-transform:uppercase; letter-spacing:.08em; margin-bottom:10px;">Best surface — Foolscap</div><div style="font-size:14px; line-height:1.6; color:#4f4839;">Editor canvas &amp; paper · AI marginalia warmth · overall library calm</div></div>
+      <div style="background:#FBF7EF; border:1px solid #E0D6C2; border-radius:14px; padding:18px;"><div style="font-size:12px; font-weight:700; color:#8A8073; text-transform:uppercase; letter-spacing:.08em; margin-bottom:10px;">Best surface — Atelier</div><div style="font-size:14px; line-height:1.6; color:#4f4839;">Floating glass toolbar · AI bubble material · dense Settings &amp; pickers</div></div>
+      <div style="background:#FBF7EF; border:1px solid #E0D6C2; border-radius:14px; padding:18px;"><div style="font-size:12px; font-weight:700; color:#8A8073; text-transform:uppercase; letter-spacing:.08em; margin-bottom:10px;">Best surface — Marginalia</div><div style="font-size:14px; line-height:1.6; color:#4f4839;">Library hero title · onboarding / empty states · marketing &amp; icon</div></div>
+    </div>
+
+    <!-- token scales -->
+    <h3 style="font-family:'Fraunces',serif; font-weight:600; font-size:24px; margin:0 0 18px;">Scales — named tokens (theme-independent)</h3>
+    <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:16px; margin-bottom:30px;">
+      {{ scaleSpacing }}
+      {{ scaleRadius }}
+      {{ scaleStroke }}
+      {{ scaleElevation }}
+    </div>
+
+    <!-- motion + icons -->
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:22px; margin-bottom:34px; align-items:start;">
+      {{ motionTable }}
+      {{ iconTable }}
+    </div>
+
+    <!-- swiftui + a11y -->
+    <div style="display:grid; grid-template-columns:1.1fr 1fr; gap:22px; align-items:start;">
+      {{ swiftMap }}
+      {{ a11yNotes }}
+    </div>
+
+    <div style="margin-top:48px; padding-top:22px; border-top:1px solid #C9BFAC; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+      <span style="font-family:'Fraunces',serif; font-style:italic; font-size:17px; color:#5C5447;">Inkling — give the student an inkling, never a lecture.</span>
+      <span style="font-size:12.5px; color:#8A8073;">Comparison board · 3 directions · light · dark · RTL · tokens · handoff</span>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  // Reusable iPad device frame at true 1366x1024, scaled to fit the board.
+  device(child, scale) {
+    const s = scale || 0.62;
+    return React.createElement('div', {
+      style: { width: (1366*s)+'px', height: (1024*s)+'px', flex:'0 0 auto' }
+    },
+      React.createElement('div', {
+        style: {
+          width:'1366px', height:'1024px', transform:'scale('+s+')', transformOrigin:'top left',
+          borderRadius:'26px', overflow:'hidden', position:'relative',
+          boxShadow:'0 30px 70px -24px rgba(40,34,24,.55), 0 4px 14px rgba(40,34,24,.18)',
+          outline:'10px solid #1b1712', outlineOffset:'0px', background:'#000'
+        }
+      }, child)
+    );
+  }
+
+  // ---- FOOLSCAP color tokens ----
+  fc() {
+    return {
+      pagePaper:'#FCFAF5', chromePaper:'#F6F0E4', sidebar:'#EFE7D7', desk:'#E7DECB',
+      you:'#2E4057', ai:'#B5762A', text:'#2B2722', text2:'#8A8073',
+      sep:'#DED3BE', sepSoft:'#E6DCC9', sel:'#E4D9C2', cardEdge:'#E8DFCD'
+    };
+  }
+
+  // simple inline icon (stroked) — keeps to simple geometric primitives
+  ic(name, color, size) {
+    const c = color || 'currentColor'; const z = size || 18;
+    const stroke = { stroke:c, strokeWidth:1.6, fill:'none', strokeLinecap:'round', strokeLinejoin:'round' };
+    const paths = {
+      search: React.createElement('g', stroke, React.createElement('circle',{cx:8,cy:8,r:5.2}), React.createElement('line',{x1:12,y1:12,x2:16.5,y2:16.5})),
+      all: React.createElement('g', stroke, React.createElement('rect',{x:3,y:4,width:14,height:3,rx:1.2}), React.createElement('rect',{x:3,y:9.5,width:14,height:3,rx:1.2}), React.createElement('rect',{x:3,y:15,width:14,height:3,rx:1.2})),
+      clock: React.createElement('g', stroke, React.createElement('circle',{cx:10,cy:10,r:7}), React.createElement('path',{d:'M10 6v4l3 2'})),
+      star: React.createElement('path', {...stroke, d:'M10 2.6l2.3 4.7 5.1.7-3.7 3.6.9 5.1-4.6-2.4-4.6 2.4.9-5.1L2.8 8l5.1-.7z'}),
+      folder: React.createElement('path', {...stroke, d:'M2.5 6.5a1.5 1.5 0 011.5-1.5h3.2l1.5 1.7h6.3a1.5 1.5 0 011.5 1.5v6.8a1.2 1.2 0 01-1.2 1.2H3.7a1.2 1.2 0 01-1.2-1.2z'}),
+      trash: React.createElement('g', stroke, React.createElement('path',{d:'M4.5 6h11M8 6V4.5h4V6M6 6l.7 9.5a1 1 0 001 .9h4.6a1 1 0 001-.9L15 6'})),
+      gear: React.createElement('g', stroke, React.createElement('circle',{cx:10,cy:10,r:2.6}), React.createElement('path',{d:'M10 2.7v2.1M10 15.2v2.1M2.7 10h2.1M15.2 10h2.1M4.8 4.8l1.5 1.5M13.7 13.7l1.5 1.5M15.2 4.8l-1.5 1.5M6.3 13.7l-1.5 1.5'})),
+      plus: React.createElement('g', stroke, React.createElement('line',{x1:10,y1:4.5,x2:10,y2:15.5}), React.createElement('line',{x1:4.5,y1:10,x2:15.5,y2:10})),
+      more: React.createElement('g',{fill:c}, React.createElement('circle',{cx:4.5,cy:10,r:1.5}), React.createElement('circle',{cx:10,cy:10,r:1.5}), React.createElement('circle',{cx:15.5,cy:10,r:1.5})),
+      sparkle: React.createElement('path',{...stroke, d:'M10 3l1.4 3.9L15.3 8l-3.9 1.1L10 13l-1.4-3.9L4.7 8l3.9-1.1z'}),
+      doc: React.createElement('g', stroke, React.createElement('path',{d:'M5 3.2h6l4 4v9.6a1 1 0 01-1 1H5a1 1 0 01-1-1V4.2a1 1 0 011-1z'}), React.createElement('path',{d:'M11 3.2V7h4'})),
+    };
+    return React.createElement('svg', { width:z, height:z, viewBox:'0 0 20 20', style:{display:'block',flex:'0 0 auto'} }, paths[name]);
+  }
+
+  // a faux note-card thumbnail (ruled paper with handwriting feel)
+  thumb(t) {
+    const lines = [];
+    for (let i=0;i<7;i++){
+      const w = [70,52,84,40,76,60,48][i];
+      lines.push(React.createElement('div',{key:i, style:{height:'2px', width:w+'%', background: t.ink, opacity: i===0?0:0.55, borderRadius:'2px'}}));
+    }
+    return lines;
+  }
+
+  // a library note card
+  card(o) {
+    const t = this.fc();
+    if (o.loading) {
+      return React.createElement('div', { style:{ background:t.pagePaper, border:'1px solid '+t.cardEdge, borderRadius:'14px', overflow:'hidden', boxShadow:'0 1px 2px rgba(40,34,24,.05)' } },
+        React.createElement('div', { style:{ height:'196px', background:'linear-gradient(100deg, #EFE9DC 30%, #F6F1E7 50%, #EFE9DC 70%)', backgroundSize:'200% 100%', animation:'sk-shimmer 1.4s linear infinite' } }),
+        React.createElement('div', { style:{ padding:'12px 14px 14px' } },
+          React.createElement('div',{style:{height:'13px',width:'62%',borderRadius:'4px',background:'#E7E0D2',marginBottom:'9px'}}),
+          React.createElement('div',{style:{height:'10px',width:'38%',borderRadius:'4px',background:'#EDE7DA'}})
+        )
+      );
+    }
+    return React.createElement('div', { style:{ background:t.pagePaper, border:'1px solid '+t.cardEdge, borderRadius:'14px', overflow:'hidden', boxShadow:'0 1px 2px rgba(40,34,24,.06)', cursor:'pointer' } },
+      React.createElement('div', { style:{ height:'196px', position:'relative', background:o.cover, borderBottom:'1px solid '+t.sepSoft, padding:'18px 18px 0' } },
+        o.hw ? React.createElement('div',{ style:{ fontFamily:"'Caveat',cursive", fontSize:'21px', color:'#433c30', marginBottom:'11px', fontWeight:700 } }, o.hw) : null,
+        React.createElement('div', { style:{ display:'flex', flexDirection:'column', gap:'9px' } }, this.thumb({ink:'#6b6253'}))
+      ),
+      React.createElement('div', { style:{ padding:'12px 14px 13px' } },
+        React.createElement('div', { style:{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'8px' } },
+          React.createElement('div', { style:{ fontSize:'15px', fontWeight:600, color:t.text, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' } }, o.name),
+          React.createElement('span', { style:{ width:'9px',height:'9px',borderRadius:'50%',background:o.tag, flex:'0 0 auto' } })
+        ),
+        React.createElement('div', { style:{ fontSize:'12px', color:t.text2, marginTop:'3px' } }, o.date)
+      )
+    );
+  }
+
+  sideRow(o) {
+    const t = this.fc();
+    const bg = o.state==='selected' ? t.sel : (o.state==='pressed' ? '#E9DFCB' : 'transparent');
+    return React.createElement('div', { style:{ display:'flex', alignItems:'center', gap:'11px', height:'40px', padding:'0 11px', borderRadius:'9px', background:bg, position:'relative', cursor:'pointer' } },
+      o.state==='selected' ? React.createElement('div',{style:{position:'absolute',left:'-9px',top:'9px',bottom:'9px',width:'3px',borderRadius:'2px',background:t.you}}) : null,
+      o.dot ? React.createElement('span',{style:{width:'11px',height:'11px',borderRadius:'3px',background:o.dot,flex:'0 0 auto'}}) : this.ic(o.icon, o.state==='selected'? t.you : '#7c7464', 19),
+      React.createElement('span', { style:{ fontSize:'15px', fontWeight: o.state==='selected'?600:500, color: o.state==='selected'? t.text : '#4f4839', flex:1 } }, o.label),
+      o.count ? React.createElement('span', { style:{ fontSize:'12.5px', color:t.text2, fontVariantNumeric:'tabular-nums' } }, o.count) : null
+    );
+  }
+
+  // handwriting line
+  hw(text, o) {
+    o = o || {};
+    return React.createElement('div', { style:{ fontFamily:"'Caveat',cursive", fontWeight:o.weight||600, fontSize:(o.size||30)+'px', color:o.color||'#2a2a33', lineHeight:1.05, letterSpacing:'.3px', position:o.pos||'static', left:o.left, top:o.top, whiteSpace:'nowrap' } }, text);
+  }
+
+  // ---- the AI bubble (reused on-canvas and as a closeup) ----
+  bubble(o) {
+    o = o || {};
+    const E = React.createElement;
+    const toneMap = { teaching:'#2E4057', correct:'#6B8E4E', correction:'#C2683D', error:'#B23A2E' };
+    const tone = toneMap[o.tone||'teaching'];
+    const dark = o.dark;
+    const bg = dark ? 'rgba(44,40,33,0.86)' : 'rgba(252,250,245,0.86)';
+    const text = dark ? '#F2ECE0' : '#2B2722';
+    const text2 = dark ? '#9A9082' : '#8A8073';
+    const border = dark ? 'rgba(120,110,92,0.4)' : 'rgba(198,192,170,0.7)';
+    const chipBg = dark ? 'rgba(30,27,21,0.6)' : 'rgba(246,240,228,0.9)';
+    const w = o.w || 304;
+    const rtl = o.rtl;
+    const chips = o.chips || ['Why 2x?','Quiz me','Show steps'];
+    return E('div', { dir: rtl?'rtl':'ltr', style:{
+        width:w+'px', background:bg, backdropFilter:'blur(24px) saturate(1.4)', WebkitBackdropFilter:'blur(24px) saturate(1.4)',
+        borderRadius:'18px', border:'1px solid '+border, overflow:'hidden', position:'relative',
+        boxShadow: dark ? '0 18px 44px -14px rgba(0,0,0,.6)' : '0 18px 44px -16px rgba(60,48,28,.4)', fontFamily:'-apple-system, system-ui, sans-serif'
+      } },
+      // tone strip
+      E('div',{style:{position:'absolute',top:0,bottom:0, [rtl?'right':'left']:0, width:'4px', background:tone}}),
+      E('div',{style:{padding:'13px 15px 14px', [rtl?'paddingRight':'paddingLeft']:'19px'}},
+        // top row
+        E('div',{style:{display:'flex',alignItems:'center',gap:'8px',marginBottom:'9px'}},
+          E('div',{style:{width:'22px',height:'22px',borderRadius:'50%',background:o.dark?'#B5762A':'#2E4057',display:'flex',alignItems:'center',justifyContent:'center',flex:'0 0 auto'}}, this.ic('sparkle','#F2C94C',14)),
+          E('span',{style:{fontSize:'12px',fontWeight:600,color:text2,letterSpacing:'.01em',flex:1}},'Inkling Tutor'),
+          E('div',{style:{width:'18px',height:'18px',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center'}},
+            E('svg',{width:11,height:11,viewBox:'0 0 11 11'},E('g',{stroke:text2,strokeWidth:1.5,strokeLinecap:'round'},E('line',{x1:2,y1:2,x2:9,y2:9}),E('line',{x1:9,y1:2,x2:2,y2:9}))))
+        ),
+        // body
+        o.loading
+          ? E('div',{style:{padding:'2px 0 6px'}},
+              E('div',{style:{height:'13px',borderRadius:'4px',width:'92%',marginBottom:'8px',background:'linear-gradient(100deg,'+(dark?'#3a352c':'#ece6da')+' 30%,'+(dark?'#46402f':'#f6f1e7')+' 50%,'+(dark?'#3a352c':'#ece6da')+' 70%)',backgroundSize:'200% 100%',animation:'sk-shimmer 1.4s linear infinite'}}),
+              E('div',{style:{height:'13px',borderRadius:'4px',width:'70%',marginBottom:'11px',background:'linear-gradient(100deg,'+(dark?'#3a352c':'#ece6da')+' 30%,'+(dark?'#46402f':'#f6f1e7')+' 50%,'+(dark?'#3a352c':'#ece6da')+' 70%)',backgroundSize:'200% 100%',animation:'sk-shimmer 1.4s linear infinite'}}),
+              E('div',{style:{display:'flex',gap:'4px',alignItems:'center'}},[0,1,2].map(i=>E('span',{key:i,style:{width:'6px',height:'6px',borderRadius:'50%',background:tone,animation:'sk-think 1.2s ease-in-out '+(i*0.18)+'s infinite'}})))
+            )
+          : E('div',{style:{fontSize:'15px',lineHeight:1.5,color:text,marginBottom:'12px'}}, o.body || [
+              'Exactly right — you used the ',
+              E('span',{key:'h',style:{background:dark?'rgba(255,214,10,.25)':'rgba(242,201,76,.45)',borderRadius:'3px',padding:'0 3px',boxDecorationBreak:'clone'}},'chain rule'),
+              ': the outer derivative ',
+              E('span',{key:'m',style:{fontFamily:"'Fraunces',serif",fontStyle:'italic',fontSize:'15px'}},'cos(x²)'),
+              ' times the inner ',
+              E('span',{key:'m2',style:{fontFamily:"'Fraunces',serif",fontStyle:'italic',fontSize:'15px'}},'2x'),
+              ' gives the result.'
+            ]),
+        // divider + chips
+        o.loading ? null : E('div',{style:{height:'1px',background:border,margin:'0 -15px 11px',[rtl?'marginRight':'marginLeft']:'-19px'}}),
+        o.loading ? null : E('div',{style:{display:'flex',gap:'7px',marginBottom:'11px',overflow:'hidden'}},
+          chips.map((c,i)=> E('div',{key:i,style:{fontSize:'13px',fontWeight:500,color:text,padding:'6px 11px',background:chipBg,border:'1px solid '+border,borderRadius:'999px',whiteSpace:'nowrap',flex:'0 0 auto'}}, c))
+        ),
+        // ask field
+        o.loading ? null : E('div',{style:{display:'flex',alignItems:'center',gap:'8px',height:'34px',padding:'0 6px 0 12px',background:chipBg,border:'1px solid '+border,borderRadius:'999px',marginBottom:'11px'}},
+          E('span',{style:{fontSize:'13.5px',color:text2,flex:1}}, rtl?'שאל שאלת המשך…':'Ask a follow-up…'),
+          E('div',{style:{width:'24px',height:'24px',borderRadius:'50%',background:o.dark?'#0A84FF':'#2E4057',display:'flex',alignItems:'center',justifyContent:'center',flex:'0 0 auto'}},
+            E('svg',{width:12,height:12,viewBox:'0 0 12 12'},E('path',{d:rtl?'M8 2L3 6l5 4':'M4 2l5 4-5 4',stroke:'#fff',strokeWidth:1.6,fill:'none',strokeLinecap:'round',strokeLinejoin:'round'})))
+        ),
+        // bottom actions
+        o.loading ? null : E('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between'}},
+          E('span',{style:{fontSize:'12.5px',fontWeight:600,color:o.dark?'#0A84FF':'#2E4057'}}, rtl?'הוסף לפתק':'Insert into note'),
+          E('span',{style:{fontSize:'12.5px',fontWeight:600,color:o.dark?'#0A84FF':'#2E4057'}}, rtl?'← פתח בפאנל':'Open in panel →')
+        )
+      )
+    );
+  }
+
+  // small toolbar tool button
+  tool(o) {
+    const t = this.fc();
+    const E = React.createElement;
+    const active = o.active;
+    return E('div',{ title:o.name, style:{ width:'40px',height:'40px',borderRadius:'999px',display:'flex',alignItems:'center',justifyContent:'center', background: active ? (o.dark?'#0A84FF':t.you) : 'transparent', flex:'0 0 auto' } },
+      this.toolGlyph(o.glyph, active ? '#fff' : (o.dark?'#C9C2B4':'#5f5747'))
+    );
+  }
+  toolGlyph(name, c) {
+    const E = React.createElement;
+    const s = { stroke:c, strokeWidth:1.6, fill:'none', strokeLinecap:'round', strokeLinejoin:'round' };
+    const g = {
+      undo: E('path',{...s,d:'M6 8H13a4 4 0 010 8H9 M6 8l3-3 M6 8l3 3'}),
+      redo: E('path',{...s,d:'M16 8H9a4 4 0 000 8h4 M16 8l-3-3 M16 8l-3 3'}),
+      pen: E('g',s,E('path',{d:'M14.5 4.5l3 3L8 17l-4 1 1-4z'}),E('line',{x1:12.5,y1:6.5,x2:15.5,y2:9.5})),
+      fountain: E('path',{...s,d:'M4 18l2.5-7 6-6 3 3-6 6z M11 7l3 3'}),
+      monoline: E('path',{...s,d:'M4.5 17.5l11-11 2 2-11 11-3 1z'}),
+      highlighter: E('g',s,E('path',{d:'M6 14l6-6 4 4-6 6H5l-1-2z'}),E('line',{x1:4,y1:19,x2:14,y2:19})),
+      pencil: E('path',{...s,d:'M4 18l1-4 8-8 3 3-8 8z M12 6l3 3'}),
+      eraser: E('g',s,E('path',{d:'M7 17h10 M5 13l5-5 6 6-3 3H8z'})),
+      lasso: E('g',s,E('path',{d:'M4 9c0-2.8 3.6-5 8-5s8 2.2 8 5-3.6 5-8 5c-1 0-2-.1-2.8-.3'}),E('path',{d:'M6 13.5c-.6.7-1 1.5-1 2.3 0 1.1 1 2 2.2 2'}),E('circle',{cx:7,cy:18,r:1.4,fill:c,stroke:'none'})),
+      hand: E('path',{...s,d:'M7 11V5.5a1.3 1.3 0 012.6 0V10 M9.6 9.5V4.8a1.3 1.3 0 012.6 0V10 M12.2 9.8V6a1.3 1.3 0 012.6 0v7c0 3-2 5-5 5-2 0-3-.7-4.2-2L4 14.5a1.3 1.3 0 011.9-1.8L7 14'}),
+      ruler: E('g',s,E('rect',{x:3,y:7,width:16,height:7,rx:1,transform:'rotate(-12 11 10.5)'}),E('path',{d:'M7 8.5v2 M10 7.7v2.4 M13 7v2.6'})),
+      text: E('g',s,E('path',{d:'M5 6.5V5h12v1.5 M11 5v12 M9 17h4'})),
+      aipen: E('g',{},E('path',{...s,d:'M13.5 5.5l3 3L8 17l-4 1 1-4z'}),E('path',{d:'M16.5 3l.7 1.8L19 5.5l-1.8.7L16.5 8l-.7-1.8L14 5.5l1.8-.7z',fill:c,stroke:'none'})),
+      aihist: E('g',s,E('circle',{cx:10,cy:10,r:7}),E('path',{d:'M10 6v4l3 2'}),E('path',{d:'M3 10a7 7 0 011-3.6',strokeDasharray:'1.5 2.5'})),
+      grip: E('g',{fill:c},E('circle',{cx:8,cy:6,r:1.3}),E('circle',{cx:12,cy:6,r:1.3}),E('circle',{cx:8,cy:10,r:1.3}),E('circle',{cx:12,cy:10,r:1.3}),E('circle',{cx:8,cy:14,r:1.3}),E('circle',{cx:12,cy:14,r:1.3})),
+      more: E('g',{fill:c},E('circle',{cx:5,cy:10,r:1.4}),E('circle',{cx:10,cy:10,r:1.4}),E('circle',{cx:15,cy:10,r:1.4})),
+      sparkle: E('path',{d:'M10 3l1.4 3.9L15.3 8l-3.9 1.1L10 13l-1.4-3.9L4.7 8l3.9-1.1z',...s}),
+      pages: E('g',s,E('rect',{x:5,y:4,width:8,height:11,rx:1}),E('path',{d:'M8 6.5h2 M8 9h2'}),E('path',{d:'M13 6h2v11h-7'})),
+      back: E('path',{...s,d:'M12 5l-5 5 5 5'}),
+      share: E('g',s,E('path',{d:'M10 13V4 M7 7l3-3 3 3'}),E('path',{d:'M6 11v5a1 1 0 001 1h6a1 1 0 001-1v-5'})),
+    };
+    return E('svg',{width:20,height:20,viewBox:'0 0 20 20',style:{display:'block'}}, g[name]);
+  }
+
+  // college-ruled canvas with handwritten chain-rule notes + AI annotations
+  foolscapEditor(dark) {
+    const E = React.createElement;
+    const t = this.fc();
+    const paper = dark ? '#1A1814' : '#FCFAF5';
+    const rule = dark ? '#312B22' : '#E4DAC4';
+    const ink = dark ? '#EDE7DB' : '#2A2620';
+    const chrome = dark ? '#232019' : '#F6F0E4';
+    const sep = dark ? '#34302704' : t.sep;
+    const sepC = dark ? '#34302a' : t.sep;
+    const text = dark ? '#F2ECE0' : '#2B2722';
+    const text2 = dark ? '#9A9082' : '#8A8073';
+    const toolbarBg = dark ? 'rgba(40,36,28,0.92)' : 'rgba(248,243,233,0.95)';
+
+    // ruled paper bg
+    const ruledBg = 'repeating-linear-gradient(to bottom, transparent 0, transparent 37px, '+rule+' 37px, '+rule+' 38px)';
+
+    const tools1 = ['undo','redo'];
+    const tools2 = ['pen','fountain','monoline','highlighter','pencil','eraser','lasso','hand'];
+    const tools3 = ['ruler','text','aipen','aihist'];
+
+    const toolbar = E('div',{style:{position:'absolute',top:'74px',left:'50%',transform:'translateX(-50%)',display:'flex',alignItems:'center',gap:'2px',padding:'6px 8px',background:toolbarBg,backdropFilter:'blur(20px)',WebkitBackdropFilter:'blur(20px)',borderRadius:'999px',border:'1px solid '+(dark?'rgba(120,110,92,.3)':'rgba(198,192,170,.7)'),boxShadow:dark?'0 10px 30px -8px rgba(0,0,0,.5)':'0 10px 30px -10px rgba(60,48,28,.3)',zIndex:5}},
+      E('div',{style:{display:'flex',alignItems:'center',padding:'0 2px'}}, this.toolGlyphBtn('grip',dark,true)),
+      tools1.map((g,i)=>E('div',{key:'a'+i},this.tool({glyph:g,dark:dark}))),
+      E('div',{style:{width:'1px',height:'24px',background:sepC,margin:'0 4px'}}),
+      tools2.map((g,i)=>E('div',{key:'b'+i},this.tool({glyph:g,active:g==='pen',dark:dark,name:g}))),
+      E('div',{style:{width:'1px',height:'24px',background:sepC,margin:'0 4px'}}),
+      tools3.map((g,i)=>E('div',{key:'c'+i},this.tool({glyph:g,dark:dark,active:g==='aipen'?false:false}))),
+      E('div',{style:{width:'1px',height:'24px',background:sepC,margin:'0 4px'}}),
+      this.tool({glyph:'more',dark:dark})
+    );
+
+    // inline options strip (colors + stroke sizes) attached under toolbar
+    const swatches = ['#2A2620','#2E4057','#C2683D','#6B8E4E','#9B5DAE','#B5762A','#B23A2E','#3E7CA8'];
+    const optionStrip = E('div',{style:{position:'absolute',top:'128px',left:'50%',transform:'translateX(-50%)',display:'flex',alignItems:'center',gap:'14px',padding:'9px 14px',background:toolbarBg,backdropFilter:'blur(20px)',WebkitBackdropFilter:'blur(20px)',borderRadius:'16px',border:'1px solid '+(dark?'rgba(120,110,92,.3)':'rgba(198,192,170,.7)'),boxShadow:dark?'0 10px 30px -10px rgba(0,0,0,.45)':'0 8px 24px -10px rgba(60,48,28,.25)',zIndex:5}},
+      E('div',{style:{display:'flex',gap:'8px'}}, swatches.map((c,i)=>E('div',{key:i,style:{width:'24px',height:'24px',borderRadius:'50%',background:c, boxShadow: i===1?'0 0 0 2px '+paper+', 0 0 0 4px '+(dark?'#0A84FF':t.you):'inset 0 0 0 1px rgba(0,0,0,.08)'}}))),
+      E('div',{style:{width:'1px',height:'22px',background:sepC}}),
+      E('div',{style:{display:'flex',alignItems:'center',gap:'9px'}}, [4,7,10,14].map((d,i)=>E('div',{key:i,style:{width:d+'px',height:d+'px',borderRadius:'50%',background:i===1?(dark?'#EDE7DB':'#2A2620'):'transparent',border:'1.5px solid '+(i===1?'transparent':text2)}}))),
+      E('div',{style:{width:'1px',height:'22px',background:sepC}}),
+      E('div',{style:{display:'flex',alignItems:'center',gap:'7px'}}, E('div',{style:{width:'34px',height:'19px',borderRadius:'999px',background:dark?'#0A84FF':t.you,position:'relative'}},E('div',{style:{position:'absolute',top:'2px',left:'17px',width:'15px',height:'15px',borderRadius:'50%',background:'#fff'}})), E('span',{style:{fontSize:'12px',color:text2}},'Pressure'))
+    );
+
+    // header bar
+    const header = E('div',{style:{position:'absolute',top:0,left:0,right:0,height:'58px',display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 22px',background:chrome,borderBottom:'1px solid '+sepC,zIndex:6}},
+      E('div',{style:{display:'flex',alignItems:'center',gap:'14px'}},
+        E('div',{style:{width:'34px',height:'34px',borderRadius:'9px',display:'flex',alignItems:'center',justifyContent:'center',background:dark?'#2c2820':'#EDE6D7'}}, this.toolGlyph('back',text2)),
+        E('div',{},
+          E('div',{style:{fontFamily:"'Fraunces',serif",fontWeight:600,fontSize:'18px',color:text,lineHeight:1.1}},'Chain Rule & Composite Fns'),
+          E('div',{style:{fontSize:'12px',color:text2,marginTop:'1px'}},'Calculus I · Edited just now')
+        )
+      ),
+      E('div',{style:{display:'flex',alignItems:'center',gap:'9px'}},
+        E('div',{style:{width:'36px',height:'36px',borderRadius:'10px',display:'flex',alignItems:'center',justifyContent:'center',background:dark?'#2c2820':'#EDE6D7'}}, this.toolGlyph('share',text2)),
+        E('div',{style:{width:'36px',height:'36px',borderRadius:'10px',display:'flex',alignItems:'center',justifyContent:'center',background:dark?'#2c2820':'#EDE6D7'}}, this.toolGlyph('pages',text2)),
+        E('div',{style:{display:'flex',alignItems:'center',gap:'8px',height:'36px',padding:'0 14px 0 11px',borderRadius:'999px',background:dark?'#0A84FF':t.you}}, this.toolGlyph('sparkle','#F2C94C'), E('span',{style:{fontSize:'14px',fontWeight:600,color:'#fff'}},'Tutor'))
+      )
+    );
+
+    // page navigator strip (right)
+    const pageStrip = E('div',{style:{position:'absolute',top:'58px',right:0,bottom:0,width:'76px',background:chrome,borderLeft:'1px solid '+sepC,display:'flex',flexDirection:'column',alignItems:'center',gap:'10px',padding:'16px 0',zIndex:4}},
+      [1,2,3,4,5].map(n=>E('div',{key:n,style:{width:'48px',height:'62px',borderRadius:'6px',background:paper,border: n===3?'2px solid '+(dark?'#0A84FF':t.you):'1px solid '+sepC,position:'relative',boxShadow:'0 1px 2px rgba(0,0,0,.08)'}},
+        E('div',{style:{position:'absolute',inset:'7px',background:'repeating-linear-gradient(to bottom,transparent 0,transparent 7px,'+rule+' 7px,'+rule+' 8px)'}}),
+        E('div',{style:{position:'absolute',bottom:'-15px',left:0,right:0,textAlign:'center',fontSize:'10px',color:text2}}, n)
+      )),
+      E('div',{style:{width:'48px',height:'40px',borderRadius:'6px',border:'1.5px dashed '+text2,display:'flex',alignItems:'center',justifyContent:'center',marginTop:'6px'}}, this.toolGlyph('grip',text2) && E('svg',{width:18,height:18,viewBox:'0 0 20 20'},E('g',{stroke:text2,strokeWidth:1.6,strokeLinecap:'round'},E('line',{x1:10,y1:5,x2:10,y2:15}),E('line',{x1:5,y1:10,x2:15,y2:10}))))
+    );
+
+    // ---- canvas with handwriting + annotations ----
+    const canvas = E('div',{style:{position:'absolute',top:'58px',left:0,right:'76px',bottom:0,background:paper,backgroundImage:ruledBg,backgroundPosition:'0 24px',overflow:'hidden'}},
+      // red margin line
+      E('div',{style:{position:'absolute',top:0,bottom:0,left:'88px',width:'1px',background:dark?'rgba(255,69,58,.25)':'rgba(255,59,48,.22)'}}),
+      // handwriting block
+      E('div',{style:{position:'absolute',left:'128px',top:'176px',display:'flex',flexDirection:'column',gap:'14px'}},
+        this.hw('The Chain Rule', {size:40,weight:700,color:ink}),
+        this.hw('If  y = f(g(x)),  then', {size:31,color:ink}),
+        this.hw('dy/dx = f ′(g(x)) · g ′(x)', {size:33,color:dark?'#7FB0E8':'#2E4057'}),
+      ),
+      E('div',{style:{position:'absolute',left:'128px',top:'430px',display:'flex',flexDirection:'column',gap:'16px'}},
+        E('div',{style:{display:'flex',alignItems:'flex-end',gap:'10px'}}, this.hw('Example:   d/dx [ sin(x²) ]', {size:32,color:ink})),
+        this.hw('let  g(x) = x² ,   f(u) = sin(u)', {size:29,color:dark?'#cfc7b8':'#4a4336'}),
+        E('div',{style:{position:'relative'}},
+          this.hw('= cos(x²) · 2x', {size:34,color:ink}),
+        ),
+        this.hw('= 2x · cos(x²)  ✓', {size:34,color:dark?'#8FD18F':'#5d7e44'}),
+      ),
+      // yellow highlight behind "chain rule" mention (a note in margin)
+      E('div',{style:{position:'absolute',left:'128px',top:'372px',padding:'2px 6px',borderRadius:'4px',background:dark?'rgba(255,214,10,.22)':'rgba(255,214,10,.38)'}}, this.hw('← chain rule here', {size:26,color:dark?'#E8D9A0':'#8a6d1e'})),
+      // orange hand-drawn circle around sin(x²)
+      E('svg',{width:230,height:96,viewBox:'0 0 230 96',style:{position:'absolute',left:'300px',top:'412px',pointerEvents:'none'}},
+        E('path',{d:'M150 16 C95 6, 30 14, 18 44 C8 70, 70 86, 130 84 C190 82, 222 64, 214 40 C208 22, 170 12, 120 14',stroke:'#FF9F0A',strokeWidth:3,fill:'none',strokeLinecap:'round',opacity:.92})
+      ),
+      // green arrow from bubble toward circled region
+      E('svg',{width:150,height:120,viewBox:'0 0 150 120',style:{position:'absolute',left:'470px',top:'330px',pointerEvents:'none',zIndex:7}},
+        E('path',{d:'M140 14 C100 30, 60 50, 30 92',stroke:'#30D158',strokeWidth:3,fill:'none',strokeLinecap:'round'}),
+        E('path',{d:'M30 92 l16 -6 M30 92 l4 -16',stroke:'#30D158',strokeWidth:3,fill:'none',strokeLinecap:'round',strokeLinejoin:'round'})
+      ),
+      // the AI bubble anchored upper-right with tail
+      E('div',{style:{position:'absolute',left:'600px',top:'250px',zIndex:8}},
+        this.bubble({dark:dark,tone:'correct',w:300}),
+        E('svg',{width:30,height:22,viewBox:'0 0 30 22',style:{position:'absolute',left:'-12px',bottom:'40px'}}, E('path',{d:'M30 2 L4 11 L30 20 Z',fill:dark?'rgba(44,40,33,0.86)':'rgba(252,250,245,0.9)',stroke:dark?'rgba(120,110,92,0.4)':'rgba(198,192,170,0.7)',strokeWidth:1}))
+      ),
+      // page indicator bottom-center
+      E('div',{style:{position:'absolute',bottom:'18px',left:'50%',transform:'translateX(-50%)',display:'flex',alignItems:'center',gap:'7px',padding:'6px 14px',borderRadius:'999px',background:toolbarBg,backdropFilter:'blur(12px)',WebkitBackdropFilter:'blur(12px)',border:'1px solid '+(dark?'rgba(120,110,92,.3)':'rgba(198,192,170,.6)'),fontSize:'13px',fontWeight:600,color:text,fontVariantNumeric:'tabular-nums'}},'3 / 7')
+    );
+
+    return E('div',{style:{width:'1366px',height:'1024px',position:'relative',background:chrome,fontFamily:'-apple-system, system-ui, sans-serif',overflow:'hidden'}},
+      canvas, pageStrip, header, toolbar, optionStrip
+    );
+  }
+  toolGlyphBtn(name,dark,grip){ return React.createElement('div',{style:{width:'24px',height:'40px',display:'flex',alignItems:'center',justifyContent:'center',cursor:'grab'}}, this.toolGlyph(name, dark?'#7c7464':'#a89e8b')); }
+
+  // reusable token reference card
+  tokenSheet(cfg) {
+    const E = React.createElement;
+    const ui = cfg.ui; // {bg, card, text, text2, sep, accent}
+    const swRow = (r) => E('div',{key:r.name, style:{display:'flex',alignItems:'center',gap:'12px',padding:'7px 0'}},
+      E('div',{style:{display:'flex',gap:'5px',flex:'0 0 auto'}},
+        E('div',{style:{width:'26px',height:'26px',borderRadius:'7px',background:r.light,border:'1px solid '+ui.sep}}),
+        E('div',{style:{width:'26px',height:'26px',borderRadius:'7px',background:r.dark,border:'1px solid '+ui.sep}})
+      ),
+      E('div',{style:{flex:1,minWidth:0}},
+        E('div',{style:{fontSize:'13px',fontWeight:600,color:ui.text,fontFamily:'ui-monospace,SFMono-Regular,monospace'}}, r.name),
+        E('div',{style:{fontSize:'11px',color:ui.text2,fontFamily:'ui-monospace,monospace',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}, r.light.toUpperCase()+'  ·  '+r.dark.toUpperCase())
+      )
+    );
+    return E('div',{style:{background:ui.card,border:'1px solid '+ui.sep,borderRadius:'16px',padding:'18px 20px',fontFamily:'-apple-system,system-ui,sans-serif'}},
+      E('div',{style:{display:'flex',gap:'5px',marginBottom:'4px',paddingLeft:'0'}},
+        E('span',{style:{fontSize:'10px',fontWeight:700,letterSpacing:'.08em',color:ui.text2,width:'59px',textTransform:'uppercase'}},'L / D'),
+        E('span',{style:{fontSize:'10px',fontWeight:700,letterSpacing:'.08em',color:ui.text2,textTransform:'uppercase'}},'Token')
+      ),
+      E('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',columnGap:'24px',borderTop:'1px solid '+ui.sep,paddingTop:'4px'}},
+        cfg.colors.map(swRow)
+      ),
+      // type + spacing
+      E('div',{style:{borderTop:'1px solid '+ui.sep,marginTop:'10px',paddingTop:'14px',display:'flex',gap:'24px',flexWrap:'wrap'}},
+        E('div',{style:{flex:'1 1 180px'}},
+          E('div',{style:{fontSize:'10px',fontWeight:700,letterSpacing:'.08em',color:ui.text2,textTransform:'uppercase',marginBottom:'8px'}},'Type'),
+          cfg.type.map((ty,i)=>E('div',{key:i,style:{display:'flex',alignItems:'baseline',justifyContent:'space-between',gap:'10px',marginBottom:'7px'}},
+            E('span',{style:{fontFamily:ty.font,fontWeight:ty.w,fontSize:Math.min(ty.size,26)+'px',color:ui.text,fontStyle:ty.ital?'italic':'normal'}}, ty.label),
+            E('span',{style:{fontSize:'11px',color:ui.text2,fontFamily:'ui-monospace,monospace',whiteSpace:'nowrap'}}, ty.size+'/'+ty.w)
+          ))
+        ),
+        E('div',{style:{flex:'0 0 auto'}},
+          E('div',{style:{fontSize:'10px',fontWeight:700,letterSpacing:'.08em',color:ui.text2,textTransform:'uppercase',marginBottom:'10px'}},'Radius · Space'),
+          E('div',{style:{display:'flex',alignItems:'flex-end',gap:'8px',marginBottom:'12px'}}, [8,12,16,20].map(r=>E('div',{key:r,style:{width:'30px',height:'30px',borderTopLeftRadius:r+'px',background:ui.accent,opacity:.18,border:'1.5px solid '+ui.accent}}))),
+          E('div',{style:{display:'flex',alignItems:'center',gap:'6px'}}, [4,8,12,16,24,32].map(s=>E('div',{key:s,style:{width:'4px',height:(s)+'px',background:ui.accent,borderRadius:'2px',opacity:.8}})))
+        )
+      )
+    );
+  }
+
+  // ===================== THEME REGISTRY (Atelier + Marginalia) =====================
+  themes() {
+    return {
+      foolscap: {
+        key:'foolscap', displayFont:"'Fraunces',serif", bodyFont:"-apple-system,system-ui,sans-serif",
+        serifTitles:true, glass:false, filter:'pills', avatar:'circle', titleSize:30, titleWeight:600, rowH:40, cardR:14, toolR:999, density:'airy',
+        L:{ pagePaper:'#FCFAF5', chrome:'#F6F0E4', sidebar:'#EFE7D7', desk:'#E7DECB', you:'#2E4057', ai:'#B5762A', text:'#2B2722', text2:'#8A8073', sep:'#DED3BE', sepSoft:'#E6DCC9', sel:'#E4D9C2', cardEdge:'#E8DFCD', tint1:'#FCFAF5', tint2:'#FBF8F1', tint3:'#FAF6EE', highlight:'#F2C94C', glassBg:'rgba(248,243,233,0.96)' },
+        D:{ pagePaper:'#1A1814', chrome:'#232019', sidebar:'#1E1B15', desk:'#15130F', you:'#7FB0E8', ai:'#D9A24E', text:'#F2ECE0', text2:'#9A9082', sep:'#34302A', sepSoft:'#2A2620', sel:'#2C2820', cardEdge:'#2A2620', tint1:'#1A1814', tint2:'#1C1A14', tint3:'#1A1814', highlight:'#FFD60A', glassBg:'rgba(40,36,28,0.96)' }
+      },
+      atelier: {
+        key:'atelier', displayFont:"-apple-system,'SF Pro Display',system-ui,sans-serif", bodyFont:"-apple-system,system-ui,sans-serif",
+        serifTitles:false, glass:true, filter:'segmented', avatar:'squircle', titleSize:26, titleWeight:700, rowH:36, cardR:14, toolR:14, density:'dense',
+        L:{ pagePaper:'#FCFCFD', chrome:'#F1F3F7', sidebar:'#EDEFF4', desk:'#E3E6EC', you:'#2D6BFF', ai:'#7A5CFF', text:'#0B0C0F', text2:'#6B7180', sep:'#DDE0E7', sepSoft:'#E7EAF0', sel:'#E2E9FB', cardEdge:'#E5E8EF', tint1:'#EAF0FE', tint2:'#F0EBFE', tint3:'#E7F6F0', highlight:'#FFE45C', glassBg:'rgba(248,250,253,0.72)' },
+        D:{ pagePaper:'#16171A', chrome:'#1E2024', sidebar:'#15171B', desk:'#0C0D10', you:'#4D8BFF', ai:'#9B82FF', text:'#F4F6F9', text2:'#8A909C', sep:'#2A2D33', sepSoft:'#26282E', sel:'#1E2A44', cardEdge:'#2A2D33', tint1:'#1A2236', tint2:'#221E36', tint3:'#15241D', highlight:'#FFE45C', glassBg:'rgba(32,34,40,0.72)' }
+      },
+      marginalia: {
+        key:'marginalia', displayFont:"'Fraunces',serif", bodyFont:"-apple-system,system-ui,sans-serif",
+        serifTitles:true, glass:false, filter:'underline', avatar:'circle', titleSize:42, titleWeight:600, rowH:42, cardR:6, toolR:12, density:'airy',
+        L:{ pagePaper:'#FFFDF8', chrome:'#FBF6EC', sidebar:'#F5EEE0', desk:'#EDE4D2', you:'#1C1A17', ai:'#F4502E', text:'#1C1A17', text2:'#8C8478', sep:'#E5DCC9', sepSoft:'#EEE7D8', sel:'#FBEAE3', cardEdge:'#EAE1CF', tint1:'#FCF6EE', tint2:'#FBF1EC', tint3:'#F4F0E6', highlight:'#FFD86B', glassBg:'rgba(251,246,236,0.9)' },
+        D:{ pagePaper:'#121110', chrome:'#1A1815', sidebar:'#17150F', desk:'#0E0D0B', you:'#F0EBE0', ai:'#FF6A4D', text:'#F4EFE6', text2:'#9A9184', sep:'#2C2822', sepSoft:'#241F1A', sel:'#33211B', cardEdge:'#2C2822', tint1:'#1C1A16', tint2:'#221813', tint3:'#1A1813', highlight:'#FFD86B', glassBg:'rgba(26,24,21,0.9)' }
+      }
+    };
+  }
+  avatarBox(T, mode, c, size, glyphColor) {
+    const E = React.createElement; const z = size||22;
+    const r = T.avatar==='squircle' ? Math.round(z*0.32) : '50%';
+    return E('div',{style:{width:z+'px',height:z+'px',borderRadius:(r==='50%'?'50%':r+'px'),background:c,display:'flex',alignItems:'center',justifyContent:'center',flex:'0 0 auto'}}, this.ic('sparkle', glyphColor||'#fff', Math.round(z*0.62)));
+  }
+
+  // ---- generic AI bubble (Atelier / Marginalia) ----
+  genBubble(o) {
+    const E = React.createElement; const T = o.T; const dark = o.dark; const c = dark?T.D:T.L;
+    const tones = { teaching:c.you, brand:c.ai, correct:'#1FAA6B', correction:'#FF9F0A', error:'#FF453A' };
+    const tone = tones[o.tone||'brand'];
+    const bg = T.glass ? (dark?'rgba(30,32,38,0.78)':'rgba(252,253,255,0.74)') : c.chrome;
+    const border = dark?T.D.sep:T.L.sep;
+    const text = c.text, text2 = c.text2;
+    const chipBg = dark ? (T.glass?'rgba(20,22,27,0.6)':c.desk) : (T.glass?'rgba(238,241,247,0.8)':c.sidebar);
+    const w = o.w||300; const rtl=o.rtl;
+    const chips = o.chips || ['Why 2x?','Quiz me','Show steps'];
+    const radius = T.key==='marginalia'?14:16;
+    return E('div',{dir:rtl?'rtl':'ltr', style:{ width:w+'px', background:bg, backdropFilter:T.glass?'blur(26px) saturate(1.6)':'none', WebkitBackdropFilter:T.glass?'blur(26px) saturate(1.6)':'none', borderRadius:radius+'px', border:'1px solid '+border, overflow:'hidden', position:'relative', boxShadow: dark?'0 18px 44px -14px rgba(0,0,0,.6)':'0 18px 44px -16px rgba(30,30,50,.28)', fontFamily:T.bodyFont } },
+      E('div',{style:{position:'absolute',top:0,bottom:0,[rtl?'right':'left']:0,width: T.key==='marginalia'?'5px':'3px',background:tone}}),
+      E('div',{style:{padding:'13px 15px 14px',[rtl?'paddingRight':'paddingLeft']: T.key==='marginalia'?'20px':'18px'}},
+        E('div',{style:{display:'flex',alignItems:'center',gap:'8px',marginBottom:'9px'}},
+          this.avatarBox(T, dark?'D':'L', c.ai, 22, '#fff'),
+          E('span',{style:{fontSize:'12.5px',fontWeight:600,color:text,fontFamily: T.serifTitles?T.displayFont:T.bodyFont,flex:1}},'Inkling Tutor'),
+          T.key==='atelier'? E('span',{style:{fontSize:'10px',fontWeight:600,color:text2,fontFamily:'ui-monospace,monospace',padding:'2px 6px',borderRadius:'5px',background:chipBg,border:'1px solid '+border}},'GPT-4o') : null,
+          E('div',{style:{width:'18px',height:'18px',display:'flex',alignItems:'center',justifyContent:'center'}}, E('svg',{width:11,height:11,viewBox:'0 0 11 11'},E('g',{stroke:text2,strokeWidth:1.5,strokeLinecap:'round'},E('line',{x1:2,y1:2,x2:9,y2:9}),E('line',{x1:9,y1:2,x2:2,y2:9}))))
+        ),
+        o.loading
+          ? E('div',{style:{padding:'2px 0 6px'}},
+              E('div',{style:{height:'13px',borderRadius:'4px',width:'92%',marginBottom:'8px',background:'linear-gradient(100deg,'+(dark?'#2c2f36':'#e9edf3')+' 30%,'+(dark?'#363a43':'#f6f8fb')+' 50%,'+(dark?'#2c2f36':'#e9edf3')+' 70%)',backgroundSize:'200% 100%',animation:'sk-shimmer 1.4s linear infinite'}}),
+              E('div',{style:{height:'13px',borderRadius:'4px',width:'68%',marginBottom:'11px',background:'linear-gradient(100deg,'+(dark?'#2c2f36':'#e9edf3')+' 30%,'+(dark?'#363a43':'#f6f8fb')+' 50%,'+(dark?'#2c2f36':'#e9edf3')+' 70%)',backgroundSize:'200% 100%',animation:'sk-shimmer 1.4s linear infinite'}}),
+              E('div',{style:{display:'flex',gap:'4px',alignItems:'center'}},[0,1,2].map(i=>E('span',{key:i,style:{width:'6px',height:'6px',borderRadius:'50%',background:tone,animation:'sk-think 1.2s ease-in-out '+(i*0.18)+'s infinite'}})))
+            )
+          : E('div',{style:{fontSize:'15px',lineHeight:1.5,color:text,marginBottom:'12px'}}, o.body || [
+              'Exactly — that\u2019s the ',
+              E('span',{key:'h',style:{background: dark?'rgba(255,228,92,.22)':'rgba(255,228,92,.5)',borderRadius:'3px',padding:'0 3px'}},'chain rule'),
+              ': outer ', E('span',{key:'m',style:{fontStyle:'italic',fontFamily:'ui-serif,Georgia,serif'}},'cos(x\u00B2)'),
+              ' \u00D7 inner ', E('span',{key:'m2',style:{fontStyle:'italic',fontFamily:'ui-serif,Georgia,serif'}},'2x'), '.'
+            ]),
+        o.loading?null:E('div',{style:{height:'1px',background:border,margin:'0 -15px 11px',[rtl?'marginRight':'marginLeft']: T.key==='marginalia'?'-20px':'-18px'}}),
+        o.loading?null:E('div',{style:{display:'flex',gap:'7px',marginBottom:'11px',overflow:'hidden'}}, chips.map((ch,i)=>E('div',{key:i,style:{fontSize:'13px',fontWeight:500,color:text,padding:'6px 11px',background:chipBg,border:'1px solid '+border,borderRadius: T.key==='marginalia'?'7px':'999px',whiteSpace:'nowrap',flex:'0 0 auto'}}, ch))),
+        o.loading?null:E('div',{style:{display:'flex',alignItems:'center',gap:'8px',height:'34px',padding:'0 6px 0 12px',background:chipBg,border:'1px solid '+border,borderRadius: T.key==='marginalia'?'9px':'999px',marginBottom:'11px'}},
+          E('span',{style:{fontSize:'13.5px',color:text2,flex:1}}, rtl?'\u05E9\u05D0\u05DC \u05E9\u05D0\u05DC\u05EA \u05D4\u05DE\u05E9\u05DA\u2026':'Ask a follow-up\u2026'),
+          E('div',{style:{width:'24px',height:'24px',borderRadius: T.key==='marginalia'?'7px':'50%',background:c.ai,display:'flex',alignItems:'center',justifyContent:'center',flex:'0 0 auto'}}, E('svg',{width:12,height:12,viewBox:'0 0 12 12'},E('path',{d:rtl?'M8 2L3 6l5 4':'M4 2l5 4-5 4',stroke:'#fff',strokeWidth:1.6,fill:'none',strokeLinecap:'round',strokeLinejoin:'round'})))
+        ),
+        o.loading?null:E('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between'}},
+          E('span',{style:{fontSize:'12.5px',fontWeight:600,color:c.ai}}, rtl?'\u05D4\u05D5\u05E1\u05E3 \u05DC\u05E4\u05EA\u05E7':'Insert into note'),
+          E('span',{style:{fontSize:'12.5px',fontWeight:600,color:c.you}}, rtl?'\u2190 \u05E4\u05EA\u05D7 \u05D1\u05E4\u05D0\u05E0\u05DC':'Open in panel \u2192')
+        )
+      )
+    );
+  }
+
+  // generic sidebar row
+  genRow(o) {
+    const E=React.createElement; const T=o.T; const c=o.c;
+    const bg = o.state==='selected'? c.sel : (o.state==='pressed'? c.sepSoft : 'transparent');
+    const accent = T.key==='marginalia'? c.ai : c.you;
+    return E('div',{style:{display:'flex',alignItems:'center',gap:'11px',height:T.rowH+'px',padding:'0 11px',borderRadius: T.key==='marginalia'?'8px':'9px',background:bg,position:'relative'}},
+      o.state==='selected'? E('div',{style:{position:'absolute',[o.rtl?'right':'left']:'-9px',top:'8px',bottom:'8px',width: T.key==='marginalia'?'4px':'3px',borderRadius:'2px',background:accent}}):null,
+      o.dot? E('span',{style:{width:'11px',height:'11px',borderRadius: T.key==='atelier'?'4px':'3px',background:o.dot,flex:'0 0 auto'}}) : this.ic(o.icon, o.state==='selected'?accent:c.text2, 19),
+      E('span',{style:{fontSize:'15px',fontWeight:o.state==='selected'?600:500,color:o.state==='selected'?c.text:c.text,flex:1}},o.label),
+      o.count? E('span',{style:{fontSize:'12.5px',color:c.text2,fontVariantNumeric:'tabular-nums'}},o.count):null
+    );
+  }
+
+  // generic note card
+  genCard(o) {
+    const E=React.createElement; const T=o.T; const c=o.c;
+    if(o.loading) return E('div',{style:{background:c.pagePaper,border:'1px solid '+c.cardEdge,borderRadius:T.cardR+'px',overflow:'hidden'}},
+      E('div',{style:{height:'188px',background:'linear-gradient(100deg,'+c.sepSoft+' 30%,'+c.chrome+' 50%,'+c.sepSoft+' 70%)',backgroundSize:'200% 100%',animation:'sk-shimmer 1.4s linear infinite'}}),
+      E('div',{style:{padding:'12px 14px'}},E('div',{style:{height:'13px',width:'62%',borderRadius:'4px',background:c.sepSoft,marginBottom:'9px'}}),E('div',{style:{height:'10px',width:'38%',borderRadius:'4px',background:c.sepSoft}})));
+    const lines=[]; const ws=[72,52,84,40,76,58]; for(let i=0;i<6;i++) lines.push(E('div',{key:i,style:{height:'2px',width:ws[i]+'%',background:c.text2,opacity:.4,borderRadius:'2px'}}));
+    return E('div',{style:{background:c.pagePaper,border:'1px solid '+c.cardEdge,borderRadius:T.cardR+'px',overflow:'hidden',boxShadow: T.key==='atelier'?'0 1px 3px rgba(20,24,40,.06)':'0 1px 2px rgba(40,34,24,.05)'}},
+      E('div',{style:{height:'188px',background:o.cover||c.tint1,borderBottom:'1px solid '+c.sepSoft,padding:'16px 18px 0',position:'relative'}},
+        o.hw? E('div',{style:{fontFamily:"'Caveat',cursive",fontSize:'20px',fontWeight:700,color: o.coverDark?'#e9e4d8':'#46403a',marginBottom:'11px'}},o.hw):null,
+        E('div',{style:{display:'flex',flexDirection:'column',gap:'8px'}},lines)
+      ),
+      E('div',{style:{padding:'11px 14px 13px'}},
+        E('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:'8px'}},
+          E('div',{style:{fontSize: T.serifTitles?'16px':'15px',fontWeight:600,fontFamily: T.serifTitles?T.displayFont:T.bodyFont,color:c.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}},o.name),
+          E('span',{style:{width:'9px',height:'9px',borderRadius:'50%',background:o.tag,flex:'0 0 auto'}})
+        ),
+        E('div',{style:{fontSize:'12px',color:c.text2,marginTop:'3px'}},o.date)
+      )
+    );
+  }
+
+  // ---- generic LIBRARY (light, with optional RTL/Hebrew) ----
+  genLibrary(T, rtl) {
+    const E=React.createElement; const c=T.L;
+    const X = rtl
+      ? {search:'\u05D7\u05D9\u05E4\u05D5\u05E9 \u05E4\u05EA\u05E7\u05D9\u05DD', all:'\u05DB\u05DC \u05D4\u05E4\u05EA\u05E7\u05D9\u05DD', recents:'\u05D0\u05D7\u05E8\u05D5\u05E0\u05D9\u05DD', favs:'\u05DE\u05D5\u05E2\u05D3\u05E4\u05D9\u05DD', subjects:'\u05DE\u05E7\u05E6\u05D5\u05E2\u05D5\u05EA', calc:'\u05D7\u05E9\u05D1\u05D5\u05DF \u05D0\u05F3', lin:'\u05D0\u05DC\u05D2\u05D1\u05E8\u05D4 \u05DC\u05D9\u05E0\u05D0\u05E8\u05D9\u05EA', chem:'\u05DB\u05D9\u05DE\u05D9\u05D4 \u05D0\u05D5\u05E8\u05D2\u05E0\u05D9\u05EA', hist:'\u05D4\u05D9\u05E1\u05D8\u05D5\u05E8\u05D9\u05D4', trash:'\u05E0\u05DE\u05D7\u05E7\u05D5 \u05DC\u05D0\u05D7\u05E8\u05D5\u05E0\u05D4', settings:'\u05D4\u05D2\u05D3\u05E8\u05D5\u05EA', title:'\u05DB\u05DC \u05D4\u05E4\u05EA\u05E7\u05D9\u05DD', ask:'\u05E9\u05D0\u05DC AI', sorted:'\u05DE\u05DE\u05D5\u05D9\u05DF \u05DC\u05E4\u05D9 \u05EA\u05D0\u05E8\u05D9\u05DA', tabs:['\u05D4\u05DB\u05D5\u05DC','\u05D0\u05D7\u05E8\u05D5\u05E0\u05D9\u05DD','\u05DE\u05E9\u05D5\u05EA\u05E3','\u05DE\u05D9\u05D5\u05D1\u05D0'], cA:'\u05DB\u05DC\u05DC \u05D4\u05E9\u05E8\u05E9\u05E8\u05EA', cB:'\u05E2\u05E8\u05DB\u05D9\u05DD \u05E2\u05E6\u05DE\u05D9\u05D9\u05DD', cD:'\u05DE\u05E0\u05D2\u05E0\u05D5\u05E0\u05D9 SN2', cE:'\u05E1\u05DB\u05D5\u05DE\u05D9 \u05E8\u05D9\u05DE\u05D0\u05DF', cF:'\u05D4\u05E1\u05DB\u05DD \u05D5\u05E1\u05D8\u05E4\u05DC\u05D9\u05D4', today:'\u05D4\u05D9\u05D5\u05DD · 14:14', yest:'\u05D0\u05EA\u05DE\u05D5\u05DC'}
+      : {search:'Search notes', all:'All notes', recents:'Recents', favs:'Favorites', subjects:'Subjects', calc:'Calculus I', lin:'Linear Algebra', chem:'Organic Chem', hist:'World History', trash:'Recently Deleted', settings:'Settings', title:'All notes', ask:'Ask AI', sorted:'Sorted by date modified', tabs:['All','Recents','Shared','Imported'], cA:'Chain Rule & Composite Fns', cB:'Eigenvalues — Lecture 9', cD:'SN2 Mechanisms', cE:'Riemann Sums', cF:'Treaty of Westphalia', today:'Today · 2:14 PM', yest:'Yesterday'};
+    const bSide = rtl ? {borderLeft:'1px solid '+c.sep} : {borderRight:'1px solid '+c.sep};
+    const sidebar = E('div',{style:{width:'260px',flex:'0 0 260px',background:c.sidebar,...bSide,padding:'22px 16px 16px',display:'flex',flexDirection:'column'}},
+      E('div',{style:{display:'flex',alignItems:'center',gap:'10px',padding:'0 6px',marginBottom:'18px'}},
+        E('div',{style:{width:'26px',height:'26px',borderRadius: T.avatar==='squircle'?'8px':'50%',background:c.you,display:'flex',alignItems:'center',justifyContent:'center',position:'relative'}}, this.ic('sparkle','#fff',15), E('span',{style:{position:'absolute',[rtl?'left':'right']:'-3px',bottom:'-3px',width:'10px',height:'10px',borderRadius:'50%',background:c.ai,border:'2px solid '+c.sidebar}})),
+        E('span',{style:{fontFamily:T.displayFont,fontWeight:T.serifTitles?600:700,fontSize:'20px',color:c.text,letterSpacing: T.serifTitles?'0':'-.3px'}},'Inkling')
+      ),
+      E('div',{style:{display:'flex',alignItems:'center',gap:'9px',height:'38px',padding:'0 12px',background:T.key==='atelier'?'#FFFFFF':'#FFFDF8',border:'1px solid '+c.sep,borderRadius: T.key==='marginalia'?'9px':'10px',marginBottom:'18px'}}, this.ic('search',c.text2,17), E('span',{style:{fontSize:'14.5px',color:c.text2}},X.search), E('span',{style:{marginInlineStart:'auto',fontSize:'11px',color:c.text2,fontFamily:'ui-monospace,monospace',padding:'1px 5px',border:'1px solid '+c.sep,borderRadius:'5px'}},'\u2318K')),
+      E('div',{style:{display:'flex',flexDirection:'column',gap:'2px'}},
+        this.genRow({T,c,rtl,icon:'all',label:X.all,count:'48',state:'selected'}),
+        this.genRow({T,c,rtl,icon:'clock',label:X.recents,count:'12'}),
+        this.genRow({T,c,rtl,icon:'star',label:X.favs,count:'7'})
+      ),
+      E('div',{style:{height:'1px',background:c.sepSoft,margin:'10px 8px'}}),
+      E('div',{style:{fontSize:'11.5px',fontWeight:700,letterSpacing:'.1em',textTransform:'uppercase',color:c.text2,padding:'2px 8px 8px'}},X.subjects),
+      E('div',{style:{display:'flex',flexDirection:'column',gap:'2px'}},
+        this.genRow({T,c,rtl,dot:'#FF9F0A',label:X.calc,count:'14'}),
+        this.genRow({T,c,rtl,dot:c.you,label:X.lin,count:'9',state:'pressed'}),
+        this.genRow({T,c,rtl,dot:'#30D158',label:X.chem,count:'11'}),
+        this.genRow({T,c,rtl,dot:'#BF5AF2',label:X.hist,count:'8'})
+      ),
+      E('div',{style:{height:'1px',background:c.sepSoft,margin:'10px 8px'}}),
+      this.genRow({T,c,rtl,icon:'trash',label:X.trash}),
+      E('div',{style:{flex:1}}),
+      this.genRow({T,c,rtl,icon:'gear',label:X.settings})
+    );
+
+    let filter;
+    if(T.filter==='segmented') filter = E('div',{style:{display:'inline-flex',padding:'3px',background:c.desk,borderRadius:'10px',border:'1px solid '+c.sep}}, X.tabs.map((s,i)=>E('div',{key:i,style:{fontSize:'13.5px',fontWeight:i===0?600:500,color:i===0?c.text:c.text2,padding:'6px 14px',borderRadius:'8px',background:i===0?c.pagePaper:'transparent',boxShadow:i===0?'0 1px 2px rgba(20,24,40,.12)':'none'}},s)));
+    else if(T.filter==='underline') filter = E('div',{style:{display:'flex',gap:'24px',borderBottom:'1px solid '+c.sep}}, X.tabs.map((s,i)=>E('div',{key:i,style:{fontSize:'15px',fontWeight:i===0?600:500,color:i===0?c.text:c.text2,paddingBottom:'10px',borderBottom:i===0?'2px solid '+c.ai:'2px solid transparent',marginBottom:'-1px'}},s)));
+    else filter = E('div',{style:{display:'flex',gap:'7px'}}, X.tabs.map((s,i)=>E('div',{key:i,style:{fontSize:'14px',fontWeight:i===0?600:500,color:i===0?'#fff':c.text2,padding:'7px 15px',borderRadius:'999px',background:i===0?c.text:c.desk,border:i===0?'none':'1px solid '+c.sepSoft}},s)));
+
+    const covers=[c.tint1,c.tint2,c.tint3,c.tint1,c.tint2,c.tint3];
+    const dk = T.key==='foolscap';
+    const content = E('div',{style:{flex:1,background:c.chrome,display:'flex',flexDirection:'column',overflow:'hidden'}},
+      E('div',{style:{display:'flex',alignItems:T.serifTitles?'flex-end':'center',justifyContent:'space-between',padding: T.serifTitles?'30px 34px 0':'26px 34px 0'}},
+        E('h1',{style:{fontFamily:T.displayFont,fontWeight:T.titleWeight,fontSize:T.titleSize+'px',margin:0,color:c.text,letterSpacing:T.serifTitles?'-.5px':'-.4px',lineHeight:1}},X.title),
+        E('div',{style:{display:'flex',alignItems:'center',gap:'10px'}},
+          E('div',{style:{display:'flex',alignItems:'center',gap:'8px',height:'38px',padding:'0 15px 0 13px',borderRadius:'999px',background:c.ai,boxShadow:'0 2px 8px -2px '+c.ai+'88'}}, this.ic('sparkle','#fff',17), E('span',{style:{fontSize:'14.5px',fontWeight:600,color:'#fff'}},X.ask)),
+          E('div',{style:{width:'38px',height:'38px',borderRadius:'999px',border:'1px solid '+c.sep,background:c.pagePaper,display:'flex',alignItems:'center',justifyContent:'center'}}, this.ic('doc',c.text2,18)),
+          E('div',{style:{width:'38px',height:'38px',borderRadius:'999px',border:'1px solid '+c.sep,background:c.pagePaper,display:'flex',alignItems:'center',justifyContent:'center'}}, this.ic('more',c.text2,18)),
+          E('div',{style:{width:'38px',height:'38px',borderRadius:'999px',background:c.you,display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 2px 8px -2px '+c.you+'aa'}}, this.ic('plus','#fff',19))
+        )
+      ),
+      E('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'20px 34px 0'}}, filter, E('span',{style:{fontSize:'13px',color:c.text2}},X.sorted)),
+      E('div',{style:{flex:1,padding:'22px 34px 34px',display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'20px',alignContent:'start',overflow:'hidden'}},
+        this.genCard({T,c,name:X.cA,date:X.today,tag:'#FF9F0A',cover:covers[0],hw:'d/dx sin(x²)…',coverDark:dk}),
+        this.genCard({T,c,name:X.cB,date:X.yest,tag:c.you,cover:covers[1],hw:'det(A − λI)',coverDark:dk}),
+        this.genCard({T,c,loading:true}),
+        this.genCard({T,c,name:X.cD,date:'Jun 12',tag:'#30D158',cover:covers[3],hw:'Nu: → C',coverDark:dk}),
+        this.genCard({T,c,name:X.cE,date:'Jun 11',tag:'#FF9F0A',cover:covers[4],hw:'Σ f(xᵢ)Δx',coverDark:dk}),
+        this.genCard({T,c,name:X.cF,date:'Jun 9',tag:'#BF5AF2',cover:covers[5],hw:'1648 — peace',coverDark:dk})
+      )
+    );
+    return E('div',{dir:rtl?'rtl':'ltr',style:{width:'1366px',height:'1024px',display:'flex',background:c.pagePaper,fontFamily:T.bodyFont}}, sidebar, content);
+  }
+
+  // ---- generic EDITOR ----
+  genEditor(T, dark) {
+    const E=React.createElement; const c=dark?T.D:T.L;
+    const paper=c.pagePaper; const rule=dark?'#2A2C31':'#E4E7EC'; const ruleM = T.key==='marginalia'?(dark?'#2C2620':'#EBE2D0'):rule;
+    const ink=dark?'#EDEFF3':'#23252B'; const inkM = T.key==='marginalia'?(dark?'#EDE7DB':'#26221C'):ink;
+    const realInk = T.key==='marginalia'?inkM:ink; const realRule = T.key==='marginalia'?ruleM:rule;
+    const chrome=c.chrome; const sepC=c.sep; const text=c.text; const text2=c.text2;
+    const toolbarBg = T.glass ? (dark?'rgba(30,32,38,0.82)':'rgba(248,250,253,0.8)') : (dark?'rgba(26,24,21,0.96)':'rgba(251,246,236,0.97)');
+    const ruledBg='repeating-linear-gradient(to bottom,transparent 0,transparent 37px,'+realRule+' 37px,'+realRule+' 38px)';
+    const tool=(g,active)=>E('div',{style:{width:'40px',height:'40px',borderRadius: T.key==='atelier'?'11px':'999px',display:'flex',alignItems:'center',justifyContent:'center',background:active?c.you:'transparent',flex:'0 0 auto'}}, this.toolGlyph(g, active?'#fff':text2));
+    const div=()=>E('div',{style:{width:'1px',height:'24px',background:sepC,margin:'0 4px'}});
+
+    const toolbar=E('div',{style:{position:'absolute',top:'74px',left:'50%',transform:'translateX(-50%)',display:'flex',alignItems:'center',gap:'2px',padding:'6px 8px',background:toolbarBg,backdropFilter:T.glass?'blur(22px) saturate(1.6)':'blur(14px)',WebkitBackdropFilter:T.glass?'blur(22px) saturate(1.6)':'blur(14px)',borderRadius: T.key==='atelier'?'16px':'999px',border:'1px solid '+(dark?'rgba(255,255,255,.08)':c.sep),boxShadow:dark?'0 10px 30px -8px rgba(0,0,0,.55)':'0 10px 30px -10px rgba(30,30,50,.22)',zIndex:5}},
+      E('div',{style:{width:'24px',height:'40px',display:'flex',alignItems:'center',justifyContent:'center'}},this.toolGlyph('grip',text2)),
+      ['undo','redo'].map((g,i)=>E('div',{key:'a'+i},tool(g))), div(),
+      ['pen','fountain','monoline','highlighter','pencil','eraser','lasso','hand'].map((g,i)=>E('div',{key:'b'+i},tool(g,g==='pen'))), div(),
+      ['ruler','text','aipen','aihist'].map((g,i)=>E('div',{key:'c'+i},tool(g))), div(),
+      E('div',{},tool('more'))
+    );
+    const swatches=['#23252B',c.you,'#FF9F0A','#30D158','#BF5AF2',c.ai,'#FF453A','#3E7CA8'];
+    const optionStrip=E('div',{style:{position:'absolute',top:'128px',left:'50%',transform:'translateX(-50%)',display:'flex',alignItems:'center',gap:'14px',padding:'9px 14px',background:toolbarBg,backdropFilter:T.glass?'blur(22px)':'blur(14px)',WebkitBackdropFilter:T.glass?'blur(22px)':'blur(14px)',borderRadius: T.key==='atelier'?'14px':'16px',border:'1px solid '+(dark?'rgba(255,255,255,.08)':c.sep),boxShadow:dark?'0 10px 30px -10px rgba(0,0,0,.45)':'0 8px 24px -10px rgba(30,30,50,.18)',zIndex:5}},
+      E('div',{style:{display:'flex',gap:'8px'}},swatches.map((sc,i)=>E('div',{key:i,style:{width:'24px',height:'24px',borderRadius:'50%',background:sc,boxShadow:i===1?'0 0 0 2px '+paper+', 0 0 0 4px '+c.you:'inset 0 0 0 1px rgba(0,0,0,.08)'}}))),
+      E('div',{style:{width:'1px',height:'22px',background:sepC}}),
+      E('div',{style:{display:'flex',alignItems:'center',gap:'9px'}},[4,7,10,14].map((d,i)=>E('div',{key:i,style:{width:d+'px',height:d+'px',borderRadius:'50%',background:i===1?ink:'transparent',border:'1.5px solid '+(i===1?'transparent':text2)}}))),
+      E('div',{style:{width:'1px',height:'22px',background:sepC}}),
+      E('div',{style:{display:'flex',alignItems:'center',gap:'7px'}},E('div',{style:{width:'34px',height:'19px',borderRadius:'999px',background:c.you,position:'relative'}},E('div',{style:{position:'absolute',top:'2px',left:'17px',width:'15px',height:'15px',borderRadius:'50%',background:'#fff'}})),E('span',{style:{fontSize:'12px',color:text2}},'Pressure'))
+    );
+    const header=E('div',{style:{position:'absolute',top:0,left:0,right:0,height:'58px',display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 22px',background:chrome,borderBottom:'1px solid '+sepC,zIndex:6}},
+      E('div',{style:{display:'flex',alignItems:'center',gap:'14px'}},
+        E('div',{style:{width:'34px',height:'34px',borderRadius:T.key==='atelier'?'10px':'9px',display:'flex',alignItems:'center',justifyContent:'center',background:dark?'rgba(255,255,255,.06)':c.desk}},this.toolGlyph('back',text2)),
+        E('div',{},E('div',{style:{fontFamily:T.serifTitles?T.displayFont:T.bodyFont,fontWeight:600,fontSize:'18px',color:text,lineHeight:1.1}},'Chain Rule & Composite Fns'),E('div',{style:{fontSize:'12px',color:text2,marginTop:'1px'}},'Calculus I · Edited just now'))
+      ),
+      E('div',{style:{display:'flex',alignItems:'center',gap:'9px'}},
+        E('div',{style:{width:'36px',height:'36px',borderRadius:'10px',display:'flex',alignItems:'center',justifyContent:'center',background:dark?'rgba(255,255,255,.06)':c.desk}},this.toolGlyph('share',text2)),
+        E('div',{style:{width:'36px',height:'36px',borderRadius:'10px',display:'flex',alignItems:'center',justifyContent:'center',background:dark?'rgba(255,255,255,.06)':c.desk}},this.toolGlyph('pages',text2)),
+        E('div',{style:{display:'flex',alignItems:'center',gap:'8px',height:'36px',padding:'0 14px 0 11px',borderRadius:'999px',background:c.ai}},this.ic('sparkle','#fff',16),E('span',{style:{fontSize:'14px',fontWeight:600,color:'#fff'}},'Tutor'))
+      )
+    );
+    const pageStrip=E('div',{style:{position:'absolute',top:'58px',right:0,bottom:0,width:'76px',background:chrome,borderLeft:'1px solid '+sepC,display:'flex',flexDirection:'column',alignItems:'center',gap:'10px',padding:'16px 0',zIndex:4}},
+      [1,2,3,4,5].map(n=>E('div',{key:n,style:{width:'48px',height:'62px',borderRadius:'6px',background:paper,border:n===3?'2px solid '+c.you:'1px solid '+sepC,position:'relative'}},E('div',{style:{position:'absolute',inset:'7px',background:'repeating-linear-gradient(to bottom,transparent 0,transparent 7px,'+realRule+' 7px,'+realRule+' 8px)'}}),E('div',{style:{position:'absolute',bottom:'-15px',left:0,right:0,textAlign:'center',fontSize:'10px',color:text2}},n))),
+      E('div',{style:{width:'48px',height:'40px',borderRadius:'6px',border:'1.5px dashed '+text2,display:'flex',alignItems:'center',justifyContent:'center',marginTop:'6px'}},E('svg',{width:18,height:18,viewBox:'0 0 20 20'},E('g',{stroke:text2,strokeWidth:1.6,strokeLinecap:'round'},E('line',{x1:10,y1:5,x2:10,y2:15}),E('line',{x1:5,y1:10,x2:15,y2:10}))))
+    );
+    const canvas=E('div',{style:{position:'absolute',top:'58px',left:0,right:'76px',bottom:0,background:paper,backgroundImage:ruledBg,backgroundPosition:'0 24px',overflow:'hidden'}},
+      E('div',{style:{position:'absolute',top:0,bottom:0,left:'88px',width:'1px',background:dark?'rgba(255,69,58,.22)':'rgba(255,59,48,.2)'}}),
+      E('div',{style:{position:'absolute',left:'128px',top:'176px',display:'flex',flexDirection:'column',gap:'14px'}},
+        this.hw('The Chain Rule',{size:40,weight:700,color:realInk}),
+        this.hw('If  y = f(g(x)),  then',{size:31,color:realInk}),
+        this.hw('dy/dx = f ′(g(x)) · g ′(x)',{size:33,color:dark?'#86A9F0':c.you})
+      ),
+      E('div',{style:{position:'absolute',left:'128px',top:'430px',display:'flex',flexDirection:'column',gap:'16px'}},
+        this.hw('Example:   d/dx [ sin(x²) ]',{size:32,color:realInk}),
+        this.hw('let  g(x) = x² ,   f(u) = sin(u)',{size:29,color:dark?'#cfc7b8':(T.key==='marginalia'?'#5a5345':'#5a606e')}),
+        this.hw('= cos(x²) · 2x',{size:34,color:realInk}),
+        this.hw('= 2x · cos(x²)  ✓',{size:34,color:dark?'#7FD18F':'#3f9b6b'})
+      ),
+      E('div',{style:{position:'absolute',left:'128px',top:'372px',padding:'2px 6px',borderRadius:'4px',background:dark?'rgba(255,228,92,.2)':'rgba(255,228,92,.45)'}},this.hw('← chain rule here',{size:26,color:dark?'#E8D9A0':'#8a6d1e'})),
+      E('svg',{width:230,height:96,viewBox:'0 0 230 96',style:{position:'absolute',left:'300px',top:'412px',pointerEvents:'none'}},E('path',{d:'M150 16 C95 6, 30 14, 18 44 C8 70, 70 86, 130 84 C190 82, 222 64, 214 40 C208 22, 170 12, 120 14',stroke:'#FF9F0A',strokeWidth:3,fill:'none',strokeLinecap:'round',opacity:.92})),
+      E('svg',{width:150,height:120,viewBox:'0 0 150 120',style:{position:'absolute',left:'470px',top:'330px',pointerEvents:'none',zIndex:7}},E('path',{d:'M140 14 C100 30, 60 50, 30 92',stroke:'#30D158',strokeWidth:3,fill:'none',strokeLinecap:'round'}),E('path',{d:'M30 92 l16 -6 M30 92 l4 -16',stroke:'#30D158',strokeWidth:3,fill:'none',strokeLinecap:'round',strokeLinejoin:'round'})),
+      E('div',{style:{position:'absolute',left:'600px',top:'250px',zIndex:8}},this.genBubble({T,dark,tone:'correct',w:300}),E('svg',{width:30,height:22,viewBox:'0 0 30 22',style:{position:'absolute',left:'-12px',bottom:'40px'}},E('path',{d:'M30 2 L4 11 L30 20 Z',fill:T.glass?(dark?'rgba(30,32,38,0.8)':'rgba(252,253,255,0.78)'):c.chrome,stroke:dark?T.D.sep:T.L.sep,strokeWidth:1}))),
+      E('div',{style:{position:'absolute',bottom:'18px',left:'50%',transform:'translateX(-50%)',display:'flex',alignItems:'center',gap:'7px',padding:'6px 14px',borderRadius:'999px',background:toolbarBg,backdropFilter:'blur(12px)',WebkitBackdropFilter:'blur(12px)',border:'1px solid '+(dark?'rgba(255,255,255,.08)':c.sep),fontSize:'13px',fontWeight:600,color:text,fontVariantNumeric:'tabular-nums'}},'3 / 7')
+    );
+    return E('div',{style:{width:'1366px',height:'1024px',position:'relative',background:chrome,fontFamily:T.bodyFont,overflow:'hidden'}}, canvas, pageStrip, header, toolbar, optionStrip);
+  }
+
+  // ===== System spec cards =====
+  specCard(title, sub, child, pad) {
+    const E=React.createElement;
+    return E('div',{style:{background:'#FBF7EF',border:'1px solid #E0D6C2',borderRadius:'16px',padding:pad||'20px 22px'}},
+      E('div',{style:{display:'flex',alignItems:'baseline',justifyContent:'space-between',marginBottom:'16px'}},
+        E('div',{style:{fontFamily:"'Fraunces',serif",fontWeight:600,fontSize:'18px',color:'#2B2722'}},title),
+        sub?E('div',{style:{fontSize:'11px',color:'#8A8073',fontFamily:'ui-monospace,monospace'}},sub):null
+      ), child);
+  }
+  specRow(cells, head) {
+    const E=React.createElement;
+    return E('div',{style:{display:'flex',alignItems:'center',gap:'12px',padding:'7px 0',borderTop: head?'none':'1px solid #EFE7D6'}},
+      cells.map((cell,i)=>E('div',{key:i,style:{flex: i===0? '0 0 132px':'1', fontSize: head?'10px':'13px', fontWeight: head?700:(i===0?600:400), letterSpacing: head?'.08em':'0', textTransform: head?'uppercase':'none', color: head?'#8A8073':(i===0?'#2B2722':'#5C5447'), fontFamily: (!head && i>0 && cell.mono)? 'ui-monospace,monospace':'inherit'}}, cell.t!==undefined?cell.t:cell))
+    );
+  }
+  buildSystem() {
+    const E=React.createElement;
+    const spacing = E('div',{style:{display:'flex',alignItems:'flex-end',gap:'10px',height:'70px'}}, [4,8,12,16,20,24,32,48].map(s=>E('div',{key:s,style:{display:'flex',flexDirection:'column',alignItems:'center',gap:'6px'}},E('div',{style:{width:'14px',height:s+'px',background:'#2E4057',borderRadius:'3px',opacity:.82}}),E('span',{style:{fontSize:'10px',color:'#8A8073',fontFamily:'ui-monospace,monospace'}},s))));
+    const radius = E('div',{style:{display:'flex',alignItems:'flex-end',gap:'14px'}}, [['sm',8],['md',12],['lg',16],['xl',20],['pill',999]].map(([n,r])=>E('div',{key:n,style:{display:'flex',flexDirection:'column',alignItems:'center',gap:'7px'}},E('div',{style:{width:'46px',height:'46px',borderTopLeftRadius:(r>99?'23px':r+'px'),borderTopRightRadius:(r>99?'23px':r+'px'),borderBottomLeftRadius:(r>99?'23px':r+'px'),background:'rgba(46,64,87,.12)',border:'1.5px solid #2E4057'}}),E('span',{style:{fontSize:'11px',color:'#5C5447',fontWeight:600}},n),E('span',{style:{fontSize:'10px',color:'#8A8073',fontFamily:'ui-monospace,monospace'}},r>99?'999':r))));
+    const stroke = E('div',{style:{display:'flex',alignItems:'center',gap:'20px',height:'56px'}}, [['hairline',1],['thin',1.5],['regular',2],['thick',3]].map(([n,w])=>E('div',{key:n,style:{display:'flex',flexDirection:'column',gap:'8px',alignItems:'center'}},E('div',{style:{width:'62px',height:w+'px',background:'#2B2722',borderRadius:'2px'}}),E('span',{style:{fontSize:'10.5px',color:'#5C5447'}},n+' · '+w))));
+    const elev = E('div',{style:{display:'flex',gap:'18px'}}, [['e1','0 1px 2px / 6%'],['e2','0 8px 24px / 14%'],['e3','0 18px 44px / 22%']].map(([n,d],i)=>E('div',{key:n,style:{display:'flex',flexDirection:'column',alignItems:'center',gap:'9px'}},E('div',{style:{width:'58px',height:'42px',background:'#FCFAF5',borderRadius:'10px',boxShadow:[ '0 1px 2px rgba(40,34,24,.10)','0 8px 20px -6px rgba(40,34,24,.20)','0 18px 40px -10px rgba(40,34,24,.32)'][i]}}),E('span',{style:{fontSize:'11px',color:'#2B2722',fontWeight:600}},n),E('span',{style:{fontSize:'9.5px',color:'#8A8073',fontFamily:'ui-monospace,monospace'}},d))));
+
+    const motion = [
+      ['view.push','0.35s','spring(response .45, damping .82)'],
+      ['sheet.present','0.40s','spring(.50, .85)'],
+      ['toolbar.dock','0.30s','spring(.38, .80)'],
+      ['bubble.appear','0.28s','spring(.32, .78) · scale .92→1'],
+      ['selection','0.12s','easeOut · haptic .selection'],
+      ['page.turn','0.45s','easeInOut'],
+    ];
+    const motionTable = this.specCard('Motion','durations + spring',
+      E('div',{},
+        this.specRow([{t:'Token'},{t:'Dur'},{t:'Curve / response'}],true),
+        motion.map((m,i)=>E('div',{key:i},this.specRow([m[0],{t:m[1],mono:true},{t:m[2],mono:true}]))),
+        E('div',{style:{marginTop:'12px',fontSize:'12px',color:'#8A8073',lineHeight:1.5}},'Haptics — tool select: .selection · bubble appear: .impact(soft) · insert: .notification(.success)')
+      ));
+
+    const icons = [
+      ['Pen / Fountain','pencil.tip · pencil.and.outline'],['Highlighter','highlighter'],['Eraser','eraser'],['Lasso','lasso'],['Hand','hand.draw'],['Ruler','ruler'],['Text box','textformat'],['AI pen','wand.and.stars'],['AI history','clock.arrow.circlepath'],['Undo / Redo','arrow.uturn.backward / .forward'],['New note','square.and.pencil'],['Search','magnifyingglass'],['Ask AI','sparkles'],['Send','arrow.up.circle.fill'],['Share','square.and.arrow.up'],['Pages','doc.on.doc'],['Settings','gearshape'],['Delete','trash'],
+    ];
+    const iconTable = this.specCard('Iconography','SF Symbols',
+      E('div',{}, this.specRow([{t:'Action'},{t:'Symbol'}],true), icons.map((g,i)=>E('div',{key:i},this.specRow([g[0],{t:g[1],mono:true}])))));
+
+    const sw = [
+      ['Library shell','NavigationSplitView'],['Sidebar rows','List · custom row + selection'],['Note grid','LazyVGrid(adaptive)'],['Handwriting canvas','PKCanvasView ⚑ PencilKit'],['Floating toolbar','overlay · .glassEffect (iOS 26) · draggable'],['AI bubble','anchored overlay · .regularMaterial · matchedGeometryEffect'],['Inline math','SwiftMath / rendered image'],['Long-form math','WKWebView + KaTeX ⚑ UIKit'],['On-page marks','Canvas / Shape overlays or PKStroke'],['Side AI panel','.inspector or custom drawer'],['Theme','enum Theme → Palette · @Environment(\\.colorScheme)'],
+    ];
+    const swiftMap = this.specCard('SwiftUI mapping','iOS 26 · ⚑ = UIKit interop',
+      E('div',{}, this.specRow([{t:'Element'},{t:'Implementation'}],true), sw.map((g,i)=>E('div',{key:i},this.specRow([g[0],{t:g[1],mono:true}])))));
+
+    const a11y = this.specCard('Accessibility & engineering notes',null,
+      E('ul',{style:{margin:0,paddingLeft:'18px',fontSize:'13px',lineHeight:1.7,color:'#4f4839'}},
+        E('li',{key:1},[E('strong',{key:'a'},'Hit targets'),' — 44×44pt min; 40pt glyphs carry a 4pt touch inset.']),
+        E('li',{key:2},[E('strong',{key:'a'},'Focus / selection'),' — 3pt ring, you.accent @ 60%, 2pt offset.']),
+        E('li',{key:3},[E('strong',{key:'a'},'Dynamic Type'),' — Body / Title / Caption scale; fixed: tool glyphs, page numbers, swatch dots.']),
+        E('li',{key:4},[E('strong',{key:'a'},'Reduce Motion'),' — springs → 0.2s crossfade; bubble scale-in disabled.']),
+        E('li',{key:5},[E('strong',{key:'a'},'Contrast'),' — primary text ≥ AAA on paper; accents ≥ 4.5:1 (AA) on chrome.']),
+        E('li',{key:6},[E('strong',{key:'a'},'Glass over live canvas'),' — .regularMaterial is GPU-cheap; avoid stacking >2 blur layers.']),
+        E('li',{key:7},[E('strong',{key:'a'},'VoiceOver'),' — bubble announces tone + reads math as spoken LaTeX.'])
+      ),'20px 22px');
+
+    return { scaleSpacing:this.specCard('Spacing','8-pt grid',spacing), scaleRadius:this.specCard('Corner radius',null,radius), scaleStroke:this.specCard('Stroke width','ink + UI',stroke), scaleElevation:this.specCard('Elevation','y / blur / opacity',elev), motionTable, iconTable, swiftMap, a11yNotes:a11y };
+  }
+
+  // ===== FOOLSCAP THEME SYSTEM =====
+  themeSet() {
+    return [
+      {key:'foolscap', name:'Foolscap', you:'#2E4057', ai:'#B5762A', youD:'#7FB0E8', aiD:'#D9A24E', chrome:'#F6F0E4', sidebar:'#EFE7D7', desk:'#E7DECB'},
+      {key:'botanica', name:'Botanica', you:'#2F6048', ai:'#C2683D', youD:'#7CC79E', aiD:'#E08A5E', chrome:'#F1F4ED', sidebar:'#E7EEE2', desk:'#DCE6D6'},
+      {key:'plum',     name:'Plum',     you:'#5B3A6B', ai:'#B08328', youD:'#C79BD6', aiD:'#D9A94E', chrome:'#F4EFF3', sidebar:'#ECE3EC', desk:'#E4D6E2'},
+      {key:'marine',   name:'Marine',   you:'#1F5E63', ai:'#C45B45', youD:'#6FC2C7', aiD:'#E0846B', chrome:'#ECF3F2', sidebar:'#E2EDEC', desk:'#D5E6E4'},
+      {key:'ember',    name:'Ember',    you:'#8A3B33', ai:'#B5762A', youD:'#E08077', aiD:'#D9A24E', chrome:'#F7EFEA', sidebar:'#F1E4DD', desk:'#ECD9CF'},
+      {key:'slate',    name:'Slate',    you:'#3C4149', ai:'#9A7B45', youD:'#9AA0AA', aiD:'#C5A36A', chrome:'#F1F1F2', sidebar:'#E8E8EA', desk:'#DEDEE1'}
+    ];
+  }
+  appIcon(th, size) {
+    const E=React.createElement; const z=size; const r=Math.round(z*0.225);
+    return E('div',{style:{width:z+'px',height:z+'px',borderRadius:r+'px',background:'linear-gradient(160deg,'+th.you+' 0%,'+this.shade(th.you,-12)+' 100%)',position:'relative',overflow:'hidden',boxShadow:'0 '+Math.round(z*0.04)+'px '+Math.round(z*0.09)+'px rgba(40,34,24,.28)',flex:'0 0 auto'}},
+      E('div',{style:{position:'absolute',left:'24%',top:'20%',width:'52%',height:'60%',background:'#FCFAF5',borderRadius:Math.round(z*0.06)+'px',transform:'rotate(-6deg)',boxShadow:'0 2px 6px rgba(0,0,0,.18)',padding:Math.round(z*0.07)+'px '+Math.round(z*0.06)+'px',display:'flex',flexDirection:'column',gap:Math.round(z*0.045)+'px',justifyContent:'center'}},
+        [0,1,2].map(i=>E('div',{key:i,style:{height:Math.max(1,Math.round(z*0.018))+'px',width:[80,58,70][i]+'%',background:th.you,opacity:.5,borderRadius:'2px'}}))
+      ),
+      E('div',{style:{position:'absolute',right:'15%',bottom:'15%',width:'30%',height:'30%',borderRadius:'50%',background:th.ai,display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 1px 4px rgba(0,0,0,.25)'}}, this.ic('sparkle','#fff',Math.round(z*0.18)))
+    );
+  }
+  shade(hex, amt) {
+    const n=parseInt(hex.slice(1),16); let r=(n>>16)+amt, g=((n>>8)&255)+amt, b=(n&255)+amt;
+    r=Math.max(0,Math.min(255,r)); g=Math.max(0,Math.min(255,g)); b=Math.max(0,Math.min(255,b));
+    return '#'+((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1);
+  }
+  themeChip(th, selected) {
+    const E=React.createElement;
+    return E('div',{style:{display:'flex',flexDirection:'column',alignItems:'center',gap:'10px',padding:'14px 10px 12px',borderRadius:'16px',background: selected?'#FBF7EF':'transparent',border:'2px solid '+(selected?th.you:'transparent'),position:'relative',minWidth:'104px'}},
+      selected? E('div',{style:{position:'absolute',top:'8px',right:'8px',width:'20px',height:'20px',borderRadius:'50%',background:th.you,display:'flex',alignItems:'center',justifyContent:'center'}}, E('svg',{width:12,height:12,viewBox:'0 0 12 12'},E('path',{d:'M2.5 6.2l2.3 2.3 4.7-5',stroke:'#fff',strokeWidth:1.8,fill:'none',strokeLinecap:'round',strokeLinejoin:'round'}))):null,
+      this.appIcon(th, 60),
+      E('div',{style:{fontSize:'13.5px',fontWeight:600,color:'#2B2722'}},th.name),
+      E('div',{style:{display:'flex',gap:'5px'}}, E('span',{style:{width:'13px',height:'13px',borderRadius:'50%',background:th.you,border:'1px solid rgba(0,0,0,.08)'}}), E('span',{style:{width:'13px',height:'13px',borderRadius:'50%',background:th.ai,border:'1px solid rgba(0,0,0,.08)'}}))
+    );
+  }
+  // grouped settings row
+  setRow(o) {
+    const E=React.createElement; const c=this.fc();
+    return E('div',{style:{display:'flex',alignItems:'center',gap:'14px',padding:'13px 18px',borderTop:o.first?'none':'1px solid #EBE3D4',minHeight:'52px'}},
+      o.icon? E('div',{style:{width:'30px',height:'30px',borderRadius:'8px',background:o.iconBg||'#2E4057',display:'flex',alignItems:'center',justifyContent:'center',flex:'0 0 auto'}}, this.ic(o.icon,'#fff',17)):null,
+      E('div',{style:{flex:1,minWidth:0}}, E('div',{style:{fontSize:'15.5px',color:'#2B2722',fontWeight:500}},o.label), o.sub?E('div',{style:{fontSize:'12.5px',color:'#8A8073',marginTop:'2px'}},o.sub):null),
+      o.right
+    );
+  }
+  segmented(opts, sel) {
+    const E=React.createElement;
+    return E('div',{style:{display:'inline-flex',padding:'2px',background:'#E7DECB',borderRadius:'9px',gap:'2px'}}, opts.map((o,i)=>E('div',{key:i,style:{fontSize:'13.5px',fontWeight:i===sel?600:500,color:i===sel?'#2B2722':'#8A8073',padding:'6px 14px',borderRadius:'7px',background:i===sel?'#FCFAF5':'transparent',boxShadow:i===sel?'0 1px 2px rgba(40,34,24,.14)':'none'}},o)));
+  }
+  settingsScreen() {
+    const E=React.createElement; const c=this.fc(); const themes=this.themeSet();
+    const group=(title,rows)=>E('div',{style:{marginBottom:'26px'}}, E('div',{style:{fontSize:'12px',fontWeight:700,letterSpacing:'.08em',textTransform:'uppercase',color:c.text2,margin:'0 0 10px 4px'}},title), E('div',{style:{background:'#FBF7EF',border:'1px solid '+c.cardEdge,borderRadius:'14px',overflow:'hidden'}},rows));
+    const sidebar=E('div',{style:{width:'260px',flex:'0 0 260px',background:c.sidebar,borderRight:'1px solid '+c.sep,padding:'22px 16px 16px',display:'flex',flexDirection:'column'}},
+      E('div',{style:{display:'flex',alignItems:'center',gap:'10px',padding:'0 6px',marginBottom:'20px'}}, E('div',{style:{width:'34px',height:'34px',borderRadius:'10px',display:'flex',alignItems:'center',justifyContent:'center',background:c.desk}}, this.toolGlyph('back',c.text2)), E('span',{style:{fontFamily:"'Fraunces',serif",fontWeight:600,fontSize:'22px',color:c.text}},'Settings')),
+      ['Appearance','AI Tutor','Notes & Sync','Export','About'].map((s,i)=>E('div',{key:i,style:{display:'flex',alignItems:'center',gap:'11px',height:'40px',padding:'0 11px',borderRadius:'9px',background:i===0?c.sel:'transparent',position:'relative',marginBottom:'2px'}}, i===0?E('div',{style:{position:'absolute',left:'-9px',top:'9px',bottom:'9px',width:'3px',borderRadius:'2px',background:c.you}}):null, E('span',{style:{fontSize:'15px',fontWeight:i===0?600:500,color:c.text}},s)))
+    );
+    const content=E('div',{style:{flex:1,background:c.chrome,overflow:'hidden',display:'flex',flexDirection:'column'}},
+      E('div',{style:{padding:'28px 40px 16px'}}, E('h1',{style:{fontFamily:"'Fraunces',serif",fontWeight:600,fontSize:'30px',margin:0,color:c.text}},'Appearance')),
+      E('div',{style:{flex:1,padding:'4px 40px 40px',overflow:'hidden'}},
+        group('Mode',[ this.setRow({first:true,icon:'star',iconBg:c.you,label:'Appearance',sub:'Match your environment automatically',right:this.segmented(['Light','Dark','System'],2)}) ]),
+        E('div',{style:{marginBottom:'26px'}},
+          E('div',{style:{fontSize:'12px',fontWeight:700,letterSpacing:'.08em',textTransform:'uppercase',color:c.text2,margin:'0 0 10px 4px'}},'Theme  ·  pairs your ink with your tutor’s color'),
+          E('div',{style:{background:'#FBF7EF',border:'1px solid '+c.cardEdge,borderRadius:'14px',padding:'10px 8px',display:'flex',gap:'4px',flexWrap:'wrap'}}, themes.map((th,i)=>E('div',{key:th.key},this.themeChip(th,i===0))))
+        ),
+        group('Canvas',[
+          this.setRow({first:true,icon:'doc',iconBg:c.ai,label:'Template line intensity',right:E('div',{style:{display:'flex',alignItems:'center',gap:'10px',width:'180px'}}, E('div',{style:{flex:1,height:'4px',borderRadius:'2px',background:c.desk,position:'relative'}}, E('div',{style:{position:'absolute',left:0,top:0,bottom:0,width:'62%',borderRadius:'2px',background:c.you}}), E('div',{style:{position:'absolute',left:'62%',top:'50%',transform:'translate(-50%,-50%)',width:'18px',height:'18px',borderRadius:'50%',background:'#FCFAF5',boxShadow:'0 1px 3px rgba(0,0,0,.25)'}})))}),
+          this.setRow({icon:'gear',iconBg:c.text2,label:'Toolbar position',right:this.segmented(['Top','Bottom','Left','Right'],0)})
+        ])
+      )
+    );
+    return E('div',{style:{width:'1366px',height:'1024px',display:'flex',background:c.pagePaper,fontFamily:'-apple-system,system-ui,sans-serif'}}, sidebar, content);
+  }
+  iconSetPanel() {
+    const E=React.createElement; const themes=this.themeSet();
+    return E('div',{style:{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:'22px',background:'#E7DECB',borderRadius:'20px',padding:'32px 28px',backgroundImage:'radial-gradient(circle at 12px 12px, rgba(120,100,70,.1) 1.5px, transparent 1.6px)',backgroundSize:'24px 24px'}},
+      themes.map((th,i)=>E('div',{key:th.key,style:{display:'flex',flexDirection:'column',alignItems:'center',gap:'10px'}},
+        this.appIcon(th,82),
+        E('div',{style:{fontSize:'13px',fontWeight:600,color:'#2B2722'}},'Inkling'),
+        E('div',{style:{fontSize:'11px',color:'#6b6354'}},th.name)
+      )));
+  }
+  themeTokenTable() {
+    const E=React.createElement; const themes=this.themeSet();
+    const cell=(v,mono,head)=>E('div',{style:{flex:'1',fontSize: head?'10px':'12px',fontWeight:head?700:400,letterSpacing:head?'.06em':'0',textTransform:head?'uppercase':'none',color:head?'#8A8073':'#5C5447',fontFamily:mono?'ui-monospace,monospace':'inherit',whiteSpace:'nowrap'}},v);
+    const nameCell=(v,head)=>E('div',{style:{flex:'0 0 96px',display:'flex',alignItems:'center',gap:'8px',fontSize:head?'10px':'13px',fontWeight:head?700:600,letterSpacing:head?'.06em':'0',textTransform:head?'uppercase':'none',color:head?'#8A8073':'#2B2722'}},v);
+    return E('div',{style:{background:'#FBF7EF',border:'1px solid #E0D6C2',borderRadius:'16px',padding:'18px 22px',overflowX:'auto'}},
+      E('div',{style:{display:'flex',alignItems:'center',gap:'14px',padding:'6px 0'}}, nameCell('Theme',true), cell('you',false,true), cell('ai',false,true), cell('chrome',false,true), cell('sidebar',false,true), cell('editorDesk',false,true)),
+      themes.map((th,i)=>E('div',{key:th.key,style:{display:'flex',alignItems:'center',gap:'14px',padding:'9px 0',borderTop:'1px solid #EFE7D6'}},
+        nameCell(E('span',{style:{display:'flex',alignItems:'center',gap:'8px'}}, E('span',{style:{width:'12px',height:'12px',borderRadius:'4px',background:th.you}}), th.name)),
+        E('div',{style:{flex:1,display:'flex',alignItems:'center',gap:'6px',fontSize:'12px',fontFamily:'ui-monospace,monospace',color:'#5C5447'}}, E('span',{style:{width:'12px',height:'12px',borderRadius:'50%',background:th.you,flex:'0 0 auto'}}), th.you),
+        E('div',{style:{flex:1,display:'flex',alignItems:'center',gap:'6px',fontSize:'12px',fontFamily:'ui-monospace,monospace',color:'#5C5447'}}, E('span',{style:{width:'12px',height:'12px',borderRadius:'50%',background:th.ai,flex:'0 0 auto'}}), th.ai),
+        cell(th.chrome,true), cell(th.sidebar,true), cell(th.desk,true)
+      )),
+      E('div',{style:{marginTop:'12px',fontSize:'11.5px',color:'#8A8073',lineHeight:1.5}},'pagePaper stays #FCFAF5 (light) / #1A1814 (dark) across every theme — only the chrome tints. Dark you/ai accents brighten per theme (see enum).')
+    );
+  }
+
+  renderVals() {
+    const t = this.fc();
+    const E = React.createElement;
+    const TH = this.themes();
+
+    const sidebar = E('div', { style:{ width:'260px', flex:'0 0 260px', background:t.sidebar, borderRight:'1px solid '+t.sep, padding:'22px 16px 16px', display:'flex', flexDirection:'column' } },
+      // wordmark
+      E('div', { style:{ display:'flex', alignItems:'center', gap:'10px', padding:'0 6px', marginBottom:'18px' } },
+        E('div',{style:{width:'26px',height:'26px',borderRadius:'7px',background:t.you,display:'flex',alignItems:'center',justifyContent:'center'}}, E('div',{style:{width:'10px',height:'10px',borderRadius:'50%',background:'#F2C94C'}})),
+        E('span',{style:{fontFamily:"'Fraunces',serif",fontWeight:600,fontSize:'20px',color:t.text}},'Inkling')
+      ),
+      // search
+      E('div', { style:{ display:'flex', alignItems:'center', gap:'9px', height:'38px', padding:'0 12px', background:'#F8F3E9', border:'1px solid '+t.sep, borderRadius:'10px', marginBottom:'18px' } },
+        this.ic('search','#9a917f',17), E('span',{style:{fontSize:'14.5px',color:'#9a917f'}},'Search notes')
+      ),
+      // smart section
+      E('div',{style:{display:'flex',flexDirection:'column',gap:'2px',marginBottom:'8px'}},
+        this.sideRow({icon:'all',label:'All notes',count:'48',state:'selected'}),
+        this.sideRow({icon:'clock',label:'Recents',count:'12'}),
+        this.sideRow({icon:'star',label:'Favorites',count:'7'})
+      ),
+      E('div',{style:{height:'1px',background:t.sepSoft,margin:'10px 8px'}}),
+      E('div',{style:{fontSize:'11.5px',fontWeight:700,letterSpacing:'.1em',textTransform:'uppercase',color:t.text2,padding:'2px 8px 8px'}},'Subjects'),
+      E('div',{style:{display:'flex',flexDirection:'column',gap:'2px'}},
+        this.sideRow({dot:'#C2683D',label:'Calculus I',count:'14'}),
+        this.sideRow({dot:'#2E4057',label:'Linear Algebra',count:'9',state:'pressed'}),
+        this.sideRow({dot:'#6B8E4E',label:'Organic Chem',count:'11'}),
+        this.sideRow({dot:'#9B5DAE',label:'World History',count:'8'})
+      ),
+      E('div',{style:{height:'1px',background:t.sepSoft,margin:'10px 8px'}}),
+      this.sideRow({icon:'trash',label:'Recently Deleted'}),
+      E('div',{style:{flex:1}}),
+      this.sideRow({icon:'gear',label:'Settings'})
+    );
+
+    const covers = ['#FCFAF5','#FBF8F1','#FCFAF5','#FAF6EE','#FCFAF5','#FBF8F1'];
+    const content = E('div', { style:{ flex:1, background:t.chromePaper, display:'flex', flexDirection:'column', overflow:'hidden' } },
+      // top bar
+      E('div', { style:{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'26px 34px 0' } },
+        E('h1',{style:{fontFamily:"'Fraunces',serif",fontWeight:600,fontSize:'30px',margin:0,color:t.text,letterSpacing:'-.2px'}},'All notes'),
+        E('div',{style:{display:'flex',alignItems:'center',gap:'10px'}},
+          E('div',{style:{display:'flex',alignItems:'center',gap:'8px',height:'38px',padding:'0 15px 0 13px',borderRadius:'999px',background:t.you,boxShadow:'0 2px 8px -2px rgba(46,64,87,.5)'}}, this.ic('sparkle','#F2C94C',17), E('span',{style:{fontSize:'14.5px',fontWeight:600,color:'#fff'}},'Ask AI')),
+          E('div',{style:{width:'38px',height:'38px',borderRadius:'999px',border:'1px solid '+t.sep,background:'#FBF7EF',display:'flex',alignItems:'center',justifyContent:'center'}}, this.ic('doc','#5f5747',18)),
+          E('div',{style:{width:'38px',height:'38px',borderRadius:'999px',border:'1px solid '+t.sep,background:'#FBF7EF',display:'flex',alignItems:'center',justifyContent:'center'}}, this.ic('more','#5f5747',18)),
+          E('div',{style:{width:'38px',height:'38px',borderRadius:'999px',background:t.you,display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 2px 8px -2px rgba(46,64,87,.5)'}}, this.ic('plus','#fff',19))
+        )
+      ),
+      // filter tabs
+      E('div', { style:{ display:'flex', alignItems:'center', gap:'7px', padding:'18px 34px 0' } },
+        ['All','Recents','Shared','Imported'].map((s,i)=> E('div',{key:i, style:{ fontSize:'14px', fontWeight: i===0?600:500, color: i===0? '#fff':'#5f5747', padding:'7px 15px', borderRadius:'999px', background: i===0? t.text : '#EDE6D7', border: i===0?'none':'1px solid '+t.sepSoft }}, s)),
+        E('div',{style:{flex:1}}),
+        E('span',{style:{fontSize:'13px',color:t.text2}},'Sorted by date modified')
+      ),
+      // grid
+      E('div', { style:{ flex:1, padding:'22px 34px 34px', display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:'20px', alignContent:'start', overflow:'hidden' } },
+        this.card({name:'Chain Rule & Composite Fns', date:'Today · 2:14 PM', tag:'#C2683D', cover:covers[0], hw:'d/dx sin(x²)…'}),
+        this.card({name:'Eigenvalues — Lecture 9', date:'Yesterday', tag:'#2E4057', cover:covers[1], hw:'det(A − λI)'}),
+        this.card({loading:true}),
+        this.card({name:'SN2 Mechanisms', date:'Jun 12', tag:'#6B8E4E', cover:covers[3], hw:'Nu: → C'}),
+        this.card({name:'Riemann Sums', date:'Jun 11', tag:'#C2683D', cover:covers[4], hw:'Σ f(xᵢ)Δx'}),
+        this.card({name:'Treaty of Westphalia', date:'Jun 9', tag:'#9B5DAE', cover:covers[5], hw:'1648 — peace'})
+      )
+    );
+
+    const libraryScreen = E('div', { style:{ width:'1366px', height:'1024px', display:'flex', background:t.pagePaper, fontFamily:'-apple-system, system-ui, sans-serif' } }, sidebar, content);
+
+    return {
+      ...this.buildSystem(),
+      foolscapSettings: this.device(this.settingsScreen(), 0.78),
+      iconSetPanel: this.iconSetPanel(),
+      themeTokenTable: this.themeTokenTable(),
+      foolscapLibrary: this.device(libraryScreen, 0.78),
+      foolscapEditor: this.device(this.foolscapEditor(false), 0.78),
+      foolscapEditorDark: this.device(this.foolscapEditor(true), 0.78),
+      fcBubbleDefault: this.bubble({tone:'correct'}),
+      fcBubbleLoading: this.bubble({tone:'teaching', loading:true}),
+      fcBubbleDark: this.bubble({tone:'correction', dark:true}),
+      foolscapTokens: this.tokenSheet({
+        ui:{ bg:'#E0DACF', card:'#FBF7EF', text:'#2B2722', text2:'#8A8073', sep:'#E0D6C2', accent:'#2E4057' },
+        colors:[
+          {name:'pagePaper', light:'#FCFAF5', dark:'#1A1814'},
+          {name:'chromePaper', light:'#F6F0E4', dark:'#232019'},
+          {name:'sidebar', light:'#EFE7D7', dark:'#1E1B15'},
+          {name:'editorDesk', light:'#E7DECB', dark:'#15130F'},
+          {name:'you.accent', light:'#2E4057', dark:'#7FB0E8'},
+          {name:'ai.accent', light:'#B5762A', dark:'#D9A24E'},
+          {name:'text.primary', light:'#2B2722', dark:'#F2ECE0'},
+          {name:'text.secondary', light:'#8A8073', dark:'#9A9082'},
+          {name:'separator', light:'#DED3BE', dark:'#34302A'},
+          {name:'ai.highlight', light:'#F2C94C', dark:'#FFD60A'},
+          {name:'ai.circle', light:'#FF9F0A', dark:'#FF9F0A'},
+          {name:'ai.arrow', light:'#6B8E4E', dark:'#30D158'}
+        ],
+        type:[
+          {label:'Display', font:"'Fraunces',serif", w:600, size:28, ital:false},
+          {label:'Title', font:"'Fraunces',serif", w:600, size:20},
+          {label:'Body', font:"-apple-system,system-ui", w:400, size:16},
+          {label:'Caption', font:"-apple-system,system-ui", w:400, size:12},
+          {label:'Handwriting', font:"'Caveat',cursive", w:600, size:22}
+        ]
+      }),
+      // ---- Atelier ----
+      atLibrary: this.device(this.genLibrary(TH.atelier), 0.78),
+      atEditor: this.device(this.genEditor(TH.atelier,false), 0.78),
+      atEditorDark: this.device(this.genEditor(TH.atelier,true), 0.78),
+      atBubbleDefault: this.genBubble({T:TH.atelier,tone:'brand'}),
+      atBubbleLoading: this.genBubble({T:TH.atelier,tone:'teaching',loading:true}),
+      atBubbleDark: this.genBubble({T:TH.atelier,dark:true,tone:'correction'}),
+      atTokens: this.tokenSheet({
+        ui:{ bg:'#E3E6EC', card:'#FFFFFF', text:'#0B0C0F', text2:'#6B7180', sep:'#E2E5EB', accent:'#2D6BFF' },
+        colors:[
+          {name:'pagePaper', light:'#FCFCFD', dark:'#16171A'},
+          {name:'chromePaper', light:'#F1F3F7', dark:'#1E2024'},
+          {name:'sidebar', light:'#EDEFF4', dark:'#15171B'},
+          {name:'editorDesk', light:'#E3E6EC', dark:'#0C0D10'},
+          {name:'you.accent', light:'#2D6BFF', dark:'#4D8BFF'},
+          {name:'ai.accent', light:'#7A5CFF', dark:'#9B82FF'},
+          {name:'text.primary', light:'#0B0C0F', dark:'#F4F6F9'},
+          {name:'text.secondary', light:'#6B7180', dark:'#8A909C'},
+          {name:'separator', light:'#DDE0E7', dark:'#2A2D33'},
+          {name:'ai.highlight', light:'#FFE45C', dark:'#FFE45C'},
+          {name:'ai.circle', light:'#FF9F0A', dark:'#FF9F0A'},
+          {name:'ai.arrow', light:'#30D158', dark:'#30D158'}
+        ],
+        type:[
+          {label:'Display', font:"-apple-system,system-ui", w:700, size:28},
+          {label:'Title', font:"-apple-system,system-ui", w:600, size:20},
+          {label:'Body', font:"-apple-system,system-ui", w:400, size:16},
+          {label:'Mono', font:"ui-monospace,monospace", w:500, size:13},
+          {label:'Handwriting', font:"'Caveat',cursive", w:600, size:22}
+        ]
+      }),
+      // ---- Marginalia ----
+      mgLibrary: this.device(this.genLibrary(TH.marginalia), 0.78),
+      mgEditor: this.device(this.genEditor(TH.marginalia,false), 0.78),
+      mgEditorDark: this.device(this.genEditor(TH.marginalia,true), 0.78),
+      mgBubbleDefault: this.genBubble({T:TH.marginalia,tone:'brand'}),
+      mgBubbleLoading: this.genBubble({T:TH.marginalia,tone:'teaching',loading:true}),
+      mgBubbleDark: this.genBubble({T:TH.marginalia,dark:true,tone:'correction'}),
+      mgTokens: this.tokenSheet({
+        ui:{ bg:'#EDE4D2', card:'#FBF6EC', text:'#1C1A17', text2:'#8C8478', sep:'#E5DCC9', accent:'#F4502E' },
+        colors:[
+          {name:'pagePaper', light:'#FFFDF8', dark:'#121110'},
+          {name:'chromePaper', light:'#FBF6EC', dark:'#1A1815'},
+          {name:'sidebar', light:'#F5EEE0', dark:'#17150F'},
+          {name:'editorDesk', light:'#EDE4D2', dark:'#0E0D0B'},
+          {name:'you.accent', light:'#1C1A17', dark:'#F0EBE0'},
+          {name:'ai.accent', light:'#F4502E', dark:'#FF6A4D'},
+          {name:'text.primary', light:'#1C1A17', dark:'#F4EFE6'},
+          {name:'text.secondary', light:'#8C8478', dark:'#9A9184'},
+          {name:'separator', light:'#E5DCC9', dark:'#2C2822'},
+          {name:'ai.highlight', light:'#FFD86B', dark:'#FFD86B'},
+          {name:'ai.circle', light:'#FF9F0A', dark:'#FF9F0A'},
+          {name:'ai.arrow', light:'#30D158', dark:'#30D158'}
+        ],
+        type:[
+          {label:'Display', font:"'Fraunces',serif", w:600, size:28},
+          {label:'Title', font:"'Fraunces',serif", w:600, size:20},
+          {label:'Body', font:"-apple-system,system-ui", w:400, size:16},
+          {label:'Caption', font:"-apple-system,system-ui", w:400, size:12},
+          {label:'Handwriting', font:"'Caveat',cursive", w:600, size:22}
+        ]
+      }),
+      // ---- RTL example (Foolscap, recommended base) ----
+      rtlLibrary: this.device(this.genLibrary(TH.foolscap, true), 0.78),
+      rtlBubble: this.genBubble({T:TH.foolscap,tone:'brand',rtl:true,chips:['\u05DC\u05DE\u05D4 2x?','\u05EA\u05E8\u05D2\u05DC \u05D0\u05D5\u05EA\u05D9','\u05D4\u05E8\u05D0\u05D4 \u05E9\u05DC\u05D1\u05D9\u05DD'],body:['\u05D1\u05D3\u05D9\u05D5\u05E7 \u2014 \u05D6\u05D4\u3000',E('span',{key:'h',style:{background:'rgba(242,201,76,.45)',borderRadius:'3px',padding:'0 3px'}},'\u05DB\u05DC\u05DC \u05D4\u05E9\u05E8\u05E9\u05E8\u05EA'),'\uFF1A \u05D4\u05E0\u05D2\u05D6\u05E8\u05EA \u05D4\u05D7\u05D9\u05E6\u05D5\u05E0\u05D9\u05EA ',E('span',{key:'m',style:{fontStyle:'italic',fontFamily:'ui-serif,Georgia,serif'}},'cos(x\u00B2)'),' \u05DB\u05E4\u05D5\u05DC ',E('span',{key:'m2',style:{fontStyle:'italic',fontFamily:'ui-serif,Georgia,serif'}},'2x'),'.']}),
+      rtlBubbleDark: this.genBubble({T:TH.foolscap,dark:true,tone:'correction',rtl:true,chips:['\u05DC\u05DE\u05D4 2x?','\u05EA\u05E8\u05D2\u05DC \u05D0\u05D5\u05EA\u05D9','\u05D4\u05E8\u05D0\u05D4 \u05E9\u05DC\u05D1\u05D9\u05DD'],body:['\u05E9\u05D9\u05DD \u05DC\u05D1 \u2014 \u05E9\u05DB\u05D7\u05EA \u05DC\u05D2\u05D6\u05D5\u05E8 \u05D0\u05EA \u05D4\u05D7\u05DC\u05E7 \u05D4\u05E4\u05E0\u05D9\u05DE\u05D9. \u05E0\u05E1\u05D4 \u05E9\u05D5\u05D1.']})
+    };
+  }
+}
+</script>
+</body>
+</html>

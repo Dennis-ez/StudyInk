@@ -30,7 +30,7 @@ enum GeminiService {
 
     private struct RequestBody: Encodable {
         struct SystemInstruction: Encodable { let parts: [Part] }
-        struct GenerationConfig: Encodable { let maxOutputTokens: Int }
+        struct GenerationConfig: Encodable { let maxOutputTokens: Int; let temperature: Double }
         let system_instruction: SystemInstruction
         let contents: [Content]
         let generationConfig: GenerationConfig
@@ -47,7 +47,7 @@ enum GeminiService {
         let candidates: [Candidate]?
     }
 
-    static func send(system: String, messages: [AIMessage], maxTokens: Int = 1500) async throws -> String {
+    static func send(system: String, messages: [AIMessage], maxTokens: Int = 1500, temperature: Double = 0.3) async throws -> String {
         guard let apiKey = AIConfig.geminiKey else { throw AIServiceError.missingKey(.gemini) }
         let model = AIConfig.model(for: .gemini)
         let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent")!
@@ -66,7 +66,7 @@ enum GeminiService {
                         parts: message.content.map(Part.from)
                     )
                 },
-                generationConfig: .init(maxOutputTokens: maxTokens)
+                generationConfig: .init(maxOutputTokens: maxTokens, temperature: temperature)
             )
         )
 

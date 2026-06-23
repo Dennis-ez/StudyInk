@@ -5,6 +5,7 @@ import SwiftUI
 struct AIPanelView: View {
     @ObservedObject var tutor: AITutorController
     @Environment(\.layoutDirection) private var layoutDirection
+    @Environment(\.aiAccent) private var aiAccent
     @State private var input = ""
     @FocusState private var inputFocused: Bool
 
@@ -35,7 +36,8 @@ struct AIPanelView: View {
     /// Ask directly from the panel: follows up on the open thread, or starts a
     /// new bubble when viewing the history list.
     private var composer: some View {
-        HStack(spacing: 8) {
+        let canSend = !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isLoading
+        return HStack(spacing: 8) {
             TextField(
                 tutor.panelBubbleID == nil ? "ai.askPlaceholder" : "ai.askMore",
                 text: $input,
@@ -49,12 +51,14 @@ struct AIPanelView: View {
                 if isLoading {
                     ProgressView().controlSize(.small)
                 } else {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.title3)
-                        .foregroundStyle(input.isEmpty ? Color.secondary : SemanticColor.accentBlue)
+                    // Circular send in the AI accent.
+                    Lucide("arrow-up", size: 14)
+                        .foregroundStyle(.white)
+                        .frame(width: 26, height: 26)
+                        .background(Circle().fill(canSend ? aiAccent : Color.secondary.opacity(0.4)))
                 }
             }
-            .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isLoading)
+            .disabled(!canSend)
             .accessibilityLabel(Text("ai.send"))
         }
         .padding(.horizontal, 14)
@@ -76,19 +80,23 @@ struct AIPanelView: View {
                 Button {
                     tutor.panelBubbleID = nil
                 } label: {
-                    Image(systemName: "chevron.backward")
+                    Lucide("chevron-left", size: 18)
+                        .foregroundStyle(SemanticColor.textMutedColor)
                 }
                 .accessibilityLabel(Text("action.back"))
             }
+            // Serif header in the AI accent — the tutor's voice.
             Text(tutor.panelBubbleID == nil ? "ai.history" : "ai.thread")
-                .font(.headline)
+                .font(.fraunces(18, weight: .semibold, relativeTo: .headline))
+                .foregroundStyle(aiAccent)
             Spacer()
             Button {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                     tutor.panelOpen = false
                 }
             } label: {
-                Image(systemName: "xmark")
+                Lucide("x", size: 18)
+                    .foregroundStyle(SemanticColor.textMutedColor)
             }
             .accessibilityLabel(Text("action.close"))
         }
@@ -146,16 +154,22 @@ struct AIPanelView: View {
             VStack(alignment: .leading, spacing: 12) {
                 ForEach(bubble.thread) { exchange in
                     if let question = exchange.question, !question.isEmpty {
+                        // You → the primary accent at low opacity.
                         Text(question)
                             .font(.subheadline)
                             .padding(10)
                             .frame(maxWidth: .infinity, alignment: question.isMostlyRTL ? .trailing : .leading)
-                            .background(SemanticColor.userMessageBubble.opacity(0.16), in: RoundedRectangle(cornerRadius: 10))
+                            .background(SemanticColor.userMessageBubble.opacity(0.16), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
                     if !exchange.answer.isEmpty {
+                        // AI → the light paper card tone with a hairline.
                         AIRichText(content: exchange.answer)
                             .padding(10)
-                            .background(SemanticColor.aiMessageBubble.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
+                            .background(SemanticColor.aiMessageBubble, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .strokeBorder(SemanticColor.separator, lineWidth: 1)
+                            )
                     }
                 }
             }

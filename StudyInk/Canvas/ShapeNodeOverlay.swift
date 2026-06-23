@@ -22,9 +22,18 @@ struct ShapeNodeOverlay: View {
     var onChange: (ShapeRecognizer.Shape) -> Void
     var onDone: () -> Void
 
+    @Environment(\.colorScheme) private var colorScheme
     @State private var dragStartShape: ShapeRecognizer.Shape?
     @State private var moveStartShape: ShapeRecognizer.Shape?
     @State private var rotateStartShape: ShapeRecognizer.Shape?
+
+    /// The shape's canonical (stored) colour adapted for the current appearance —
+    /// canonical black ink shows near-white on a dark canvas, so a selected shape
+    /// isn't drawn black/invisible in dark mode.
+    private var previewColor: Color {
+        let logical = UIColor(hex: editing.colorHex) ?? .label
+        return Color(uiColor: InkColorAdapter.displayColor(logical, darkMode: colorScheme == .dark))
+    }
 
     var body: some View {
         ZStack {
@@ -38,7 +47,7 @@ struct ShapeNodeOverlay: View {
             // its only visible copy, redrawn instantly with no PencilKit lag.
             previewPath
                 .stroke(
-                    Color(hex: editing.colorHex) ?? .primary,
+                    previewColor,
                     style: StrokeStyle(lineWidth: max(editing.width * transform.zoomScale, 1.5), lineCap: .round, lineJoin: .round)
                 )
                 .allowsHitTesting(false)
@@ -53,7 +62,7 @@ struct ShapeNodeOverlay: View {
                 Circle()
                     .fill(.white)
                     .frame(width: 10, height: 10)
-                    .overlay(Circle().strokeBorder(SemanticColor.accentBlue, lineWidth: 1.5))
+                    .overlay(Circle().strokeBorder(Color.accentColor, lineWidth: 1.5))
                     .shadow(color: .black.opacity(0.12), radius: 1, y: 0.5)
                     .contentShape(Circle().scale(3.4))
                     .position(transform.toScreen(node))

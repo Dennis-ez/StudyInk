@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,ital,wght@9..144,0,400;9..144,0,500;9..144,0,600;9..144,0,700;9..144,1,500;9..144,1,600&family=Caveat:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  @keyframes sk-think { 0%,80%,100% { transform: scale(.55); opacity:.35; } 40% { transform: scale(1); opacity:1; } }
+  @keyframes amber-breathe { 0%,100% { box-shadow:0 10px 34px -10px rgba(181,118,42,.24), 0 0 22px rgba(181,118,42,.08); } 50% { box-shadow:0 10px 34px -10px rgba(181,118,42,.32), 0 0 34px rgba(181,118,42,.18); } }
+  @keyframes caret { 0%,100% { opacity:1; } 50% { opacity:0; } }
+  @keyframes ghost-pulse { 0%,100% { opacity:.36; } 50% { opacity:.62; } }
+  @keyframes mark-in { from { opacity:0; transform:scale(.4); } to { opacity:1; transform:scale(1); } }
+  .mono { font-family: ui-monospace, "SF Mono", "JetBrains Mono", monospace; }
+  .doc table { border-collapse:collapse; }
+  code.k { font-family: ui-monospace,"SF Mono",monospace; font-size:.86em; background:#EBE2D0; padding:1px 6px; border-radius:5px; color:#7a4a13; white-space:nowrap; }
+</style>
+</helmet>
+
+<div class="doc" style="min-height:100vh; background:radial-gradient(130% 100% at 50% 0%, #ECE7DE 0%, #E2DBD0 52%, #D6CFC1 100%); padding:70px 56px 130px; color:#2B2722;">
+
+  <!-- ===================== HEADER ===================== -->
+  <div style="max-width:1180px; margin:0 auto 8px;">
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:22px;">
+      <div style="width:34px; height:34px; border-radius:9px; background:#2E4057; display:flex; align-items:center; justify-content:center; box-shadow:0 2px 6px rgba(46,64,87,.3);"><div style="width:13px; height:13px; border-radius:50%; background:#F2C94C;"></div></div>
+      <span style="font-family:'Fraunces',serif; font-weight:600; font-size:19px;">Inkling</span>
+      <span style="font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:#8A8073; font-weight:600; padding:4px 10px; border:1px solid #C9BFAC; border-radius:999px;">Marginalia · Reimagined</span>
+      <span style="font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:#B5762A; font-weight:600; padding:4px 10px; background:rgba(181,118,42,.1); border-radius:999px;">Ambient Tutor</span>
+    </div>
+    <h1 style="font-family:'Fraunces',serif; font-weight:600; font-size:58px; line-height:1.02; margin:0 0 18px; letter-spacing:-.7px; max-width:19ch;">The tutor you barely have to talk to.</h1>
+    <p style="font-size:18.5px; line-height:1.55; color:#5C5447; max-width:72ch; margin:0 0 14px;">You loved Marginalia — so let's take its idea to the end of the road. The original still <em>waited to be asked</em>: arm a tool, draw a lasso, type a question. That's three actions before a single answer. This version inverts it. The tutor <strong style="color:#2B2722;">reads along as you write</strong>, keeps its thoughts in the margin, and offers exactly the right help on the exact line — so the common case costs <strong style="color:#2B2722;">one tap, often zero</strong>.</p>
+    <p style="font-size:15px; line-height:1.55; color:#8a8073; max-width:72ch; margin:0;"><strong style="color:#5C5447;">The shift:</strong> from <strong style="color:#B5762A;">pull</strong> (you summon a panel) to <strong style="color:#B5762A;">push, politely</strong> (it leaves a mark you can ignore). The best input is no input; the second best is a tap on something already on screen.</p>
+  </div>
+
+  <!-- ===================== THREE PRINCIPLES ===================== -->
+  <div style="max-width:1180px; margin:46px auto 0; display:grid; grid-template-columns:repeat(3,1fr); gap:16px;">
+    <div style="background:#FBF7EF; border:1px solid #DFD4BF; border-radius:16px; padding:22px 24px;">
+      <div style="font-family:'Fraunces',serif; font-size:34px; color:#B5762A; line-height:1; margin-bottom:12px;">01</div>
+      <div style="font-family:'Fraunces',serif; font-weight:600; font-size:19px; margin-bottom:7px;">Offered, not requested</div>
+      <p style="margin:0; font-size:13.5px; line-height:1.55; color:#5C5447;">Help appears as a quiet margin mark the moment it's useful. You never open anything to discover the tutor noticed — it already told you, in ink you can ignore.</p>
+    </div>
+    <div style="background:#FBF7EF; border:1px solid #DFD4BF; border-radius:16px; padding:22px 24px;">
+      <div style="font-family:'Fraunces',serif; font-size:34px; color:#B5762A; line-height:1; margin-bottom:12px;">02</div>
+      <div style="font-family:'Fraunces',serif; font-weight:600; font-size:19px; margin-bottom:7px;">A tap, never a form</div>
+      <p style="margin:0; font-size:13.5px; line-height:1.55; color:#5C5447;">No arming, no lasso, no empty text field staring back. Tap the thing; the tutor figures out what you meant and leads with the few actions that actually fit it. Typing is the fallback.</p>
+    </div>
+    <div style="background:#FBF7EF; border:1px solid #DFD4BF; border-radius:16px; padding:22px 24px;">
+      <div style="font-family:'Fraunces',serif; font-size:34px; color:#B5762A; line-height:1; margin-bottom:12px;">03</div>
+      <div style="font-family:'Fraunces',serif; font-weight:600; font-size:19px; margin-bottom:7px;">Already thinking</div>
+      <p style="margin:0; font-size:13.5px; line-height:1.55; color:#5C5447;">It reads continuously on-device and pre-computes the likely help, so answers feel instant. You rarely see a spinner — the thought was ready before you tapped.</p>
+    </div>
+  </div>
+
+  <!-- ===================== HERO — MARGIN LANE ===================== -->
+  <div style="max-width:1180px; margin:64px auto 0;">
+    <div style="border-top:2px solid #2B2722; padding-top:16px; margin-bottom:8px; display:flex; align-items:baseline; gap:16px; flex-wrap:wrap;">
+      <span style="font-family:'Fraunces',serif; font-size:15px; font-weight:600; color:#8A8073;">The look</span>
+      <h2 style="font-family:'Fraunces',serif; font-weight:600; font-size:34px; margin:0; letter-spacing:-.3px;">The margin is the tutor's lane</h2>
+    </div>
+    <p style="font-size:15.5px; line-height:1.55; color:#5C5447; max-width:80ch; margin:8px 0 22px;">One idea carries the whole redesign: the red margin rule becomes where the tutor lives. At rest it's empty. When the tutor has something, a tiny amber glyph settles onto the exact line — a check, a gentle correction, a "stuck?" — aligned to your handwriting like a teacher's marks. Tap a glyph and a note unfolds from it. Nothing ever lands on top of your work uninvited.</p>
+
+    <div style="position:relative; width:100%; max-width:1100px; height:500px; border-radius:16px; overflow:hidden; box-shadow:0 22px 54px -18px rgba(40,34,28,.34), 0 0 0 1px #E0D6C2; background:#F6F0E4;">
+      <!-- ruled page -->
+      <div style="position:absolute; inset:0; background:#FCFAF5; background-image:repeating-linear-gradient(#FCFAF5 0 38px, #E7DDC8 38px 39px); background-position:0 26px;"></div>
+      <!-- tutor lane tint + red rule -->
+      <div style="position:absolute; top:0; bottom:0; left:0; width:72px; background:linear-gradient(90deg, rgba(181,118,42,.07), rgba(181,118,42,0));"></div>
+      <div style="position:absolute; top:0; bottom:0; left:72px; width:1.5px; background:rgba(192,57,43,.26);"></div>
+      <!-- header peek -->
+      <div style="position:absolute; top:0; left:0; right:0; height:44px; display:flex; align-items:center; gap:12px; padding:0 16px; background:linear-gradient(rgba(246,240,228,.85), rgba(246,240,228,0)); backdrop-filter:blur(8px);">
+        <div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;color:#8A8073;font-size:17px;">‹</div>
+        <div style="display:flex; flex-direction:column;"><span style="font-family:'Fraunces',serif; font-weight:600; font-size:15px;">Derivatives — practice</span><span style="font-size:11px; color:#8A8073;">Calculus I · just now</span></div>
+        <div style="margin-left:auto; display:flex; align-items:center; gap:6px; padding:6px 12px; border-radius:999px; background:rgba(181,118,42,.12); border:1px solid rgba(181,118,42,.32); color:#B5762A; font-size:12.5px; font-weight:600;"><span>✦</span> Tutor on</div>
+      </div>
+
+      <!-- handwriting lines -->
+      <div style="position:absolute; top:72px; left:92px; right:40px; font-family:'Caveat',cursive; color:#2E4057; font-size:27px; line-height:39px;">
+        <div style="font-weight:700;">Derivatives — practice</div>
+        <div style="margin-top:7px;">d/dx [x² sin x] = 2x sin x + x² cos x</div>
+        <div style="margin-top:13px;">d/dx [sin(x²)] = cos(x²)</div>
+        <div style="margin-top:53px;">d/dx [e^(x²)] = <span style="color:#C39A5A; opacity:.6; animation:ghost-pulse 2s ease-in-out infinite;">2x · e^(x²)</span></div>
+      </div>
+
+      <!-- margin glyphs -->
+      <div style="position:absolute; left:30px; top:140px; width:24px; height:24px; border-radius:50%; background:rgba(107,142,78,.14); display:flex; align-items:center; justify-content:center; color:#6B8E4E; font-size:14px; font-weight:700; animation:mark-in .4s ease-out;">✓</div>
+      <div style="position:absolute; left:22px; top:196px; width:38px; height:18px; display:flex; align-items:center; justify-content:center;"><svg viewBox="0 0 38 16" style="width:38px;height:16px;overflow:visible;"><path d="M3,10 C8,3 12,3 17,9 C21,14 26,14 35,5" fill="none" stroke="#D98714" stroke-width="2.6" stroke-linecap="round"></path></svg></div>
+      <div style="position:absolute; left:31px; top:300px; width:23px; height:23px; border-radius:50%; border:1.5px dashed rgba(181,118,42,.5); display:flex; align-items:center; justify-content:center; color:#B5762A; font-size:13px; font-weight:700; opacity:.85;">?</div>
+
+      <!-- ghost accept chip -->
+      <div style="position:absolute; left:430px; top:296px; display:inline-flex; align-items:center; gap:6px; background:rgba(252,250,245,.95); border:1px solid #E6D9BE; border-radius:999px; padding:3px 9px 3px 7px; box-shadow:0 6px 16px -8px rgba(40,34,28,.3); font-size:11px; color:#8a7a58;"><span style="width:15px;height:15px;border-radius:50%;background:#B5762A;color:#FCFAF5;display:flex;align-items:center;justify-content:center;font-size:9px;">✦</span> flick to accept</div>
+
+      <!-- expanded correction note (anchored to ✗ line) -->
+      <div style="position:absolute; top:170px; right:30px; width:266px; background:rgba(252,250,245,.94); backdrop-filter:blur(10px) saturate(150%); border-radius:16px; box-shadow:0 0 0 1px #E6D9BE, 0 14px 38px -12px rgba(40,34,28,.3), 0 0 24px rgba(181,118,42,.12); overflow:hidden;">
+        <div style="position:absolute; inset-block:0; left:0; width:4px; background:#FF9F0A;"></div>
+        <div style="padding:12px 14px 13px 18px;">
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+            <div style="width:20px;height:20px;border-radius:50%;background:#B5762A;display:flex;align-items:center;justify-content:center;color:#FCFAF5;font-size:11px;box-shadow:0 0 10px rgba(181,118,42,.4);">✦</div>
+            <span style="font-size:12px; color:#8A8073;">Almost —</span>
+            <span style="margin-left:auto; color:#A89E8B; font-size:14px;">×</span>
+          </div>
+          <div style="font-size:14px; line-height:1.5; color:#2B2722;">You differentiated the outside but forgot the <strong>inside</strong>. Chain rule wants the inside's derivative too:</div>
+          <div style="margin:9px 0; padding:7px 10px; background:#F4EEE0; border-radius:8px; font-family:'Fraunces',serif; font-style:italic; font-size:14.5px; color:#2B2722; text-align:center;">= 2x · cos(x²)</div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:12px; font-weight:600; color:#FCFAF5; background:#6B8E4E; padding:6px 13px; border-radius:999px;">Fix it for me</span>
+            <span style="font-size:12px; font-weight:600; color:#2E4057;">Show why</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex; gap:26px; margin-top:14px; flex-wrap:wrap;">
+      <span style="display:flex; align-items:center; gap:8px; font-size:12.5px; color:#5C5447;"><span style="width:18px;height:18px;border-radius:50%;background:rgba(107,142,78,.14);color:#6B8E4E;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;">✓</span>checked &amp; correct — passive, no tap needed</span>
+      <span style="display:flex; align-items:center; gap:8px; font-size:12.5px; color:#5C5447;"><svg viewBox="0 0 38 16" style="width:24px;height:11px;overflow:visible;"><path d="M3,10 C8,3 12,3 17,9 C21,14 26,14 35,5" fill="none" stroke="#D98714" stroke-width="2.6" stroke-linecap="round"></path></svg>gentle correction — tap to see the fix</span>
+      <span style="display:flex; align-items:center; gap:8px; font-size:12.5px; color:#5C5447;"><span style="width:18px;height:18px;border-radius:50%;border:1.5px dashed rgba(181,118,42,.5);color:#B5762A;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;">?</span>noticed you paused — a hint is waiting</span>
+      <span style="display:flex; align-items:center; gap:8px; font-size:12.5px; color:#5C5447;"><span style="color:#C39A5A;font-family:'Caveat',cursive;font-size:18px;">2x·e^(x²)</span>ghost next step — flick to ink it</span>
+    </div>
+  </div>
+
+  <!-- ===================== INTERACTION GALLERY ===================== -->
+  <div style="max-width:1180px; margin:70px auto 0;">
+    <div style="border-top:2px solid #2B2722; padding-top:16px; margin-bottom:8px; display:flex; align-items:baseline; gap:16px; flex-wrap:wrap;">
+      <span style="font-family:'Fraunces',serif; font-size:15px; font-weight:600; color:#8A8073;">The interactions</span>
+      <h2 style="font-family:'Fraunces',serif; font-weight:600; font-size:34px; margin:0; letter-spacing:-.3px;">Eight ways it does the work for you</h2>
+    </div>
+    <p style="font-size:15.5px; line-height:1.55; color:#5C5447; max-width:80ch; margin:8px 0 26px;">Each one removes a step. Together they turn "open AI, describe what I need, wait" into "the answer was already in the margin." Input cost is called out on every card.</p>
+
+    <!-- ROW 1: tap-to-anchor + action-first -->
+    <div style="display:flex; gap:18px; flex-wrap:wrap; margin-bottom:18px;">
+      <div style="flex:1 1 420px; min-width:380px; background:#FBF7EF; border:1px solid #DFD4BF; border-radius:16px; padding:18px 20px;">
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px;"><span style="font-family:'Fraunces',serif; font-weight:600; font-size:19px;">Tap, don't lasso</span><span style="font-size:10.5px; font-weight:700; letter-spacing:.04em; color:#6B8E4E; background:rgba(107,142,78,.13); padding:3px 8px; border-radius:999px;">1 TAP</span></div>
+        <p style="margin:0 0 14px; font-size:13.5px; line-height:1.5; color:#5C5447;">Forget arming a tool and tracing a loop. Tap any term and the tutor draws the circle <em>for</em> you, snapping to the whole equation, term, or line it thinks you mean. Wrong guess? Nudge a handle. The lasso becomes the rare case, not the gesture.</p>
+        <div style="position:relative; height:148px; border-radius:11px; overflow:hidden; background:#FCFAF5; background-image:repeating-linear-gradient(#FCFAF5 0 30px, #EFE6D2 30px 31px); box-shadow:inset 0 0 0 1px #E8DFCD;">
+          <div style="position:absolute; top:30px; left:24px; right:24px; font-family:'Caveat',cursive; font-size:23px; color:#2E4057; line-height:31px;">∫ 2x cos(x²) dx<br><span style="position:relative;">= ∫ cos(u) du
+            <svg viewBox="0 0 180 50" style="position:absolute; left:-12px; top:-10px; width:180px; height:50px; overflow:visible;"><path d="M16,12 C2,18 4,40 40,42 C120,46 170,30 156,14 C146,4 60,4 14,18" fill="rgba(181,118,42,.1)" stroke="#FF9F0A" stroke-width="2.4" stroke-linecap="round"></path></svg>
+          </span></div>
+          <div style="position:absolute; left:150px; top:96px; width:30px; height:30px; border-radius:50%; border:2px solid rgba(46,64,87,.5); box-shadow:0 0 0 6px rgba(46,64,87,.08);"></div>
+          <div style="position:absolute; left:158px; top:104px; width:14px; height:14px; border-radius:50%; background:rgba(46,64,87,.4);"></div>
+        </div>
+        <div class="mono" style="font-size:11px; color:#9a8a68; margin-top:9px;">Replaces: arm AI pen → draw lasso. &nbsp; Snap model picks the tightest meaningful stroke-group.</div>
+      </div>
+
+      <div style="flex:1 1 420px; min-width:380px; background:#FBF7EF; border:1px solid #DFD4BF; border-radius:16px; padding:18px 20px;">
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px;"><span style="font-family:'Fraunces',serif; font-weight:600; font-size:19px;">Action-first, not a blank field</span><span style="font-size:10.5px; font-weight:700; letter-spacing:.04em; color:#6B8E4E; background:rgba(107,142,78,.13); padding:3px 8px; border-radius:999px;">0 TYPING</span></div>
+        <p style="margin:0 0 14px; font-size:13.5px; line-height:1.5; color:#5C5447;">An empty text box is a tax. The note opens with the two or three verbs that actually fit what you tapped — derived from the content type — and the keyboard stays down. Typing is one tap away for the long tail, but you'll rarely need it.</p>
+        <div style="position:relative; height:148px; border-radius:11px; overflow:hidden; background:#FCFAF5; background-image:repeating-linear-gradient(#FCFAF5 0 30px, #EFE6D2 30px 31px); box-shadow:inset 0 0 0 1px #E8DFCD; display:flex; align-items:center; justify-content:center;">
+          <div style="width:250px; background:rgba(252,250,245,.96); border-radius:13px; box-shadow:0 0 0 1px #E6D9BE, 0 10px 24px -10px rgba(40,34,28,.28); padding:12px 14px; position:relative;">
+            <div style="position:absolute; inset-block:0; left:0; width:4px; background:#2E4057;"></div>
+            <div style="display:flex; align-items:center; gap:7px; margin-bottom:10px;"><span style="width:18px;height:18px;border-radius:50%;background:#B5762A;color:#FCFAF5;display:flex;align-items:center;justify-content:center;font-size:10px;">✦</span><span style="font-size:11.5px; color:#8A8073;">On <span style="font-family:'Fraunces',serif; font-style:italic;">∫ cos(u) du</span></span></div>
+            <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:9px;"><span style="font-size:12.5px; font-weight:600; padding:6px 12px; background:#2E4057; color:#FCFAF5; border-radius:999px;">Next step</span><span style="font-size:12.5px; padding:6px 12px; background:#F0E8D8; border:1px solid #E0D6C2; border-radius:999px; color:#5C5447;">Explain</span><span style="font-size:12.5px; padding:6px 12px; background:#F0E8D8; border:1px solid #E0D6C2; border-radius:999px; color:#5C5447;">Check</span></div>
+            <div style="display:flex; align-items:center; gap:7px; height:28px; padding:0 4px 0 12px; background:#F0E8D8; border-radius:999px;"><span style="flex:1; font-size:12px; color:#A89E8B;">or ask…</span><span style="width:20px;height:20px;border-radius:50%;background:#2E4057;color:#FCFAF5;display:flex;align-items:center;justify-content:center;font-size:11px;">↑</span></div>
+          </div>
+        </div>
+        <div class="mono" style="font-size:11px; color:#9a8a68; margin-top:9px;">Verb set keys off content: integral→{Next step, Solve} · term→{Define, Example} · diagram→{Label, Explain}.</div>
+      </div>
+    </div>
+
+    <!-- ROW 2: check my work (wide) -->
+    <div style="background:#FBF7EF; border:1px solid #DFD4BF; border-radius:16px; padding:18px 20px; margin-bottom:18px;">
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px;"><span style="font-family:'Fraunces',serif; font-weight:600; font-size:20px;">Check my work</span><span style="font-size:10.5px; font-weight:700; letter-spacing:.04em; color:#B5762A; background:rgba(181,118,42,.13); padding:3px 8px; border-radius:999px;">THE ONE-TAP KILLER</span></div>
+      <p style="margin:0 0 14px; font-size:13.5px; line-height:1.5; color:#5C5447; max-width:88ch;">The single most-wanted study action, reduced to a tap. Point at a worked solution and the tutor verifies it line by line — quiet green ticks down the margin for what's right, and one squiggle on the <strong>first</strong> thing that goes wrong, with the fix waiting beside it. It never dumps the whole answer; it finds the exact place you slipped.</p>
+      <div style="display:flex; gap:18px; flex-wrap:wrap; align-items:stretch;">
+        <div style="flex:2 1 480px; min-width:440px; position:relative; height:212px; border-radius:11px; overflow:hidden; background:#FCFAF5; background-image:repeating-linear-gradient(#FCFAF5 0 36px, #E7DDC8 36px 37px); background-position:0 16px; box-shadow:inset 0 0 0 1px #E8DFCD;">
+          <div style="position:absolute; top:0; bottom:0; left:58px; width:1.5px; background:rgba(192,57,43,.22);"></div>
+          <div style="position:absolute; top:18px; left:76px; right:24px; font-family:'Caveat',cursive; font-size:24px; color:#2E4057; line-height:36px;">
+            <div>x² − 5x + 6 = 0</div>
+            <div>(x − 2)(x − 3) = 0</div>
+            <div>x = 2  or  x = 5</div>
+          </div>
+          <div style="position:absolute; left:20px; top:60px; width:24px; height:24px; border-radius:50%; background:rgba(107,142,78,.14); color:#6B8E4E; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700;">✓</div>
+          <div style="position:absolute; left:20px; top:96px; width:24px; height:24px; border-radius:50%; background:rgba(107,142,78,.14); color:#6B8E4E; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700;">✓</div>
+          <div style="position:absolute; left:16px; top:134px; width:34px; height:16px; display:flex; align-items:center; justify-content:center;"><svg viewBox="0 0 38 16" style="width:34px;height:14px;overflow:visible;"><path d="M3,10 C8,3 12,3 17,9 C21,14 26,14 35,5" fill="none" stroke="#D98714" stroke-width="2.6" stroke-linecap="round"></path></svg></div>
+          <svg viewBox="0 0 70 16" style="position:absolute; left:188px; top:148px; width:70px; height:16px; overflow:visible;"><path d="M2,8 C16,3 26,3 40,8 C52,12 60,12 68,7" fill="none" stroke="#D98714" stroke-width="2" stroke-linecap="round"></path></svg>
+        </div>
+        <div style="flex:1 1 220px; min-width:220px; display:flex; align-items:center;">
+          <div style="width:100%; background:rgba(252,250,245,.96); border-radius:13px; box-shadow:0 0 0 1px #E6D9BE, 0 10px 24px -10px rgba(40,34,28,.26); padding:13px 15px; position:relative;">
+            <div style="position:absolute; inset-block:0; left:0; width:4px; background:#FF9F0A;"></div>
+            <div style="display:flex; align-items:center; gap:7px; margin-bottom:8px;"><span style="width:18px;height:18px;border-radius:50%;background:#B5762A;color:#FCFAF5;display:flex;align-items:center;justify-content:center;font-size:10px;">✦</span><span style="font-size:11.5px; color:#8A8073;">Last line —</span></div>
+            <div style="font-size:13.5px; line-height:1.5; color:#2B2722;">Factoring's perfect. Just the final root: <span style="font-family:'Fraunces',serif; font-style:italic;">x − 3 = 0</span> gives <strong>x = 3</strong>, not 5.</div>
+            <div style="margin-top:10px; display:flex; gap:8px;"><span style="font-size:12px; font-weight:600; color:#FCFAF5; background:#6B8E4E; padding:6px 12px; border-radius:999px;">Fix it</span><span style="font-size:12px; font-weight:600; color:#2E4057; padding:6px 4px;">I'll redo it</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="mono" style="font-size:11px; color:#9a8a68; margin-top:11px;">Trigger: tap a solution block, or auto after you write "=" + a boxed/underlined answer. Marks stream top-down as each line verifies. VoiceOver: "Line 3, correction…"</div>
+    </div>
+
+    <!-- ROW 3: ghost next-step + stuck -->
+    <div style="display:flex; gap:18px; flex-wrap:wrap; margin-bottom:18px;">
+      <div style="flex:1 1 420px; min-width:380px; background:#FBF7EF; border:1px solid #DFD4BF; border-radius:16px; padding:18px 20px;">
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px;"><span style="font-family:'Fraunces',serif; font-weight:600; font-size:19px;">Next-step ghosting</span><span style="font-size:10.5px; font-weight:700; letter-spacing:.04em; color:#6B8E4E; background:rgba(107,142,78,.13); padding:3px 8px; border-radius:999px;">FLICK · 0 TYPING</span></div>
+        <p style="margin:0 0 14px; font-size:13.5px; line-height:1.5; color:#5C5447;">Autocomplete, for math you're writing by hand. As you work a derivation, the likely next line appears as faint amber ghost-ink just ahead of your pen. Flick across it and the tutor inks it in your flow — accept-as-you-go, no detour to a chat.</p>
+        <div style="position:relative; height:148px; border-radius:11px; overflow:hidden; background:#FCFAF5; background-image:repeating-linear-gradient(#FCFAF5 0 31px, #EFE6D2 31px 32px); box-shadow:inset 0 0 0 1px #E8DFCD;">
+          <div style="position:absolute; top:26px; left:24px; right:24px; font-family:'Caveat',cursive; font-size:23px; color:#2E4057; line-height:32px;">u = x², &nbsp; du = 2x dx<br>∫ cos(u) du<br><span>= <span style="color:#C39A5A; opacity:.6; animation:ghost-pulse 2s ease-in-out infinite;">sin(u) + C</span></span></div>
+          <div style="position:absolute; left:120px; top:90px; display:inline-flex; align-items:center; gap:5px; background:rgba(252,250,245,.95); border:1px solid #E6D9BE; border-radius:999px; padding:3px 9px 3px 6px; box-shadow:0 6px 16px -8px rgba(40,34,28,.3); font-size:10.5px; color:#8a7a58;"><span style="width:14px;height:14px;border-radius:50%;background:#B5762A;color:#FCFAF5;display:flex;align-items:center;justify-content:center;font-size:8px;">✦</span> flick →</div>
+        </div>
+        <div class="mono" style="font-size:11px; color:#9a8a68; margin-top:9px;">Only shows at ≥ high confidence; fades if you write something else. Never blocks your own ink.</div>
+      </div>
+
+      <div style="flex:1 1 420px; min-width:380px; background:#FBF7EF; border:1px solid #DFD4BF; border-radius:16px; padding:18px 20px;">
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px;"><span style="font-family:'Fraunces',serif; font-weight:600; font-size:19px;">Stuck-sensing</span><span style="font-size:10.5px; font-weight:700; letter-spacing:.04em; color:#6B8E4E; background:rgba(107,142,78,.13); padding:3px 8px; border-radius:999px;">0 TAP TO OFFER</span></div>
+        <p style="margin:0 0 14px; font-size:13.5px; line-height:1.5; color:#5C5447;">When your pen hovers or you stall on a step for a while, a soft "?" settles in the margin — "want a nudge?" Help escalates only if you ask again: a hint, then a bigger hint, then the worked step. It teaches; it doesn't just hand over the answer.</p>
+        <div style="position:relative; height:148px; border-radius:11px; overflow:hidden; background:#FCFAF5; background-image:repeating-linear-gradient(#FCFAF5 0 31px, #EFE6D2 31px 32px); box-shadow:inset 0 0 0 1px #E8DFCD;">
+          <div style="position:absolute; top:26px; left:48px; right:24px; font-family:'Caveat',cursive; font-size:23px; color:#2E4057; line-height:32px;">lim&#8202;(x→0) &nbsp;sin(x)/x = ?</div>
+          <div style="position:absolute; top:0; bottom:0; left:34px; width:1.5px; background:rgba(192,57,43,.18);"></div>
+          <div style="position:absolute; left:10px; top:30px; width:22px; height:22px; border-radius:50%; border:1.5px dashed rgba(181,118,42,.55); color:#B5762A; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700;">?</div>
+          <div style="position:absolute; left:44px; bottom:14px; right:16px; background:rgba(252,250,245,.96); border-radius:11px; box-shadow:0 0 0 1px #E6D9BE, 0 8px 20px -10px rgba(40,34,28,.28); padding:9px 12px; position:relative;">
+            <div style="position:absolute; inset-block:0; left:0; width:3px; background:#B5762A;"></div>
+            <div style="font-size:12.5px; color:#2B2722; line-height:1.45;">Nudge: what happens to the graph of <span style="font-family:'Fraunces',serif; font-style:italic;">sin x</span> very near 0?</div>
+            <div style="margin-top:6px;"><span style="font-size:11px; color:#B5762A; font-weight:600;">Bigger hint →</span></div>
+          </div>
+        </div>
+        <div class="mono" style="font-size:11px; color:#9a8a68; margin-top:9px;">Trigger: pen idle &gt; dwell threshold on an unfinished line. Tunable by sensitivity (Off/Subtle/Helpful).</div>
+      </div>
+    </div>
+
+    <!-- ROW 4: voice + review + warm thread -->
+    <div style="display:flex; gap:18px; flex-wrap:wrap;">
+      <div style="flex:1 1 300px; min-width:280px; background:#FBF7EF; border:1px solid #DFD4BF; border-radius:16px; padding:18px 20px;">
+        <div style="display:flex; align-items:center; gap:9px; margin-bottom:4px;"><span style="font-family:'Fraunces',serif; font-weight:600; font-size:18px;">Just talk</span><span style="font-size:10px; font-weight:700; color:#6B8E4E; background:rgba(107,142,78,.13); padding:3px 7px; border-radius:999px;">HOLD + SPEAK</span></div>
+        <p style="margin:0 0 13px; font-size:13px; line-height:1.5; color:#5C5447;">Press &amp; hold the AI pen and say it out loud. No keyboard, no selection — it uses whatever you last touched or wrote as context.</p>
+        <div style="position:relative; height:118px; border-radius:11px; overflow:hidden; background:#FCFAF5; background-image:repeating-linear-gradient(#FCFAF5 0 30px, #EFE6D2 30px 31px); box-shadow:inset 0 0 0 1px #E8DFCD; display:flex; align-items:center; justify-content:center;">
+          <div style="display:flex; align-items:center; gap:9px; background:rgba(252,250,245,.96); border-radius:999px; box-shadow:0 0 0 1px #E6D9BE, 0 8px 20px -10px rgba(40,34,28,.3); padding:8px 14px 8px 10px;">
+            <span style="width:24px;height:24px;border-radius:50%;background:#B5762A;color:#FCFAF5;display:flex;align-items:center;justify-content:center;font-size:12px;box-shadow:0 0 12px rgba(181,118,42,.5);">●</span>
+            <span style="display:flex; align-items:center; gap:3px;"><span style="width:3px;height:9px;border-radius:2px;background:#B5762A;"></span><span style="width:3px;height:16px;border-radius:2px;background:#B5762A;"></span><span style="width:3px;height:22px;border-radius:2px;background:#B5762A;"></span><span style="width:3px;height:13px;border-radius:2px;background:#B5762A;"></span><span style="width:3px;height:8px;border-radius:2px;background:#B5762A;"></span></span>
+            <span style="font-size:12.5px; color:#5C5447; font-style:italic;">"why does this work?"</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="flex:1 1 300px; min-width:280px; background:#FBF7EF; border:1px solid #DFD4BF; border-radius:16px; padding:18px 20px;">
+        <div style="display:flex; align-items:center; gap:9px; margin-bottom:4px;"><span style="font-family:'Fraunces',serif; font-weight:600; font-size:18px;">It builds your review deck</span><span style="font-size:10px; font-weight:700; color:#6B8E4E; background:rgba(107,142,78,.13); padding:3px 7px; border-radius:999px;">0 AUTHORING</span></div>
+        <p style="margin:0 0 13px; font-size:13px; line-height:1.5; color:#5C5447;">Everything you got wrong, plus the key terms it explained, quietly becomes a spaced-repetition deck. It resurfaces days later — you never made a single card.</p>
+        <div style="position:relative; height:118px; border-radius:11px; overflow:hidden; background:#FCFAF5; box-shadow:inset 0 0 0 1px #E8DFCD; display:flex; align-items:center; justify-content:center;">
+          <div style="position:relative; width:170px; height:74px;">
+            <div style="position:absolute; left:10px; top:10px; right:0; bottom:0; background:#F0E8D8; border:1px solid #E0D6C2; border-radius:11px;"></div>
+            <div style="position:absolute; left:5px; top:5px; right:5px; bottom:5px; background:#F6EFE1; border:1px solid #E0D6C2; border-radius:11px;"></div>
+            <div style="position:absolute; left:0; top:0; right:10px; bottom:10px; background:rgba(252,250,245,.98); border:1px solid #E6D9BE; border-radius:11px; box-shadow:0 8px 18px -10px rgba(40,34,28,.25); padding:11px 13px;">
+              <div style="font-size:10px; color:#8A8073; margin-bottom:5px;">Built from today · 4 cards</div>
+              <div style="font-family:'Fraunces',serif; font-style:italic; font-size:15px; color:#2B2722;">d/dx sin(x²) = ?</div>
+              <div style="margin-top:8px;"><span style="font-size:11px; font-weight:600; color:#FCFAF5; background:#2E4057; padding:5px 11px; border-radius:999px;">Review →</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="flex:1 1 300px; min-width:280px; background:#FBF7EF; border:1px solid #DFD4BF; border-radius:16px; padding:18px 20px;">
+        <div style="display:flex; align-items:center; gap:9px; margin-bottom:4px;"><span style="font-family:'Fraunces',serif; font-weight:600; font-size:18px;">Warm thread</span><span style="font-size:10px; font-weight:700; color:#6B8E4E; background:rgba(107,142,78,.13); padding:3px 7px; border-radius:999px;">NO RE-SELECT</span></div>
+        <p style="margin:0 0 13px; font-size:13px; line-height:1.5; color:#5C5447;">After an answer the context stays warm for a beat — "why?", "simpler", "again in English" need no re-circling. The conversation follows you instead of resetting.</p>
+        <div style="position:relative; height:118px; border-radius:11px; overflow:hidden; background:#FCFAF5; background-image:repeating-linear-gradient(#FCFAF5 0 30px, #EFE6D2 30px 31px); box-shadow:inset 0 0 0 1px #E8DFCD; display:flex; align-items:flex-end; justify-content:center; padding-bottom:14px;">
+          <div style="width:230px; display:flex; flex-direction:column; gap:6px;">
+            <div style="align-self:flex-start; max-width:80%; background:#F0E8D8; color:#2B2722; font-size:12px; padding:6px 10px; border-radius:12px 12px 12px 3px;">…so it's the chain rule.</div>
+            <div style="display:flex; align-items:center; gap:6px; height:30px; padding:0 4px 0 12px; background:rgba(252,250,245,.96); border-radius:999px; box-shadow:0 0 0 1px #E6D9BE, 0 0 16px rgba(181,118,42,.14);"><span style="flex:1; font-size:12px; color:#A89E8B;">why? · simpler · example…</span><span style="width:21px;height:21px;border-radius:50%;background:#2E4057;color:#FCFAF5;display:flex;align-items:center;justify-content:center;font-size:11px;">↑</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- ===================== INPUT BUDGET + MODEL ===================== -->
+  <div style="max-width:1180px; margin:70px auto 0;">
+    <div style="border-top:2px solid #2B2722; padding-top:16px; margin-bottom:8px; display:flex; align-items:baseline; gap:16px; flex-wrap:wrap;">
+      <span style="font-family:'Fraunces',serif; font-size:15px; font-weight:600; color:#8A8073;">Why it feels effortless</span>
+      <h2 style="font-family:'Fraunces',serif; font-weight:600; font-size:34px; margin:0; letter-spacing:-.3px;">The input budget, before &amp; after</h2>
+    </div>
+    <p style="font-size:15.5px; line-height:1.55; color:#5C5447; max-width:80ch; margin:8px 0 24px;">Effortless isn't a vibe — it's a count. Here's the literal number of deliberate actions between "I want help" and "I have it," for the everyday cases.</p>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:18px;">
+      <div style="background:#F4ECDD; border:1px solid #DFD4BF; border-radius:16px; padding:20px 22px;">
+        <div style="display:flex; align-items:center; gap:9px; margin-bottom:14px;"><span class="mono" style="font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:#9a8a68; font-weight:700;">Before · Circle &amp; Ask</span><span style="font-size:11px; font-weight:700; color:#C0392B; background:rgba(192,57,43,.1); padding:3px 9px; border-radius:999px;">4 taps + typing</span></div>
+        <div style="display:flex; flex-direction:column; gap:9px;">
+          <div style="display:flex; align-items:center; gap:11px;"><span style="width:22px;height:22px;border-radius:50%;background:#E4D7BD;color:#8a7a58;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;">1</span><span style="font-size:13.5px; color:#5C5447;">Tap the AI pen to arm it</span></div>
+          <div style="display:flex; align-items:center; gap:11px;"><span style="width:22px;height:22px;border-radius:50%;background:#E4D7BD;color:#8a7a58;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;">2</span><span style="font-size:13.5px; color:#5C5447;">Carefully draw a lasso around the region</span></div>
+          <div style="display:flex; align-items:center; gap:11px;"><span style="width:22px;height:22px;border-radius:50%;background:#E4D7BD;color:#8a7a58;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;">3</span><span style="font-size:13.5px; color:#5C5447;">Tap into the input field</span></div>
+          <div style="display:flex; align-items:center; gap:11px;"><span style="width:22px;height:22px;border-radius:50%;background:#E4D7BD;color:#8a7a58;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;">4</span><span style="font-size:13.5px; color:#5C5447;"><strong>Type</strong> the question, then send</span></div>
+          <div style="display:flex; align-items:center; gap:11px; opacity:.6;"><span style="width:22px;height:22px;border-radius:50%;background:transparent;border:1px dashed #C9BCA0;color:#8a7a58;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;">⏳</span><span style="font-size:13.5px; color:#5C5447;">Wait for the spinner</span></div>
+        </div>
+      </div>
+
+      <div style="background:#FCFAF5; border:1px solid #E6D9BE; border-radius:16px; padding:20px 22px; box-shadow:0 0 0 1px rgba(181,118,42,.08), 0 0 26px rgba(181,118,42,.08);">
+        <div style="display:flex; align-items:center; gap:9px; margin-bottom:14px;"><span class="mono" style="font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:#9a8a68; font-weight:700;">After · Ambient Tutor</span><span style="font-size:11px; font-weight:700; color:#6B8E4E; background:rgba(107,142,78,.13); padding:3px 9px; border-radius:999px;">0–2 taps · no typing</span></div>
+        <div style="display:flex; flex-direction:column; gap:11px;">
+          <div style="display:flex; align-items:center; gap:11px;"><span style="width:22px;height:22px;border-radius:50%;background:rgba(107,142,78,.16);color:#6B8E4E;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;">0</span><span style="font-size:13.5px; color:#5C5447;"><strong>Catch a mistake</strong> → already marked in the margin. <span style="color:#8A8073;">Tap only if you want the fix.</span></span></div>
+          <div style="display:flex; align-items:center; gap:11px;"><span style="width:22px;height:22px;border-radius:50%;background:rgba(107,142,78,.16);color:#6B8E4E;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;">1</span><span style="font-size:13.5px; color:#5C5447;"><strong>Ask about a term</strong> → tap it (auto-anchors), tap a verb. <span style="color:#8A8073;">Done.</span></span></div>
+          <div style="display:flex; align-items:center; gap:11px;"><span style="width:22px;height:22px;border-radius:50%;background:rgba(107,142,78,.16);color:#6B8E4E;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;">1</span><span style="font-size:13.5px; color:#5C5447;"><strong>Continue a derivation</strong> → flick the ghost step.</span></div>
+          <div style="display:flex; align-items:center; gap:11px;"><span style="width:22px;height:22px;border-radius:50%;background:rgba(107,142,78,.16);color:#6B8E4E;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;">0</span><span style="font-size:13.5px; color:#5C5447;"><strong>Get stuck</strong> → the "?" is already there. Speak to go deeper.</span></div>
+          <div style="display:flex; align-items:center; gap:11px;"><span style="width:22px;height:22px;border-radius:50%;background:rgba(181,118,42,.16);color:#B5762A;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;">✦</span><span style="font-size:13.5px; color:#5C5447;">No spinner — the thought was pre-computed.</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- POLITENESS + PRIVACY -->
+    <div style="display:flex; gap:18px; flex-wrap:wrap; margin-top:24px;">
+      <div style="flex:1.3 1 460px; min-width:420px; background:#FBF7EF; border:1px solid #DFD4BF; border-radius:16px; padding:20px 22px;">
+        <div style="font-family:'Fraunces',serif; font-weight:600; font-size:20px; margin-bottom:6px;">The politeness model</div>
+        <p style="margin:0 0 16px; font-size:13.5px; line-height:1.5; color:#5C5447; max-width:62ch;">Ambient only works if it's never naggy. The tutor speaks up <strong>only</strong> when it's both confident and the help is worth the interruption — the top-right corner below. Everything else stays silent and waits to be asked.</p>
+        <div style="display:flex; gap:14px; align-items:stretch;">
+          <div style="display:flex; flex-direction:column; justify-content:space-between; align-items:center; padding:4px 0;"><span class="mono" style="font-size:10px; color:#9a8a68; writing-mode:vertical-rl; transform:rotate(180deg);">VALUE →</span></div>
+          <div style="flex:1;">
+            <div style="display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; gap:8px; height:188px;">
+              <div style="background:#F4ECDD; border:1px solid #E0D6C2; border-radius:10px; padding:10px; display:flex; flex-direction:column; justify-content:space-between;"><span style="font-size:11.5px; color:#8A8073;">High value · low confidence</span><span style="font-size:12px; color:#5C5447; font-weight:600;">Stay silent — risk a wrong nag</span></div>
+              <div style="background:rgba(181,118,42,.12); border:1.5px solid rgba(181,118,42,.4); border-radius:10px; padding:10px; display:flex; flex-direction:column; justify-content:space-between; box-shadow:0 0 20px rgba(181,118,42,.12);"><span style="font-size:11.5px; color:#B5762A; font-weight:700;">High value · high confidence</span><span style="font-size:12.5px; color:#2B2722; font-weight:600;">✦ Leave a margin mark</span></div>
+              <div style="background:#F4ECDD; border:1px solid #E0D6C2; border-radius:10px; padding:10px; display:flex; flex-direction:column; justify-content:space-between;"><span style="font-size:11.5px; color:#8A8073;">Low value · low confidence</span><span style="font-size:12px; color:#5C5447; font-weight:600;">Silent</span></div>
+              <div style="background:#F4ECDD; border:1px solid #E0D6C2; border-radius:10px; padding:10px; display:flex; flex-direction:column; justify-content:space-between;"><span style="font-size:11.5px; color:#8A8073;">Low value · high confidence</span><span style="font-size:12px; color:#5C5447; font-weight:600;">Hold — answer if asked</span></div>
+            </div>
+            <div style="text-align:center; margin-top:6px;"><span class="mono" style="font-size:10px; color:#9a8a68;">CONFIDENCE →</span></div>
+          </div>
+        </div>
+        <div style="display:flex; align-items:center; gap:12px; margin-top:14px; padding-top:14px; border-top:1px solid #E6DCC9;">
+          <span style="font-size:12.5px; color:#5C5447; font-weight:600;">Sensitivity dial</span>
+          <div style="display:flex; gap:4px; background:#F0E8D8; border-radius:999px; padding:3px;"><span style="font-size:11.5px; padding:5px 12px; border-radius:999px; color:#8A8073;">Off</span><span style="font-size:11.5px; padding:5px 12px; border-radius:999px; color:#8A8073;">Subtle</span><span style="font-size:11.5px; padding:5px 12px; border-radius:999px; background:#FCFAF5; box-shadow:0 1px 3px rgba(40,34,28,.12); color:#2B2722; font-weight:600;">Helpful</span></div>
+          <span style="font-size:11.5px; color:#8A8073;">+ Focus mode silences everything during a timed test.</span>
+        </div>
+      </div>
+
+      <div style="flex:1 1 320px; min-width:300px; background:#211d18; border-radius:16px; padding:20px 22px; color:#E8E0CE;">
+        <div style="font-family:'Fraunces',serif; font-weight:600; font-size:20px; margin-bottom:10px; color:#F6EFE1;">Reads on-device, by default</div>
+        <ul style="margin:0; padding-left:18px; font-size:13px; line-height:1.7; color:#cabfa8;">
+          <li>Continuous reading of the page happens <strong style="color:#E8E0CE;">on-device</strong>; nothing leaves until you ask a real question.</li>
+          <li>A clear <code class="mono" style="font-size:11px; background:#322d25; color:#E0A85A; padding:1px 5px; border-radius:4px;">Tutor on</code> toggle in the header — off means truly silent, no marks, no reading.</li>
+          <li>AI ink is <strong style="color:#E8E0CE;">tagged &amp; amber</strong> — one undo removes it, and export can strip every AI mark in a tap.</li>
+          <li>Per-note opt-out; the writing surface is never sent wholesale, only the region you point at.</li>
+        </ul>
+        <div style="margin-top:14px; display:flex; align-items:center; gap:8px;"><span style="width:34px;height:20px;border-radius:999px;background:#6B8E4E;position:relative;"><span style="position:absolute; right:2px; top:2px; width:16px;height:16px;border-radius:50%;background:#FCFAF5;"></span></span><span style="font-size:12px; color:#cabfa8;">Tutor on · reading this page</span></div>
+      </div>
+    </div>
+
+    <!-- FEATURES YOU DIDN'T ASK FOR -->
+    <div style="margin-top:24px; background:#FBF7EF; border:1px solid #DFD4BF; border-radius:16px; padding:20px 24px;">
+      <div style="font-family:'Fraunces',serif; font-weight:600; font-size:20px; margin-bottom:4px;">A few you didn't ask for</div>
+      <p style="margin:0 0 16px; font-size:13.5px; color:#5C5447;">Small touches that make the ambient model feel considered rather than creepy.</p>
+      <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:14px 26px;">
+        <div><div style="font-size:13.5px; font-weight:600; color:#2B2722; margin-bottom:3px;">Fix-it in <em>your</em> hand</div><p style="margin:0; font-size:12.5px; line-height:1.5; color:#5C5447;">"Fix it for me" rewrites the line in a handwriting that matches yours, just tinted amber — so corrections still look like your page.</p></div>
+        <div><div style="font-size:13.5px; font-weight:600; color:#2B2722; margin-bottom:3px;">Exam-aware</div><p style="margin:0; font-size:12.5px; line-height:1.5; color:#5C5447;">If you're clearly self-testing, it stops autocompleting and only checks <em>after</em> — practice stays honest.</p></div>
+        <div><div style="font-size:13.5px; font-weight:600; color:#2B2722; margin-bottom:3px;">Speaks your language</div><p style="margin:0; font-size:12.5px; line-height:1.5; color:#5C5447;">Matches the language you're writing in (incl. Hebrew/RTL) and your level of formality — math stays an LTR island.</p></div>
+        <div><div style="font-size:13.5px; font-weight:600; color:#2B2722; margin-bottom:3px;">The lane is a map</div><p style="margin:0; font-size:12.5px; line-height:1.5; color:#5C5447;">Scroll back and the margin glyphs show exactly where you struggled — a heat-map of a study session, for free.</p></div>
+        <div><div style="font-size:13.5px; font-weight:600; color:#2B2722; margin-bottom:3px;">One mark at a time</div><p style="margin:0; font-size:12.5px; line-height:1.5; color:#5C5447;">Never more than one open margin note; new help waits as a glyph so the page is never crowded.</p></div>
+        <div><div style="font-size:13.5px; font-weight:600; color:#2B2722; margin-bottom:3px;">Earns the interruption</div><p style="margin:0; font-size:12.5px; line-height:1.5; color:#5C5447;">If you dismiss the same kind of nudge twice, it backs off that category for the session. It learns your tolerance.</p></div>
+      </div>
+    </div>
+  </div>
+  <!-- ===================== DETAILED HANDOFF ===================== -->
+  <div style="max-width:1180px; margin:80px auto 0;">
+    <div style="border-top:2px solid #2B2722; padding-top:16px; margin-bottom:8px; display:flex; align-items:baseline; gap:16px; flex-wrap:wrap;">
+      <span style="font-family:'Fraunces',serif; font-size:15px; font-weight:600; color:#B5762A;">Engineering</span>
+      <h2 style="font-family:'Fraunces',serif; font-weight:600; font-size:36px; margin:0; letter-spacing:-.4px;">Build handoff — Ambient Tutor</h2>
+    </div>
+    <p style="font-size:16px; line-height:1.55; color:#5C5447; max-width:82ch; margin:8px 0 6px;">Everything below extends the shipped Foolscap token contract and the existing SwiftUI surfaces — it does not invent a parallel system. Where it replaces or adds to a component, the original name is given. Targets: iPad Pro 12.9″ landscape, PencilKit canvas, all four skins × light/dark, LTR + RTL.</p>
+    <p class="mono" style="font-size:11.5px; color:#9a8a68; margin:0 0 30px;">reads as: token → geometry → glyph system → intelligence → motion → per-surface redline → data model → SwiftUI map → a11y/perf/rtl → build order → acceptance.</p>
+
+    <!-- 1 · TOKENS -->
+    <div style="display:flex; align-items:baseline; gap:12px; margin-bottom:12px;"><span style="font-family:'Fraunces',serif; font-size:14px; color:#B5762A; font-weight:600;">1</span><h3 style="font-family:'Fraunces',serif; font-weight:600; font-size:22px; margin:0;">New tokens (additive)</h3></div>
+    <pre style="font-family:ui-monospace,'SF Mono',monospace; font-size:12px; line-height:1.7; background:#211d18; color:#E8E0CE; padding:18px 20px; border-radius:12px; overflow:auto; margin:0 0 14px;"><span style="color:#8d8472;">/* Ambient additions — semantic, theme-rebound like the rest */</span>
+--lane-width:        72px;   <span style="color:#8d8472;">/* tutor margin gutter; 64 in Graphite, 80 RTL-safe */</span>
+--glyph-size:        24px;   <span style="color:#8d8472;">/* min 44pt tap target via padding */</span>
+--ai-ink:            var(--secondary);            <span style="color:#8d8472;">/* amber — all AI handwriting/marks */</span>
+--ai-ghost:          color-mix(in srgb, var(--secondary) 55%, transparent);
+--ai-ghost-opacity:  .42;     <span style="color:#8d8472;">/* ghost next-step at rest; pulses .36→.62 */</span>
+--glyph-correct:     var(--success);             <span style="color:#8d8472;">/* ✓ */</span>
+--glyph-attend:      var(--ai-circle);            <span style="color:#8d8472;">/* squiggle ~ */</span>
+--glyph-hint:        var(--secondary);            <span style="color:#8d8472;">/* ? dashed ring */</span>
+--lane-tint:         color-mix(in srgb, var(--secondary) 7%, transparent); <span style="color:#8d8472;">/* faint active wash */</span>
+<span style="color:#8d8472;">/* behavioural constants (not visual) */</span>
+--dwell-stuck:       6000ms;  --idle-hover: 1200ms;  --thread-warm: 30000ms;
+--conf-mark:         0.82;    <span style="color:#8d8472;">/* min confidence to leave a proactive mark */</span>
+--conf-ghost:        0.88;    --conf-autocheck: 0.90;
+<span style="color:#8d8472;">/* Graphite: --ai-ink→--text; glyphs become dashed/dotted ink, no hue. Neon: glyphs gain 0 0 10px bloom. */</span></pre>
+    <p style="font-size:13px; color:#5C5447; margin:0 0 28px; line-height:1.55;">All four skins already define <code class="k">--secondary / --success / --ai-circle</code>; the ambient layer only adds the lane geometry, ghost, and the behavioural constants above. Nothing here is hard-coded per screen.</p>
+
+    <!-- 2 · LANE ANATOMY -->
+    <div style="display:flex; align-items:baseline; gap:12px; margin-bottom:12px;"><span style="font-family:'Fraunces',serif; font-size:14px; color:#B5762A; font-weight:600;">2</span><h3 style="font-family:'Fraunces',serif; font-weight:600; font-size:22px; margin:0;">The margin lane — geometry</h3></div>
+    <div style="background:#FBF7EF; border:1px solid #DFD4BF; border-radius:14px; padding:16px 20px; margin-bottom:28px;">
+      <table style="width:100%; font-size:12.5px; border-collapse:collapse;">
+        <tr><td style="padding:5px 14px 5px 0; color:#9a8a68; white-space:nowrap; vertical-align:top;" class="mono">lane</td><td style="padding:5px 0; color:#5C5447;">A non-scrolling overlay column pinned to the leading edge of the canvas, width <code class="k">--lane-width</code>, height = page. It is a <strong>logical</strong> inline-start inset, so it moves to the right edge in RTL with zero extra code.</td></tr>
+        <tr><td style="padding:5px 14px 5px 0; color:#9a8a68; white-space:nowrap; vertical-align:top;" class="mono">at rest</td><td style="padding:5px 0; color:#5C5447;">Empty &amp; transparent. When the tutor is actively reading, the lane gets <code class="k">--lane-tint</code> (a 7% wash that fades the red rule warmer) — the only "it's on" cue.</td></tr>
+        <tr><td style="padding:5px 14px 5px 0; color:#9a8a68; white-space:nowrap; vertical-align:top;" class="mono">glyph y</td><td style="padding:5px 0; color:#5C5447;">Each glyph's vertical center = the baseline-center of the line/strokes it refers to (snapped to the canvas content, not the screen — it scrolls/zooms with the page). Horizontal center = lane center.</td></tr>
+        <tr><td style="padding:5px 14px 5px 0; color:#9a8a68; white-space:nowrap; vertical-align:top;" class="mono">density</td><td style="padding:5px 0; color:#5C5447;">Max <strong>one open note</strong> at a time; additional items remain glyphs. If &gt;5 glyphs are visible, collapse runs of ✓ into a single "✓ all clear ↑" chip.</td></tr>
+        <tr><td style="padding:5px 14px 5px 0; color:#9a8a68; white-space:nowrap; vertical-align:top;" class="mono">note origin</td><td style="padding:5px 0; color:#5C5447;">A tapped glyph unfolds a <strong>MarginNoteView</strong> (the redesigned bubble) anchored to that glyph, growing toward content (inline-end). Same 300px card, amber glow, tone strip = the glyph's category color.</td></tr>
+        <tr><td style="padding:5px 14px 5px 0; color:#9a8a68; white-space:nowrap; vertical-align:top;" class="mono">z</td><td style="padding:5px 0; color:#5C5447;"><code class="k">--z-ai-marks</code> for glyphs &amp; ghost (above ink, below toolbar), <code class="k">--z-bubble</code> for the open note. Never above modals/toasts.</td></tr>
+      </table>
+    </div>
+
+    <!-- 3 · GLYPH SYSTEM -->
+    <div style="display:flex; align-items:baseline; gap:12px; margin-bottom:12px;"><span style="font-family:'Fraunces',serif; font-size:14px; color:#B5762A; font-weight:600;">3</span><h3 style="font-family:'Fraunces',serif; font-weight:600; font-size:22px; margin:0;">Glyph system</h3></div>
+    <div style="background:#FBF7EF; border:1px solid #DFD4BF; border-radius:14px; padding:6px 20px 14px; margin-bottom:28px;">
+      <table style="width:100%; border-collapse:collapse; font-size:12.5px;">
+        <tr style="text-align:left;"><th style="font-size:10.5px; letter-spacing:.05em; text-transform:uppercase; color:#9a8a68; padding:12px 10px 8px 0; border-bottom:1px solid #E0D6C2;">Glyph</th><th style="font-size:10.5px; letter-spacing:.05em; text-transform:uppercase; color:#9a8a68; padding:12px 10px 8px; border-bottom:1px solid #E0D6C2;">Means</th><th style="font-size:10.5px; letter-spacing:.05em; text-transform:uppercase; color:#9a8a68; padding:12px 10px 8px; border-bottom:1px solid #E0D6C2;">Token</th><th style="font-size:10.5px; letter-spacing:.05em; text-transform:uppercase; color:#9a8a68; padding:12px 10px 8px; border-bottom:1px solid #E0D6C2;">Trigger</th><th style="font-size:10.5px; letter-spacing:.05em; text-transform:uppercase; color:#9a8a68; padding:12px 10px 8px; border-bottom:1px solid #E0D6C2;">Tap → </th></tr>
+        <tr><td style="padding:9px 10px 9px 0; border-bottom:1px solid #EBE3D2;"><span style="display:inline-flex;width:22px;height:22px;border-radius:50%;background:rgba(107,142,78,.14);color:#6B8E4E;align-items:center;justify-content:center;font-weight:700;">✓</span></td><td style="padding:9px 10px; border-bottom:1px solid #EBE3D2; color:#5C5447;">Verified correct</td><td class="mono" style="padding:9px 10px; border-bottom:1px solid #EBE3D2; color:#7a6a4d;">--glyph-correct</td><td style="padding:9px 10px; border-bottom:1px solid #EBE3D2; color:#5C5447;">passive check passes</td><td style="padding:9px 10px; border-bottom:1px solid #EBE3D2; color:#5C5447;">tiny "looks right" toast (no note)</td></tr>
+        <tr><td style="padding:9px 10px 9px 0; border-bottom:1px solid #EBE3D2;"><svg viewBox="0 0 38 16" style="width:26px;height:12px;"><path d="M3,10 C8,3 12,3 17,9 C21,14 26,14 35,5" fill="none" stroke="#D98714" stroke-width="2.6" stroke-linecap="round"></path></svg></td><td style="padding:9px 10px; border-bottom:1px solid #EBE3D2; color:#5C5447;">Gentle correction</td><td class="mono" style="padding:9px 10px; border-bottom:1px solid #EBE3D2; color:#7a6a4d;">--glyph-attend</td><td style="padding:9px 10px; border-bottom:1px solid #EBE3D2; color:#5C5447;">first error found, conf ≥ .82</td><td style="padding:9px 10px; border-bottom:1px solid #EBE3D2; color:#5C5447;">unfold note w/ fix + "Show why"</td></tr>
+        <tr><td style="padding:9px 10px 9px 0; border-bottom:1px solid #EBE3D2;"><span style="display:inline-flex;width:22px;height:22px;border-radius:50%;border:1.5px dashed rgba(181,118,42,.55);color:#B5762A;align-items:center;justify-content:center;font-weight:700;font-size:11px;">?</span></td><td style="padding:9px 10px; border-bottom:1px solid #EBE3D2; color:#5C5447;">Hint available</td><td class="mono" style="padding:9px 10px; border-bottom:1px solid #EBE3D2; color:#7a6a4d;">--glyph-hint</td><td style="padding:9px 10px; border-bottom:1px solid #EBE3D2; color:#5C5447;">dwell &gt; <code class="k">--dwell-stuck</code> on open line</td><td style="padding:9px 10px; border-bottom:1px solid #EBE3D2; color:#5C5447;">escalating hint ladder</td></tr>
+        <tr><td style="padding:9px 10px 9px 0;"><span style="display:inline-flex;width:9px;height:9px;border-radius:50%;background:#B5762A;margin:6px;"></span></td><td style="padding:9px 10px; color:#5C5447;">General note / idea</td><td class="mono" style="padding:9px 10px; color:#7a6a4d;">--ai-ink</td><td style="padding:9px 10px; color:#5C5447;">connection / context worth offering</td><td style="padding:9px 10px; color:#5C5447;">unfold note (teaching tone)</td></tr>
+      </table>
+      <p style="font-size:12px; color:#8A8073; margin:12px 2px 0; line-height:1.5;">Graphite: ✓→outline check, squiggle→dotted underline, ?→dotted ring, dot→hollow — distinguished by <strong>fill vs outline + shape</strong>, never hue. Each glyph animates in with <code class="k">mark-in</code> (scale .4→1, 0.3s); fades out 0.2s when its line is edited or resolved.</p>
+    </div>
+
+    <!-- 4 · INTELLIGENCE -->
+    <div style="display:flex; align-items:baseline; gap:12px; margin-bottom:12px;"><span style="font-family:'Fraunces',serif; font-size:14px; color:#B5762A; font-weight:600;">4</span><h3 style="font-family:'Fraunces',serif; font-weight:600; font-size:22px; margin:0;">Intelligence &amp; orchestration</h3></div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:14px;">
+      <div style="background:#FBF7EF; border:1px solid #DFD4BF; border-radius:14px; padding:16px 18px;">
+        <div class="mono" style="font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:#9a8a68; margin-bottom:10px;">The loop</div>
+        <ol style="margin:0; padding-left:18px; font-size:12.5px; line-height:1.65; color:#5C5447;">
+          <li><strong>Observe.</strong> On stroke-end (debounced 600ms idle), recognize the dirty region → text/LaTeX via on-device Vision/PencilKit + math OCR.</li>
+          <li><strong>Segment.</strong> Group strokes into lines/steps; diff against last snapshot so only new content is evaluated.</li>
+          <li><strong>Evaluate.</strong> Each segment → {type, isCorrect?, confidence, value, suggestion, ghostNext}. Cheap heuristics first; model call only for ambiguous/high-value.</li>
+          <li><strong>Gate.</strong> Emit a MarginItem only if <code class="k">conf ≥ --conf-mark</code> AND value passes the sensitivity threshold (§politeness).</li>
+          <li><strong>Pre-compute.</strong> Cache the full answer for any emitted glyph so tap → note is instant (no spinner).</li>
+        </ol>
+      </div>
+      <div style="background:#FBF7EF; border:1px solid #DFD4BF; border-radius:14px; padding:16px 18px;">
+        <div class="mono" style="font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:#9a8a68; margin-bottom:10px;">Sensitivity → thresholds</div>
+        <table style="width:100%; font-size:12px; border-collapse:collapse;">
+          <tr><td style="padding:5px 0; color:#5C5447;"><strong>Off</strong></td><td style="padding:5px 0; color:#8A8073;">no glyphs, no ghost; tap-to-ask only</td></tr>
+          <tr><td style="padding:5px 0; color:#5C5447;"><strong>Subtle</strong></td><td style="padding:5px 0; color:#8A8073;">errors only · conf ≥ .90 · no ghost · no stuck-?</td></tr>
+          <tr><td style="padding:5px 0; color:#5C5447;"><strong>Helpful</strong></td><td style="padding:5px 0; color:#8A8073;">errors + ghost + stuck-? + notes · conf ≥ .82</td></tr>
+          <tr><td style="padding:5px 0; color:#5C5447;"><strong>Focus</strong></td><td style="padding:5px 0; color:#8A8073;">all suppressed; queue a post-test summary</td></tr>
+        </table>
+        <p style="font-size:11.5px; color:#8A8073; margin:10px 0 0; line-height:1.5;">Adaptive: two dismissals of a category → drop its threshold weight for the session (the "earns the interruption" rule).</p>
+      </div>
+    </div>
+    <p style="font-size:13px; color:#5C5447; margin:0 0 28px; line-height:1.55;"><strong style="color:#2B2722;">Effort/exam detection:</strong> if segments arrive in steady cadence with no backtracking and the page is titled like a test (or Focus is on), suppress ghost + autocomplete and switch to check-after-the-fact. Practice integrity over helpfulness.</p>
+
+    <!-- 5 · MOTION -->
+    <div style="display:flex; align-items:baseline; gap:12px; margin-bottom:12px;"><span style="font-family:'Fraunces',serif; font-size:14px; color:#B5762A; font-weight:600;">5</span><h3 style="font-family:'Fraunces',serif; font-weight:600; font-size:22px; margin:0;">Motion</h3></div>
+    <div style="background:#FBF7EF; border:1px solid #DFD4BF; border-radius:14px; padding:6px 20px 12px; margin-bottom:30px;">
+      <table style="width:100%; border-collapse:collapse; font-size:12.5px;">
+        <tr style="text-align:left;"><th style="font-size:10.5px; letter-spacing:.05em; text-transform:uppercase; color:#9a8a68; padding:12px 10px 8px 0; border-bottom:1px solid #E0D6C2;">Moment</th><th style="font-size:10.5px; letter-spacing:.05em; text-transform:uppercase; color:#9a8a68; padding:12px 10px 8px; border-bottom:1px solid #E0D6C2;">Spec</th><th style="font-size:10.5px; letter-spacing:.05em; text-transform:uppercase; color:#9a8a68; padding:12px 10px 8px; border-bottom:1px solid #E0D6C2;">Detail</th></tr>
+        <tr><td style="padding:9px 10px 9px 0; border-bottom:1px solid #EBE3D2; font-weight:600;">glyph.settle</td><td class="mono" style="padding:9px 10px; border-bottom:1px solid #EBE3D2; color:#7a6a4d;">scale .4→1, .3s ease-out</td><td style="padding:9px 10px; border-bottom:1px solid #EBE3D2; color:#5C5447;">like ink touching paper; no bounce. Stagger 60ms if several appear.</td></tr>
+        <tr><td style="padding:9px 10px 9px 0; border-bottom:1px solid #EBE3D2; font-weight:600;">note.unfold</td><td class="mono" style="padding:9px 10px; border-bottom:1px solid #EBE3D2; color:#7a6a4d;">spring resp .4 damp .85, origin=glyph</td><td style="padding:9px 10px; border-bottom:1px solid #EBE3D2; color:#5C5447;">grows from the glyph toward content; opacity + scale .92→1.</td></tr>
+        <tr><td style="padding:9px 10px 9px 0; border-bottom:1px solid #EBE3D2; font-weight:600;">check.stream</td><td class="mono" style="padding:9px 10px; border-bottom:1px solid #EBE3D2; color:#7a6a4d;">ticks top-down, 120ms/line</td><td style="padding:9px 10px; border-bottom:1px solid #EBE3D2; color:#5C5447;">each ✓ does glyph.settle as that line verifies; squiggle last.</td></tr>
+        <tr><td style="padding:9px 10px 9px 0; border-bottom:1px solid #EBE3D2; font-weight:600;">ghost.appear</td><td class="mono" style="padding:9px 10px; border-bottom:1px solid #EBE3D2; color:#7a6a4d;">fade .2s, then ghost-pulse 2s</td><td style="padding:9px 10px; border-bottom:1px solid #EBE3D2; color:#5C5447;">amber @ .42; on flick-accept → draws on as real ink .45s, ghost removed.</td></tr>
+        <tr><td style="padding:9px 10px 9px 0; border-bottom:1px solid #EBE3D2; font-weight:600;">fix-it.ink</td><td class="mono" style="padding:9px 10px; border-bottom:1px solid #EBE3D2; color:#7a6a4d;">PKStroke draw-on ~14 char/s</td><td style="padding:9px 10px; border-bottom:1px solid #EBE3D2; color:#5C5447;">writes correction in your-style amber ink; note collapses to a ✓.</td></tr>
+        <tr><td style="padding:9px 10px 9px 0; font-weight:600;">dismiss / resolve</td><td class="mono" style="padding:9px 10px; color:#7a6a4d;">fade+scale→.9, .2s</td><td style="padding:9px 10px; color:#5C5447;">editing the referenced line auto-resolves its glyph (same fade).</td></tr>
+      </table>
+      <p style="font-size:12px; color:#8A8073; margin:11px 2px 0; line-height:1.5;"><strong>Reduce Motion:</strong> all of the above → 0.2s opacity crossfade; ghost is static (no pulse); marks appear fully formed; fix-it writes instantly. <strong>Perf:</strong> glyphs are cheap shapes (no blur); only the open note uses material (1 blur layer); ghost is a text layer, not a stroke, until accepted.</p>
+    </div>
+
+    <!-- 6 · PER-INTERACTION REDLINE -->
+    <div style="display:flex; align-items:baseline; gap:12px; margin-bottom:12px;"><span style="font-family:'Fraunces',serif; font-size:14px; color:#B5762A; font-weight:600;">6</span><h3 style="font-family:'Fraunces',serif; font-weight:600; font-size:22px; margin:0;">Per-interaction redline</h3></div>
+    <div style="background:#FBF7EF; border:1px solid #DFD4BF; border-radius:14px; padding:6px 20px 14px; margin-bottom:28px;">
+      <table style="width:100%; border-collapse:collapse; font-size:12px;">
+        <tr style="text-align:left;"><th style="font-size:10px; letter-spacing:.05em; text-transform:uppercase; color:#9a8a68; padding:11px 9px 7px 0; border-bottom:1px solid #E0D6C2;">Interaction</th><th style="font-size:10px; letter-spacing:.05em; text-transform:uppercase; color:#9a8a68; padding:11px 9px 7px; border-bottom:1px solid #E0D6C2;">Trigger</th><th style="font-size:10px; letter-spacing:.05em; text-transform:uppercase; color:#9a8a68; padding:11px 9px 7px; border-bottom:1px solid #E0D6C2;">Surface / states</th><th style="font-size:10px; letter-spacing:.05em; text-transform:uppercase; color:#9a8a68; padding:11px 9px 7px; border-bottom:1px solid #E0D6C2;">Build on</th></tr>
+        <tr><td style="padding:9px 9px 9px 0; border-bottom:1px solid #EBE3D2; color:#2B2722; font-weight:600;">Tap-to-anchor</td><td style="padding:9px 9px; border-bottom:1px solid #EBE3D2; color:#5C5447;">single tap w/ AI pen (or long-press, any tool)</td><td style="padding:9px 9px; border-bottom:1px solid #EBE3D2; color:#5C5447;">auto-circle snaps to stroke-group → handles to resize → action-first note. States: snapping · confirmed · adjusting</td><td class="mono" style="padding:9px 9px; border-bottom:1px solid #EBE3D2; color:#7a6a4d;">CircleAsk / AskLassoOverlay</td></tr>
+        <tr><td style="padding:9px 9px 9px 0; border-bottom:1px solid #EBE3D2; color:#2B2722; font-weight:600;">Action-first note</td><td style="padding:9px 9px; border-bottom:1px solid #EBE3D2; color:#5C5447;">any anchor opens</td><td style="padding:9px 9px; border-bottom:1px solid #EBE3D2; color:#5C5447;">verb chips (content-typed) + collapsed "or ask" field. States: default · streaming · thread · error</td><td class="mono" style="padding:9px 9px; border-bottom:1px solid #EBE3D2; color:#7a6a4d;">AIBubbleView → MarginNoteView</td></tr>
+        <tr><td style="padding:9px 9px 9px 0; border-bottom:1px solid #EBE3D2; color:#2B2722; font-weight:600;">Check my work</td><td style="padding:9px 9px; border-bottom:1px solid #EBE3D2; color:#5C5447;">tap solution block · or auto on boxed answer (Helpful)</td><td style="padding:9px 9px; border-bottom:1px solid #EBE3D2; color:#5C5447;">per-line ✓ stream + first squiggle + fix note. States: running · pass · first-error</td><td class="mono" style="padding:9px 9px; border-bottom:1px solid #EBE3D2; color:#7a6a4d;">new CheckRunner + AnnotationOverlay</td></tr>
+        <tr><td style="padding:9px 9px 9px 0; border-bottom:1px solid #EBE3D2; color:#2B2722; font-weight:600;">Next-step ghost</td><td style="padding:9px 9px; border-bottom:1px solid #EBE3D2; color:#5C5447;">derivation cadence + conf ≥ .88</td><td style="padding:9px 9px; border-bottom:1px solid #EBE3D2; color:#5C5447;">ghost text ahead of pen + flick chip. States: shown · accepted(draw-on) · dismissed(write-through)</td><td class="mono" style="padding:9px 9px; border-bottom:1px solid #EBE3D2; color:#7a6a4d;">new GhostInkLayer</td></tr>
+        <tr><td style="padding:9px 9px 9px 0; border-bottom:1px solid #EBE3D2; color:#2B2722; font-weight:600;">Stuck-sensing</td><td style="padding:9px 9px; border-bottom:1px solid #EBE3D2; color:#5C5447;">pen idle &gt; dwell on open line</td><td style="padding:9px 9px; border-bottom:1px solid #EBE3D2; color:#5C5447;">"?" glyph → hint ladder (nudge→more→worked). States: offered · L1 · L2 · L3</td><td class="mono" style="padding:9px 9px; border-bottom:1px solid #EBE3D2; color:#7a6a4d;">GuidedMode (re-anchored to lane)</td></tr>
+        <tr><td style="padding:9px 9px 9px 0; border-bottom:1px solid #EBE3D2; color:#2B2722; font-weight:600;">Just talk</td><td style="padding:9px 9px; border-bottom:1px solid #EBE3D2; color:#5C5447;">press-hold AI pen</td><td style="padding:9px 9px; border-bottom:1px solid #EBE3D2; color:#5C5447;">listening pill + live transcript; context = last-touched region. States: listening · transcribing · answered</td><td class="mono" style="padding:9px 9px; border-bottom:1px solid #EBE3D2; color:#7a6a4d;">new VoiceAside (SFSpeech)</td></tr>
+        <tr><td style="padding:9px 9px 9px 0; border-bottom:1px solid #EBE3D2; color:#2B2722; font-weight:600;">Review deck</td><td style="padding:9px 9px; border-bottom:1px solid #EBE3D2; color:#5C5447;">errors + explained terms accrue; surfaces next session</td><td style="padding:9px 9px; border-bottom:1px solid #EBE3D2; color:#5C5447;">auto-built SRS cards; "Review N" entry. States: building · due · in-review</td><td class="mono" style="padding:9px 9px; border-bottom:1px solid #EBE3D2; color:#7a6a4d;">QuizView + new ReviewStore</td></tr>
+        <tr><td style="padding:9px 9px 9px 0; color:#2B2722; font-weight:600;">Warm thread</td><td style="padding:9px 9px; color:#5C5447;">≤ <code class="k">--thread-warm</code> after an answer</td><td style="padding:9px 9px; color:#5C5447;">persistent quick-reply bar; follow-up reuses last anchor. States: warm · cooled</td><td class="mono" style="padding:9px 9px; color:#7a6a4d;">useAIThread (warm timer)</td></tr>
+      </table>
+    </div>
+
+    <!-- 7 · DATA MODEL -->
+    <div style="display:flex; align-items:baseline; gap:12px; margin-bottom:12px;"><span style="font-family:'Fraunces',serif; font-size:14px; color:#B5762A; font-weight:600;">7</span><h3 style="font-family:'Fraunces',serif; font-weight:600; font-size:22px; margin:0;">Data model (sketch)</h3></div>
+    <pre style="font-family:ui-monospace,'SF Mono',monospace; font-size:12px; line-height:1.65; background:#211d18; color:#E8E0CE; padding:18px 20px; border-radius:12px; overflow:auto; margin:0 0 14px;"><span style="color:#7FB0E8;">struct</span> Anchor { <span style="color:#8d8472;">// where, in page-content space (scrolls/zooms with canvas)</span>
+  <span style="color:#9DBE8A;">var</span> strokeIDs: [PKStrokeID]; <span style="color:#9DBE8A;">var</span> rect: CGRect; <span style="color:#9DBE8A;">var</span> lineIndex: Int
+}
+<span style="color:#7FB0E8;">enum</span> Glyph { <span style="color:#9DBE8A;">case</span> correct, attend, hint, note }
+<span style="color:#7FB0E8;">enum</span> Tone  { <span style="color:#9DBE8A;">case</span> teaching, correct, correction, error }
+<span style="color:#7FB0E8;">struct</span> MarginItem: Identifiable {
+  <span style="color:#9DBE8A;">let</span> id: UUID; <span style="color:#9DBE8A;">var</span> anchor: Anchor; <span style="color:#9DBE8A;">var</span> glyph: Glyph; <span style="color:#9DBE8A;">var</span> tone: Tone
+  <span style="color:#9DBE8A;">var</span> confidence: Double; <span style="color:#9DBE8A;">var</span> value: Double
+  <span style="color:#9DBE8A;">var</span> answer: RichText?      <span style="color:#8d8472;">// pre-computed → instant on tap</span>
+  <span style="color:#9DBE8A;">var</span> fixInk: PKDrawing?     <span style="color:#8d8472;">// "Fix it for me" payload, your-style amber</span>
+  <span style="color:#9DBE8A;">var</span> state: ItemState       <span style="color:#8d8472;">// .glyph .open .acted .dismissed .resolved</span>
+}
+<span style="color:#7FB0E8;">struct</span> GhostSuggestion { <span style="color:#9DBE8A;">var</span> anchor: Anchor; <span style="color:#9DBE8A;">var</span> latex: String; <span style="color:#9DBE8A;">var</span> confidence: Double }
+<span style="color:#7FB0E8;">struct</span> ReviewCard { <span style="color:#9DBE8A;">var</span> prompt: RichText; <span style="color:#9DBE8A;">var</span> answer: RichText; <span style="color:#9DBE8A;">var</span> due: Date; <span style="color:#9DBE8A;">var</span> sourceNote: NoteID }
+<span style="color:#8d8472;">// aiStore (transient): items:[MarginItem], ghost:GhostSuggestion?, openItem:UUID?,</span>
+<span style="color:#8d8472;">//                       warmAnchor:Anchor?, sensitivity:.off/.subtle/.helpful/.focus</span></pre>
+    <p style="font-size:13px; color:#5C5447; margin:0 0 28px; line-height:1.55;">Margin items are <strong>transient</strong> (recomputed from ink, not persisted) except <code class="k">ReviewCard</code>s and a per-note <code class="k">dismissed-categories</code> set. AI ink (fix-it, accepted ghost, answer-in-ink) is stored as tagged <code class="k">PKStroke</code>s with an <code class="k">aiGenerated</code> attribute so export-strip and one-tap-undo work.</p>
+
+    <!-- 8 · SWIFTUI MAP -->
+    <div style="display:flex; align-items:baseline; gap:12px; margin-bottom:12px;"><span style="font-family:'Fraunces',serif; font-size:14px; color:#B5762A; font-weight:600;">8</span><h3 style="font-family:'Fraunces',serif; font-weight:600; font-size:22px; margin:0;">SwiftUI architecture map</h3></div>
+    <div style="background:#211d18; border-radius:14px; padding:8px 22px 14px; margin-bottom:14px;">
+      <table style="width:100%; border-collapse:collapse; font-size:12px;">
+        <tr style="text-align:left;"><th style="font-size:10px; letter-spacing:.05em; text-transform:uppercase; color:#8d8472; padding:11px 10px 7px 0; border-bottom:1px solid #3a342b;">Component</th><th style="font-size:10px; letter-spacing:.05em; text-transform:uppercase; color:#8d8472; padding:11px 10px 7px; border-bottom:1px solid #3a342b;">Status</th><th style="font-size:10px; letter-spacing:.05em; text-transform:uppercase; color:#8d8472; padding:11px 10px 7px; border-bottom:1px solid #3a342b;">Role · framework notes</th></tr>
+        <tr><td class="mono" style="padding:8px 10px 8px 0; border-bottom:1px solid #322d25; color:#E0A85A;">MarginLaneView</td><td style="padding:8px 10px; border-bottom:1px solid #322d25; color:#9DBE8A;">NEW</td><td style="padding:8px 10px; border-bottom:1px solid #322d25; color:#bdb4a0;">overlay column; renders glyphs at content-space y; hit-tests taps. SwiftUI over the PKCanvas.</td></tr>
+        <tr><td class="mono" style="padding:8px 10px 8px 0; border-bottom:1px solid #322d25; color:#E0A85A;">AmbientReader</td><td style="padding:8px 10px; border-bottom:1px solid #322d25; color:#9DBE8A;">NEW</td><td style="padding:8px 10px; border-bottom:1px solid #322d25; color:#bdb4a0;">the observe→evaluate→gate loop; debounced on PKCanvasViewDelegate. On-device recognition.</td></tr>
+        <tr><td class="mono" style="padding:8px 10px 8px 0; border-bottom:1px solid #322d25; color:#E0A85A;">MarginNoteView</td><td style="padding:8px 10px; border-bottom:1px solid #322d25; color:#E0A85A;">replaces AIBubbleView</td><td style="padding:8px 10px; border-bottom:1px solid #322d25; color:#bdb4a0;">the note that unfolds from a glyph; <code class="mono" style="font-size:10.5px; color:#9DBE8A;">.ultraThinMaterial</code> + matchedGeometry origin=glyph.</td></tr>
+        <tr><td class="mono" style="padding:8px 10px 8px 0; border-bottom:1px solid #322d25; color:#E0A85A;">GhostInkLayer</td><td style="padding:8px 10px; border-bottom:1px solid #322d25; color:#9DBE8A;">NEW</td><td style="padding:8px 10px; border-bottom:1px solid #322d25; color:#bdb4a0;">renders ghost LaTeX ahead of pen; flick gesture → commits a PKStroke (UIKit) drawn-on.</td></tr>
+        <tr><td class="mono" style="padding:8px 10px 8px 0; border-bottom:1px solid #322d25; color:#E0A85A;">CheckRunner</td><td style="padding:8px 10px; border-bottom:1px solid #322d25; color:#9DBE8A;">NEW</td><td style="padding:8px 10px; border-bottom:1px solid #322d25; color:#bdb4a0;">line-by-line verify; streams ✓/squiggle into AnnotationOverlay.</td></tr>
+        <tr><td class="mono" style="padding:8px 10px 8px 0; border-bottom:1px solid #322d25; color:#E0A85A;">AnnotationOverlay</td><td style="padding:8px 10px; border-bottom:1px solid #322d25; color:#E0A85A;">extend</td><td style="padding:8px 10px; border-bottom:1px solid #322d25; color:#bdb4a0;">draw-on marks; <strong>UIKit</strong> PKStroke or CAShapeLayer <code class="mono" style="font-size:10.5px; color:#9DBE8A;">strokeEnd</code> for ink feel.</td></tr>
+        <tr><td class="mono" style="padding:8px 10px 8px 0; border-bottom:1px solid #322d25; color:#E0A85A;">CircleAsk</td><td style="padding:8px 10px; border-bottom:1px solid #322d25; color:#E0A85A;">extend</td><td style="padding:8px 10px; border-bottom:1px solid #322d25; color:#bdb4a0;">add tap→auto-snap path; lasso is now the fallback gesture.</td></tr>
+        <tr><td class="mono" style="padding:8px 10px 8px 0; border-bottom:1px solid #322d25; color:#E0A85A;">VoiceAside</td><td style="padding:8px 10px; border-bottom:1px solid #322d25; color:#9DBE8A;">NEW</td><td style="padding:8px 10px; border-bottom:1px solid #322d25; color:#bdb4a0;">press-hold dictation (SFSpeechRecognizer); binds to last anchor.</td></tr>
+        <tr><td class="mono" style="padding:8px 10px 8px 0; border-bottom:1px solid #322d25; color:#E0A85A;">InkWriter</td><td style="padding:8px 10px; border-bottom:1px solid #322d25; color:#E0A85A;">reuse</td><td style="padding:8px 10px; border-bottom:1px solid #322d25; color:#bdb4a0;">"Fix it for me" + answer-in-ink; your-style amber PKStroke timeline.</td></tr>
+        <tr><td class="mono" style="padding:8px 10px 8px 0; color:#E0A85A;">ReviewStore</td><td style="padding:8px 10px; color:#9DBE8A;">NEW</td><td style="padding:8px 10px; color:#bdb4a0;">harvests cards; SRS scheduling; surfaces "Review N" in library + editor.</td></tr>
+      </table>
+    </div>
+    <p style="font-size:13px; color:#5C5447; margin:0 0 28px; line-height:1.55;"><strong style="color:#2B2722;">UIKit / Canvas required:</strong> anything that animates a real stroke (draw-on marks, accepted ghost, fix-it, answer-in-ink) goes through <code class="k">PKStroke</code> or a <code class="k">CAShapeLayer strokeEnd</code> timeline — SwiftUI <code class="k">Path.trim</code> is the fallback for non-ink marks. The lane, glyphs, notes, chips, and voice pill are pure SwiftUI.</p>
+
+    <!-- 9 · A11Y / RTL -->
+    <div style="display:flex; align-items:baseline; gap:12px; margin-bottom:12px;"><span style="font-family:'Fraunces',serif; font-size:14px; color:#B5762A; font-weight:600;">9</span><h3 style="font-family:'Fraunces',serif; font-weight:600; font-size:22px; margin:0;">Accessibility · RTL · performance</h3></div>
+    <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:30px;">
+      <div style="background:#FBF7EF; border:1px solid #DFD4BF; border-radius:14px; padding:16px 18px;">
+        <div class="mono" style="font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:#9a8a68; margin-bottom:10px;">Accessibility</div>
+        <ul style="margin:0; padding-left:16px; font-size:12.5px; line-height:1.65; color:#5C5447;">
+          <li>Glyph tap target ≥ <strong>44pt</strong> (24 glyph + padding)</li>
+          <li>VoiceOver names the glyph + tone: "Correction on line 3, double-tap to view"</li>
+          <li>Each glyph is a focusable a11y element ordered by line</li>
+          <li>Notes announce tone first ("Correction:…"); math read as LaTeX</li>
+          <li>Color never sole signal — shape differs per glyph (works in Graphite + colorblind)</li>
+        </ul>
+      </div>
+      <div style="background:#FBF7EF; border:1px solid #DFD4BF; border-radius:14px; padding:16px 18px;">
+        <div class="mono" style="font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:#9a8a68; margin-bottom:10px;">RTL (Hebrew)</div>
+        <ul style="margin:0; padding-left:16px; font-size:12.5px; line-height:1.65; color:#5C5447;">
+          <li>Lane is <code class="k">inline-start</code> → moves to the right edge automatically</li>
+          <li>Notes unfold toward inline-end (leftward); tone strip mirrors</li>
+          <li>Ghost text flows RTL; <strong>math &amp; code stay LTR islands</strong></li>
+          <li>Voice + verb chips mirror; "flick to accept" direction flips</li>
+        </ul>
+      </div>
+      <div style="background:#FBF7EF; border:1px solid #DFD4BF; border-radius:14px; padding:16px 18px;">
+        <div class="mono" style="font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:#9a8a68; margin-bottom:10px;">Performance</div>
+        <ul style="margin:0; padding-left:16px; font-size:12.5px; line-height:1.65; color:#5C5447;">
+          <li>Over a <strong>live PencilKit canvas</strong> — glyphs are shape layers, no blur</li>
+          <li>One open note max → ≤1 material/blur layer on screen</li>
+          <li>Reader debounced 600ms; diff so only new strokes evaluate</li>
+          <li>Pre-computed answers cached → tap is instant, no spinner</li>
+          <li>Ghost is a text layer until accepted; lane redraws only on scroll/zoom/new item</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 10 · BUILD ORDER + ACCEPTANCE -->
+    <div style="display:flex; gap:18px; flex-wrap:wrap;">
+      <div style="flex:1 1 360px; min-width:340px; background:#FBF7EF; border:1px solid #DFD4BF; border-radius:14px; padding:18px 20px;">
+        <div style="display:flex; align-items:baseline; gap:10px; margin-bottom:12px;"><span style="font-family:'Fraunces',serif; font-size:14px; color:#B5762A; font-weight:600;">10</span><h3 style="font-family:'Fraunces',serif; font-weight:600; font-size:19px; margin:0;">Build order</h3></div>
+        <ol style="margin:0; padding-left:18px; font-size:13px; line-height:1.7; color:#5C5447;">
+          <li><strong>Lane + glyphs</strong> (static, mocked items) — prove anchoring scrolls/zooms with ink.</li>
+          <li><strong>MarginNoteView</strong> unfold from glyph + action-first chips (reuse bubble redline).</li>
+          <li><strong>AmbientReader</strong> loop with heuristics → first real glyph: <em>Check my work</em>.</li>
+          <li><strong>Tap-to-anchor</strong> snap; lasso demoted to fallback.</li>
+          <li><strong>Ghost</strong> next-step + flick-accept; then <strong>stuck-sensing</strong> ladder.</li>
+          <li><strong>Voice aside</strong>, <strong>warm thread</strong>, <strong>fix-it ink</strong>.</li>
+          <li><strong>ReviewStore</strong> harvest + surfacing.</li>
+          <li>Sensitivity dial + Focus + politeness gate; RTL + reduce-motion + 4-skin pass.</li>
+        </ol>
+      </div>
+      <div style="flex:1 1 360px; min-width:340px; background:#211d18; border-radius:14px; padding:18px 20px; color:#E8E0CE;">
+        <div style="font-family:'Fraunces',serif; font-weight:600; font-size:19px; margin-bottom:12px; color:#F6EFE1;">Done = all true</div>
+        <div style="display:flex; flex-direction:column; gap:7px; font-size:12.5px; color:#cabfa8;">
+          <label style="display:flex; gap:9px; align-items:flex-start;"><span style="width:15px;height:15px;border-radius:4px;border:1.5px solid #5a5346;flex-shrink:0;margin-top:1px;"></span>Glyphs anchor in content-space — stay glued to ink through scroll &amp; zoom</label>
+          <label style="display:flex; gap:9px; align-items:flex-start;"><span style="width:15px;height:15px;border-radius:4px;border:1.5px solid #5a5346;flex-shrink:0;margin-top:1px;"></span>Common help costs 0–2 taps, never opens a keyboard</label>
+          <label style="display:flex; gap:9px; align-items:flex-start;"><span style="width:15px;height:15px;border-radius:4px;border:1.5px solid #5a5346;flex-shrink:0;margin-top:1px;"></span>Tap → note is instant (pre-computed), no spinner in the common path</label>
+          <label style="display:flex; gap:9px; align-items:flex-start;"><span style="width:15px;height:15px;border-radius:4px;border:1.5px solid #5a5346;flex-shrink:0;margin-top:1px;"></span>Never more than one open note; ✓ runs collapse when crowded</label>
+          <label style="display:flex; gap:9px; align-items:flex-start;"><span style="width:15px;height:15px;border-radius:4px;border:1.5px solid #5a5346;flex-shrink:0;margin-top:1px;"></span>Politeness gate honored — no mark below conf/value threshold</label>
+          <label style="display:flex; gap:9px; align-items:flex-start;"><span style="width:15px;height:15px;border-radius:4px;border:1.5px solid #5a5346;flex-shrink:0;margin-top:1px;"></span>AI ink is amber, tagged, one-undo, export-strippable</label>
+          <label style="display:flex; gap:9px; align-items:flex-start;"><span style="width:15px;height:15px;border-radius:4px;border:1.5px solid #5a5346;flex-shrink:0;margin-top:1px;"></span>All 4 skins × light/dark; Graphite distinguishes by shape, not hue</label>
+          <label style="display:flex; gap:9px; align-items:flex-start;"><span style="width:15px;height:15px;border-radius:4px;border:1.5px solid #5a5346;flex-shrink:0;margin-top:1px;"></span>RTL mirrors lane/notes; math stays LTR · reduce-motion path verified</label>
+          <label style="display:flex; gap:9px; align-items:flex-start;"><span style="width:15px;height:15px;border-radius:4px;border:1.5px solid #5a5346;flex-shrink:0;margin-top:1px;"></span>On-device reading; "Tutor off" is truly silent · Focus suppresses all</label>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:40px; padding-top:20px; border-top:1px solid #D8CEBC; display:flex; align-items:center; gap:10px; color:#8A8073; font-size:12px;">
+      <div style="width:20px;height:20px;border-radius:5px;background:#2E4057;display:flex;align-items:center;justify-content:center;"><div style="width:7px;height:7px;border-radius:50%;background:#F2C94C;"></div></div>
+      <span>Inkling — Marginalia reimagined as an ambient tutor · extends the Foolscap token contract &amp; existing SwiftUI surfaces · pull → push, a form → a tap</span>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() { return { gallery: null, model: null, handoff: null }; }
+}
+</script>
+</body>
+</html>
