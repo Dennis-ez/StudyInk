@@ -69,6 +69,10 @@ struct NoteEditorView: View {
     @State private var regionSelection: RegionSelection?
     @State private var editingShape: EditingShape?
     @State private var circleAskRegion: CGRect?
+    /// Tap-to-define: cached OCR lines (page coords) for the current page, and the
+    /// concept the student tapped (Lagrange, L'Hôpital, …) with its definition.
+    @State private var conceptOCRLines: [OCRLine] = []
+    @State private var conceptHit: ConceptHit?
     @Environment(\.managedObjectContext) private var context
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
@@ -355,6 +359,14 @@ struct NoteEditorView: View {
                 points: canvasController.lassoPoints,
                 onCancel: { canvasController.select(.ballpoint) }
             )
+
+            // Tap-to-define a concept (Lagrange, L'Hôpital, …).
+            if let hit = conceptHit {
+                ConceptDefinitionCard(hit: hit, transform: transform) {
+                    withAnimation { conceptHit = nil }
+                }
+                .zIndex(45)
+            }
 
             if !distractionFree {
                 FloatingToolbar(
@@ -878,6 +890,31 @@ struct NoteEditorView: View {
                     rearmLassoIfActive()
                     return
                 }
+                // Tap a recognised concept (Lagrange, L'Hôpital, …) → show its
+                // definition. Glossary match is instant; an unlisted term defers
+                // to the AI (silently — the card only appears if it IS a concept).
+                if let line = conceptOCRLines.first(where: { $0.rect.insetBy(dx: -10, dy: -10).contains(point) }) {
+                    if let (concept, hebrew) = ConceptGlossary.match(in: line.text) {
+                        Haptics.selection()
+                        let he = hebrew || preferHebrewDefinitions
+                        withAnimation {
+                            conceptHit = ConceptHit(term: concept.title, pageRect: line.rect,
+                                                    definition: he ? concept.definitionHE : concept.definitionEN)
+                        }
+                        return
+                    }
+                    if AIConfig.isConfigured,
+                       line.text.split(whereSeparator: { !$0.isLetter }).contains(where: { $0.count >= 4 }) {
+                        let rect = line.rect, text = line.text
+                        Task {
+                            if var hit = await ConceptLookup.defineWithAI(lineText: text) {
+                                hit.pageRect = rect
+                                await MainActor.run { Haptics.selection(); withAnimation { conceptHit = hit } }
+                            }
+                        }
+                    }
+                }
+                if conceptHit != nil { withAnimation { conceptHit = nil } }
                 if let hit = mediaItems.last(where: { $0.frame.contains(point) }) {
                     Haptics.selection()
                     selectedMediaID = hit.id
@@ -1571,6 +1608,12 @@ extension NoteEditorView {
     /// The tutor's amber ink colour — the design tags AI-written ink amber.
     private var ambientInkHex: String { UIColor(AppTheme.current.aiAccent).hexString }
 
+    /// Tap-to-define shows the Hebrew definition when the device prefers Hebrew
+    /// (a Hebrew-script term always shows Hebrew regardless).
+    private var preferHebrewDefinitions: Bool {
+        (Locale.preferredLanguages.first ?? "en").hasPrefix("he")
+    }
+
     /// Top-center result banner for the ambient tutor ("looks all good", an
     /// error, "nothing to check"). The thinking state itself is the breathing
     /// corner badge — see aiThinkingHUD.
@@ -1816,7 +1859,16 @@ extension NoteEditorView {
         mediaItems = currentPage?.mediaItems ?? []
         editingBoxID = nil
         selectedMediaID = nil
+        conceptHit = nil
         foldedBlocks = loadFolds(pageIndex)
+        refreshConceptLines()
+    }
+
+    /// Re-OCR the current page (off main) so tap-to-define knows where each line
+    /// of writing sits. Cheap and cached; refreshed on page load and after edits.
+    private func refreshConceptLines() {
+        guard let page = currentPage else { conceptOCRLines = []; return }
+        Task { conceptOCRLines = await NoteContextBuilder.ocrLines(for: page) }
     }
 
     // MARK: - Smart Collapse persistence (per note + page, in UserDefaults)
@@ -1954,6 +2006,8 @@ extension NoteEditorView {
                 note.searchableText = SearchableTextBuilder.build(for: note)
                 PersistenceController.shared.save()
             }
+            // Keep tap-to-define's line cache current with the latest writing.
+            if !Task.isCancelled { await MainActor.run { refreshConceptLines() } }
         }
     }
 
