@@ -513,15 +513,26 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         guard pageFrames.indices.contains(index) else { return }
         let y = documentView.frame.origin.y + (pageFrames[index].minY - pageGap) * zoomScale
         let maxY = max(-adjustedContentInset.top, contentSize.height - bounds.height)
-        setContentOffset(CGPoint(x: contentOffset.x, y: min(max(y, 0), maxY)), animated: animated)
+        let target = CGPoint(x: contentOffset.x, y: min(max(y, 0), maxY))
+        if animated {
+            // A single consistent ease, continued from the CURRENT (possibly still
+            // animating) offset — so rapid chevron taps glide as one smooth motion
+            // instead of UIKit restarting its default scroll animation each tap. A
+            // finger can interrupt it mid-flight. The live canvas mounts on settle
+            // (completion), so taps don't re-mount the ink once per tap.
+            UIView.animate(withDuration: 0.32, delay: 0,
+                           options: [.curveEaseInOut, .beginFromCurrentState, .allowUserInteraction]) {
+                self.setContentOffset(target, animated: false)
+            } completion: { [weak self] finished in
+                if finished { self?.settleActivePage() }
+            }
+        } else {
+            setContentOffset(target, animated: false)
+            settleActivePage()
+        }
         if controller.currentPageIndex != index {
             DispatchQueue.main.async { [controller] in controller.currentPageIndex = index }
         }
-        // An animated jump mounts the live canvas when the scroll settles
-        // (scrollViewDidEndScrollingAnimation) — so rapid chevron taps don't
-        // re-mount once per tap (which glitched the ink). A non-animated jump has
-        // no end callback, so settle right away.
-        if !animated { settleActivePage() }
     }
 
     /// The page nearest the viewport center (document space).

@@ -388,6 +388,11 @@ struct LibraryView: View {
             .contentShape(Rectangle())
             .draggable("subject:\(subject.id?.uuidString ?? "")")
             .contextMenu { subjectContextMenu(subject) }
+            // A divider is a container for OTHER subjects/dividers — accept those
+            // (notes are ignored: a divider can't be selected to view its notes).
+            .dropDestination(for: String.self) { ids, _ in
+                handleDrop(ids.filter { $0.hasPrefix("subject:") }, into: subject)
+            }
         } else {
             let tint = Color(hex: subject.colorHex ?? "#0A84FF") ?? .accentColor
             let isSelected = selection == .subject(subject)
@@ -498,9 +503,11 @@ struct LibraryView: View {
         return changed
     }
 
-    /// A subject can't be nested into itself or any of its descendants.
+    /// A subject/divider can be nested into any other subject OR divider — the
+    /// only rule is it can't go into itself or one of its own descendants (that
+    /// would orphan a cycle).
     private func canNest(_ dragged: Subject, into target: Subject) -> Bool {
-        guard !target.isDivider else { return false }
+        guard dragged != target else { return false }
         var node: Subject? = target
         while let current = node {
             if current == dragged { return false }
