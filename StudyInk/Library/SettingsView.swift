@@ -103,8 +103,22 @@ struct SettingsView: View {
         }
         .background(themePaper.ignoresSafeArea())
         .tint(activeTheme.accent)
+        // Settings is a fullScreenCover — a separate presentation layer that does
+        // NOT inherit the app root's .preferredColorScheme. Without this, changing
+        // the appearance here only took effect once you dismissed back to the root.
+        .preferredColorScheme(settingsScheme)
         .onChange(of: providerRaw) { refreshProviderState() }
         .onAppear { refreshProviderState() }
+    }
+
+    /// Mirrors the app root's scheme so the appearance switch applies live in the
+    /// cover. nil = follow the system.
+    private var settingsScheme: ColorScheme? {
+        switch appearance {
+        case "light": return .light
+        case "dark": return .dark
+        default: return nil
+        }
     }
 
     // MARK: - Sidebar

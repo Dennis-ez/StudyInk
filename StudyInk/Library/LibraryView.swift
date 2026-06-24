@@ -51,6 +51,50 @@ struct SidebarDropDelegate: DropDelegate {
     }
 }
 
+/// Where a drop lands relative to a subject row: near the top/bottom edge =
+/// reorder before/after it; the middle = nest INSIDE it (Finder-style).
+enum SubjectDropZone { case before, after, inside }
+
+struct SubjectDropHint: Equatable {
+    let target: NSManagedObjectID
+    let zone: SubjectDropZone
+}
+
+/// Reliable reorder + nest for a subject row laid out in a plain VStack (NOT a
+/// List row — List rows swallow custom drops). Reads the drop's Y to pick the
+/// zone and loads the payload from the item providers, so a subject dragged from
+/// the sidebar AND a note dragged from the grid both land correctly.
+struct SubjectRowDropDelegate: DropDelegate {
+    let targetID: NSManagedObjectID
+    let rowHeight: CGFloat
+    @Binding var hint: SubjectDropHint?
+    let perform: (String, SubjectDropZone) -> Bool
+
+    private func zone(_ info: DropInfo) -> SubjectDropZone {
+        let y = info.location.y
+        if y < rowHeight * 0.28 { return .before }
+        if y > rowHeight * 0.72 { return .after }
+        return .inside
+    }
+    func dropEntered(info: DropInfo) { hint = SubjectDropHint(target: targetID, zone: zone(info)) }
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        hint = SubjectDropHint(target: targetID, zone: zone(info))
+        return DropProposal(operation: .move)
+    }
+    func dropExited(info: DropInfo) { if hint?.target == targetID { hint = nil } }
+    func performDrop(info: DropInfo) -> Bool {
+        let z = zone(info)
+        hint = nil
+        let providers = info.itemProviders(for: [UTType.text, UTType.plainText, UTType.utf8PlainText])
+        guard let provider = providers.first else { return false }
+        provider.loadObject(ofClass: NSString.self) { obj, _ in
+            guard let id = obj as? String else { return }
+            DispatchQueue.main.async { _ = perform(id, z) }
+        }
+        return true
+    }
+}
+
 /// The home screen: smart sections + subjects (folders + dividers) in the
 /// sidebar, notes in a grid or list, full-text + handwriting-OCR search.
 struct LibraryView: View {
@@ -76,6 +120,8 @@ struct LibraryView: View {
     ) private var allNotesForCounts: FetchedResults<Note>
 
     @State private var selection: LibrarySection = .all
+    /// Live drop indicator while dragging a subject/note over the sidebar tree.
+    @State private var dropHint: SubjectDropHint?
     /// Subjects whose children are hidden in the sidebar.
     @State private var collapsedSubjects: Set<NSManagedObjectID> = []
     /// Collapses the sidebar column so the editor takes the whole screen.
@@ -286,9 +332,17 @@ struct LibraryView: View {
                     return changed
                 })
             ) {
-                ForEach(rootSubjects, id: \.objectID) { subject in
-                    subjectRows(subject, depth: 0)
+                // The whole subject tree lives in ONE list row as a plain VStack:
+                // List rows swallow custom .onDrop (only .onMove works there), so a
+                // VStack is the only way drag-to-reorder AND drag-to-nest both fire.
+                VStack(spacing: 2) {
+                    ForEach(rootSubjects, id: \.objectID) { subject in
+                        subjectRows(subject, depth: 0)
+                    }
                 }
+                .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
             }
         }
             .scrollContentBackground(.hidden)
@@ -367,9 +421,8 @@ struct LibraryView: View {
     @ViewBuilder
     private func subjectRows(_ subject: Subject, depth: Int) -> AnyView {
         AnyView(
-            Group {
+            VStack(spacing: 2) {
                 subjectRow(subject, depth: depth)
-                    .listRowSeparator(.hidden)
                 if !collapsedSubjects.contains(subject.objectID) {
                     ForEach(sortedChildren(of: subject), id: \.objectID) { child in
                         subjectRows(child, depth: depth + 1)
@@ -377,6 +430,75 @@ struct LibraryView: View {
                 }
             }
         )
+    }
+
+    /// Row chrome shared by every subject/divider row now that the tree is a plain
+    /// VStack (not List rows): a fixed-height capsule fill + the live drop indicator
+    /// (a ring for nest, a bar for reorder), plus the reliable reorder/nest drop.
+    private func subjectRowChrome<V: View>(_ subject: Subject, depth: Int, fill: Color, @ViewBuilder _ content: () -> V) -> some View {
+        let inset = CGFloat(depth) * 20
+        return content()
+            .padding(.horizontal, 12)        // inside the capsule (List used to inset this)
+            .padding(.leading, inset)        // tree indent
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .background(roundedRowBackground(fill).padding(.leading, inset))
+            .overlay { dropHintOverlay(subject, depth: depth) }
+            .contentShape(Rectangle())
+            .onDrag({ NSItemProvider(object: "subject:\(subject.id?.uuidString ?? "")" as NSString) },
+                    preview: { subjectDragPreview(subject) })
+            .onDrop(of: [.text], delegate: SubjectRowDropDelegate(
+                targetID: subject.objectID, rowHeight: 44, hint: $dropHint,
+                perform: { performSubjectDrop($0, target: subject, zone: $1) }))
+    }
+
+    @ViewBuilder
+    private func dropHintOverlay(_ subject: Subject, depth: Int) -> some View {
+        if let hint = dropHint, hint.target == subject.objectID {
+            let inset = CGFloat(depth) * 20 + 6
+            switch hint.zone {
+            case .inside:
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(Color.accentColor, lineWidth: 2)
+                    .padding(.vertical, 2).padding(.leading, inset).padding(.trailing, 6)
+            case .before:
+                VStack(spacing: 0) { Capsule().fill(Color.accentColor).frame(height: 2.5); Spacer(minLength: 0) }
+                    .padding(.leading, inset).padding(.trailing, 6)
+            case .after:
+                VStack(spacing: 0) { Spacer(minLength: 0); Capsule().fill(Color.accentColor).frame(height: 2.5) }
+                    .padding(.leading, inset).padding(.trailing, 6)
+            }
+        }
+    }
+
+    /// Apply a sidebar drop: reparent/reorder a subject, or file a note.
+    private func performSubjectDrop(_ id: String, target: Subject, zone: SubjectDropZone) -> Bool {
+        guard id.hasPrefix("subject:") else {
+            // A note dragged from the grid — file it into the target subject.
+            return handleDrop([id], into: target)
+        }
+        let uuid = String(id.dropFirst("subject:".count))
+        guard let dragged = allSubjects.first(where: { $0.id?.uuidString == uuid }), dragged != target else { return false }
+        switch zone {
+        case .inside:
+            guard canNest(dragged, into: target) else { return false }
+            withAnimation {
+                dragged.parent = target
+                dragged.sortIndex = (sortedChildren(of: target).map(\.sortIndex).max() ?? -1) + 1
+            }
+        case .before, .after:
+            let newParent = target.parent
+            if let p = newParent, !canNest(dragged, into: p) { return false }
+            withAnimation {
+                dragged.parent = newParent
+                var ordered = (newParent.map { sortedChildren(of: $0) } ?? rootSubjects).filter { $0 != dragged }
+                let targetIdx = ordered.firstIndex(of: target) ?? ordered.count
+                let insertAt = zone == .before ? targetIdx : targetIdx + 1
+                ordered.insert(dragged, at: min(max(insertAt, 0), ordered.count))
+                for (i, s) in ordered.enumerated() { s.sortIndex = Int32(i) }
+            }
+        }
+        PersistenceController.shared.save()
+        return true
     }
 
     @ViewBuilder
@@ -396,14 +518,13 @@ struct LibraryView: View {
                     .submitLabel(.done)
                     .onSubmit(commitInlineRename)
             }
-            .padding(.leading, CGFloat(depth) * 20)
-            // Same rounded, subject-tinted row background as a normal subject row
-            // — not the default full-bleed white (which bled over Settings below).
-            .listRowBackground(
+            .padding(.horizontal, 12).padding(.leading, CGFloat(depth) * 20)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            // Same rounded, subject-tinted fill as a normal subject row.
+            .background(
                 roundedRowBackground((Color(hex: subject.colorHex ?? "#0A84FF") ?? .accentColor).opacity(0.18))
                     .padding(.leading, CGFloat(depth) * 20)
             )
-            .listRowSeparator(.hidden)
             // Focus on the next runloop so the field is in the responder chain
             // first — otherwise the keyboard doesn't come up for a just-added
             // subject (the row is still being inserted when onAppear fires).
@@ -413,35 +534,25 @@ struct LibraryView: View {
                 if !focused { commitInlineRename() }
             }
         } else if subject.isDivider {
-            HStack {
-                Text(verbatim: subject.name ?? "")
-                    .font(.caption.smallCaps())
-                    .foregroundStyle(.secondary)
-                VStack { Divider() }
+            subjectRowChrome(subject, depth: depth, fill: .clear) {
+                HStack {
+                    Text(verbatim: subject.name ?? "")
+                        .font(.caption.smallCaps())
+                        .foregroundStyle(.secondary)
+                    VStack { Divider() }
+                }
+                // Hebrew/Arabic dividers mirror so the label sits on the right.
+                .environment(\.layoutDirection, nameDirection(subject.name))
             }
-            // Hebrew/Arabic dividers mirror so the label sits on the right.
-            .environment(\.layoutDirection, nameDirection(subject.name))
-            .padding(.leading, CGFloat(depth) * 20)
-            .contentShape(Rectangle())
-            // Clear row fill — the List's default dark row background read as a
-            // weird black band behind the divider in dark mode.
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
-            // Drag this divider onto a subject/divider to nest it; a CUSTOM preview
-            // (clean capsule) avoids the default drag snapshot's black border.
-            .onDrag({ NSItemProvider(object: "subject:\(subject.id?.uuidString ?? "")" as NSString) },
-                    preview: { subjectDragPreview(subject) })
             .contextMenu { subjectContextMenu(subject) }
-            // Drop a subject/divider here to nest it under this divider.
-            .onDrop(of: [.text], delegate: SidebarDropDelegate { ids in
-                handleDrop(ids.filter { $0.hasPrefix("subject:") }, into: subject)
-            })
         } else {
             let tint = Color(hex: subject.colorHex ?? "#0A84FF") ?? .accentColor
             let isSelected = selection == .subject(subject)
-            Button {
+            // Subject rows carry their color as a soft wash; selection darkens it.
+            subjectRowChrome(subject, depth: depth, fill: tint.opacity(isSelected ? 0.38 : 0.18)) {
+              Button {
                 selection = .subject(subject)
-            } label: {
+              } label: {
                 HStack(spacing: 10) {
                     // The subject IS its color — a rounded chip, not a folder glyph.
                     RoundedRectangle(cornerRadius: 3, style: .continuous)
@@ -475,31 +586,10 @@ struct LibraryView: View {
                 }
                 // Hebrew/Arabic names mirror the row so the name reads from the right.
                 .environment(\.layoutDirection, nameDirection(subject.name))
+              }
+              .buttonStyle(.plain)
             }
-            .padding(.leading, CGFloat(depth) * 20)
-            // Subject rows carry their color as a soft wash; selection darkens
-            // it. Rounded, and indented WITH the row so nesting reads as a tree.
-            .listRowBackground(
-                roundedRowBackground(tint.opacity(isSelected ? 0.38 : 0.18))
-                    .padding(.leading, CGFloat(depth) * 20)
-            )
-            // Drag this subject onto another subject/divider to nest it; a CUSTOM
-            // preview (clean capsule) avoids the default snapshot's black border.
-            .onDrag({ NSItemProvider(object: "subject:\(subject.id?.uuidString ?? "")" as NSString) },
-                    preview: { subjectDragPreview(subject) })
             .contextMenu { subjectContextMenu(subject) }
-            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                Button(role: .destructive) {
-                    subjectPendingDelete = subject
-                } label: { Label("action.delete", systemImage: "trash") }
-                    // Explicit red — the app-wide accent tint overrides the
-                    // destructive role's background.
-                    .tint(Color("errorRed"))
-            }
-            // Accepts notes (to file them) and subjects/dividers (to nest them).
-            .onDrop(of: [.text], delegate: SidebarDropDelegate { ids in
-                handleDrop(ids, into: subject)
-            })
         }
     }
 
