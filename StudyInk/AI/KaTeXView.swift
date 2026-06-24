@@ -49,11 +49,19 @@ enum MathSegmenter {
 
     private static let regex = try? NSRegularExpression(pattern: pattern)
 
-    /// Heavy constructs read far better typeset in 2D than folded to a line.
+    /// Heavy constructs read far better typeset in 2D than folded to a line. The
+    /// app is math-tutoring, so equations and function-bearing expressions are
+    /// typeset too (the chat/steps should show real LaTeX, not folded unicode);
+    /// only bare single symbols ($x$, $x^2$) stay inline.
     private static func isComplex(_ latex: String) -> Bool {
         let heavy = ["\\frac", "\\dfrac", "\\tfrac", "\\int", "\\iint", "\\oint",
                      "\\sum", "\\prod", "\\lim", "\\sqrt", "\\binom", "\\begin",
-                     "\\matrix", "\\cases", "\\over", "\\partial", "\\\\"]
+                     "\\matrix", "\\cases", "\\over", "\\partial", "\\\\",
+                     // functions / operators / relations — an equation reads better typeset.
+                     "=", "\\ln", "\\log", "\\sin", "\\cos", "\\tan", "\\cot",
+                     "\\cdot", "\\times", "\\div", "\\to", "\\rightarrow", "\\infty",
+                     "\\pi", "\\leq", "\\geq", "\\neq", "\\le", "\\ge", "\\pm",
+                     "\\in", "\\cup", "\\cap", "\\Rightarrow"]
         if heavy.contains(where: latex.contains) { return true }
         // Multi-symbol scripts (x^{n+1}, a_{ij}) stack better than inline.
         return latex.contains("^{") || latex.contains("_{")
@@ -66,6 +74,9 @@ enum MathSegmenter {
         let list = MTMathListBuilder.build(fromString: latex, error: &error)
         return error == nil && list != nil
     }
+
+    /// Can this LaTeX be typeset in 2D? (Exposes `parses` for standalone renderers.)
+    static func typesets(_ latex: String) -> Bool { parses(latex) }
 
     static func segments(from raw: String) -> [IndexedMathSegment] {
         let s = raw.replacingOccurrences(of: "\\$", with: "$")
@@ -147,6 +158,32 @@ struct MathBlockView: UIViewRepresentable {
         configure(label)
         let size = label.intrinsicContentSize
         return CGSize(width: max(size.width, 1), height: max(size.height, fontSize))
+    }
+}
+
+/// One LaTeX expression rendered as the AI's "ink" — typeset in 2D when it parses
+/// (in the given accent colour), otherwise the unicode-folded text. Used for the
+/// on-page next-step preview, which should look like real math, not raw `$...$`.
+struct AIInkMath: View {
+    let latex: String
+    var color: Color
+    var fontSize: CGFloat = 20
+
+    var body: some View {
+        // Strip any delimiters the model slipped in so SwiftMath sees clean LaTeX.
+        let clean = latex
+            .replacingOccurrences(of: "$$", with: "")
+            .replacingOccurrences(of: "$", with: "")
+            .replacingOccurrences(of: "\\(", with: "").replacingOccurrences(of: "\\)", with: "")
+            .replacingOccurrences(of: "\\[", with: "").replacingOccurrences(of: "\\]", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if MathSegmenter.typesets(clean) {
+            MathBlockView(latex: clean, display: false, color: UIColor(color), fontSize: fontSize)
+        } else {
+            Text(verbatim: clean.mathToUnicode())
+                .font(.fraunces(fontSize, weight: .semibold, relativeTo: .title3).italic())
+                .foregroundStyle(color)
+        }
     }
 }
 

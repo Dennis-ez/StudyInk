@@ -378,6 +378,8 @@ struct NoteEditorView: View {
                     // Pages strip occupies the trailing edge — slide aside.
                     trailingInset: showPageStrip ? 96 : 0
                 )
+                // Above the paste / region pills so a pill never covers the toolbar (#4).
+                .zIndex(48)
 
                 // The recorder lives in the top bar; the bar only surfaces
                 // while a session is live (scrubber + tap-to-seek hint).
@@ -588,9 +590,10 @@ struct NoteEditorView: View {
                             }
                             dismissPasteMenu()
                         }
-                        if UIPasteboard.general.hasImages { pasteMenuDivider }
-                    }
-                    if UIPasteboard.general.hasImages {
+                    } else if UIPasteboard.general.hasImages {
+                        // ONLY when there's a genuine external image and no in-app ink:
+                        // copying ink also drops a system image, which made "Paste
+                        // image" appear redundantly after an ink copy (#7).
                         pasteMenuItem("media.pasteImage") { pasteImage(at: pt); dismissPasteMenu() }
                     }
                 }

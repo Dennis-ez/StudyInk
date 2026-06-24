@@ -108,9 +108,9 @@ struct GhostInkLayer: View {
         let p = transform.toScreen(ghost.anchor)
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
-                Text(verbatim: InkWriter.plainText(from: ghost.text))
-                    .font(.fraunces(20, weight: .semibold, relativeTo: .title3).italic())
-                    .foregroundStyle(AppTheme.current.aiAccent.opacity(pulse ? 1.0 : 0.78))
+                // The suggested next line as real 2D LaTeX, in the AI accent "ink".
+                AIInkMath(latex: ghost.text, color: AppTheme.current.aiAccent, fontSize: 20)
+                    .opacity(pulse ? 1.0 : 0.78)
                 Button(action: onAccept) {
                     HStack(spacing: 5) {
                         Circle().fill(AppTheme.current.aiAccent)

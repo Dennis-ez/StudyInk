@@ -163,8 +163,8 @@ final class GuidedModeController: ObservableObject {
         - is ≤12 words, written in \(SystemPrompt.languageTarget).
         Do NOT comment on correct/complete/neat work, restate the obvious, or give generic encouragement.
         Reason briefly if you need to, then output ONLY a JSON object (you may fence it in a ```json block):
-        {"suggestion": "<the ≤12-word nudge>", "why": "<one short line on why this matters, ≤14 words>", "steps": ["<ordered steps from where they are now to the next result — each one short line, with LaTeX in $...$ where useful>"], "match_string": "<exact string copied verbatim from the page it refers to, or null>"}
-        `why` and `steps` are revealed only if the student taps for help, so DO give the real worked steps there (input → output), even though `suggestion` itself stays a nudge. Write `why`/`steps` in \(SystemPrompt.languageTarget). Keep `steps` to at most 6 items.
+        {"suggestion": "<the ≤12-word nudge>", "why": "<one short line on why this matters, ≤14 words>", "steps": ["<each step formatted as: what you do, then ' → ', then the RESULTING expression after that step in $...$>"], "match_string": "<exact string copied verbatim from the page it refers to, or null>"}
+        `why` and `steps` are revealed only if the student taps for help, so DO give the real worked steps there (input → output). EVERY step must end with ' → ' and the resulting expression (in $...$) AFTER applying that step, so the student sees the output at each stage. Write `why`/`steps` in \(SystemPrompt.languageTarget). Keep `steps` to at most 6 items.
         If nothing clears that bar, output exactly {}.
 
         OCR/typed text (may be empty or wrong):
@@ -320,10 +320,10 @@ struct GuidedSuggestionCard: View {
             if expanded {
                 Divider().overlay(accent.opacity(0.25))
                 if let why = suggestion.why, !why.isEmpty {
-                    detail(label: "ai.guided.why", body: why)
+                    detail(label: whyLabel, body: why)
                 }
                 if !suggestion.steps.isEmpty {
-                    detailHeader("ai.guided.how")
+                    detailHeader(howLabel)
                     ForEach(Array(suggestion.steps.enumerated()), id: \.offset) { index, step in
                         HStack(alignment: .top, spacing: 9) {
                             Text(verbatim: "\(index + 1)")
@@ -363,13 +363,21 @@ struct GuidedSuggestionCard: View {
         .accessibilityLabel(Text("ai.guided.suggestion"))
     }
 
-    private func detailHeader(_ key: LocalizedStringKey) -> some View {
-        Text(key)
+    /// Labels follow the CONTENT language, not the device: Hebrew steps get
+    /// Hebrew "למה / איך" even on an English device.
+    private var detailHebrew: Bool {
+        (suggestion.why?.isMostlyRTL ?? false) || (suggestion.steps.first?.isMostlyRTL ?? false)
+    }
+    private var whyLabel: String { detailHebrew ? "למה" : "Why" }
+    private var howLabel: String { detailHebrew ? "איך" : "How" }
+
+    private func detailHeader(_ text: String) -> some View {
+        Text(verbatim: text)
             .font(.caption.weight(.semibold).smallCaps())
             .foregroundStyle(accent)
     }
 
-    private func detail(label: LocalizedStringKey, body: String) -> some View {
+    private func detail(label: String, body: String) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             detailHeader(label)
             AIRichText(content: body)
@@ -390,25 +398,70 @@ struct GuidedLogView: View {
                 ContentUnavailableView("ai.guided.log.empty", systemImage: "lightbulb")
             } else {
                 List(guidedMode.log) { item in
-                    Button {
-                        dismiss()
-                        guidedMode.accept(item)
-                    } label: {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(item.text.mathToUnicode())
-                                .font(.subheadline)
-                                .multilineTextAlignment(item.text.isMostlyRTL ? .trailing : .leading)
-                                .frame(maxWidth: .infinity, alignment: item.text.isMostlyRTL ? .trailing : .leading)
-                            Text(item.createdAt, style: .time)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+                    GuidedLogRow(item: item) { dismiss(); guidedMode.accept(item) }
                 }
                 .listStyle(.plain)
             }
         }
         .frame(minWidth: 300, minHeight: 240)
         .navigationTitle(Text("ai.guided.log"))
+    }
+}
+
+/// One history entry — the nudge, tap to expand its why + worked steps (with
+/// real LaTeX), or open it in chat.
+private struct GuidedLogRow: View {
+    let item: GuidedSuggestion
+    var onOpen: () -> Void
+    @State private var expanded = false
+    private var accent: Color { SemanticColor.aiCircleStroke }
+    private var hebrew: Bool {
+        (item.why?.isMostlyRTL ?? false) || (item.steps.first?.isMostlyRTL ?? false) || item.text.isMostlyRTL
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(alignment: .top, spacing: 8) {
+                AIRichText(content: item.text).font(.subheadline)
+                Spacer(minLength: 8)
+                if item.hasDetail {
+                    Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                        .font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+                }
+            }
+            Text(item.createdAt, style: .time).font(.caption2).foregroundStyle(.secondary)
+
+            if expanded {
+                if let why = item.why, !why.isEmpty {
+                    Text(verbatim: hebrew ? "למה" : "Why")
+                        .font(.caption2.weight(.semibold).smallCaps()).foregroundStyle(accent)
+                    AIRichText(content: why).font(.footnote)
+                }
+                if !item.steps.isEmpty {
+                    Text(verbatim: hebrew ? "איך" : "How")
+                        .font(.caption2.weight(.semibold).smallCaps()).foregroundStyle(accent)
+                    ForEach(Array(item.steps.enumerated()), id: \.offset) { i, step in
+                        HStack(alignment: .top, spacing: 8) {
+                            Text(verbatim: "\(i + 1)")
+                                .font(.caption2.weight(.bold).monospacedDigit()).foregroundStyle(.white)
+                                .frame(width: 16, height: 16).background(accent, in: Circle())
+                            AIRichText(content: step).font(.footnote)
+                        }
+                    }
+                    Button(action: onOpen) {
+                        Label { Text("ai.guided.openChat") } icon: { Image(systemName: "bubble.left.and.text.bubble.right") }
+                            .font(.caption2).foregroundStyle(accent)
+                    }
+                    .buttonStyle(.plain).padding(.top, 1)
+                }
+            }
+        }
+        .padding(.vertical, 2)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if item.hasDetail { withAnimation(.snappy(duration: 0.2)) { expanded.toggle() } }
+            else { onOpen() }
+        }
+        .environment(\.layoutDirection, hebrew ? .rightToLeft : .leftToRight)
     }
 }
