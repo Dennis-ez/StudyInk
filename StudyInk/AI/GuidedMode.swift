@@ -368,8 +368,9 @@ struct GuidedSuggestionCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: expanded ? 11 : 0) {
-            // The nudge row.
-            HStack(alignment: .top, spacing: 10) {
+            // The nudge row — centered so the chevron + dismiss line up with the
+            // nudge text instead of floating at the top.
+            HStack(alignment: .center, spacing: 10) {
                 Image(systemName: "lightbulb.fill").foregroundStyle(accent)
                 AIRichText(content: suggestion.text)
                     .font(.subheadline)
