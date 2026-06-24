@@ -141,7 +141,11 @@ struct LibraryView: View {
         }
         .background(themePaper.ignoresSafeArea())
         .fullScreenCover(isPresented: $showSettings) { SettingsView() }
-        .onAppear(perform: purgeExpiredNotes)
+        .onAppear {
+            purgeExpiredNotes()
+            // One-time: give existing notes a tree position alongside folders.
+            FileTree.backfillSortIndexIfNeeded(PersistenceController.shared.viewContext)
+        }
         .alert(Text("library.deleteSubject.confirm"), isPresented: Binding(
             get: { subjectPendingDelete != nil },
             set: { if !$0 { subjectPendingDelete = nil } }
