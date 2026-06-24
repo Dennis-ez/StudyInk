@@ -259,7 +259,6 @@ struct LibraryView: View {
                 ForEach(rootSubjects, id: \.objectID) { subject in
                     subjectRows(subject, depth: 0)
                 }
-                .onMove { from, to in moveSiblings(of: nil, from: from, to: to) }
             }
         }
             .scrollContentBackground(.hidden)
@@ -345,7 +344,6 @@ struct LibraryView: View {
                     ForEach(sortedChildren(of: subject), id: \.objectID) { child in
                         subjectRows(child, depth: depth + 1)
                     }
-                    .onMove { from, to in moveSiblings(of: subject, from: from, to: to) }
                 }
             }
         )
@@ -399,10 +397,11 @@ struct LibraryView: View {
             // weird black band behind the divider in dark mode.
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
-            // Reorder via native drag (.onMove); nest via the context menu. No
-            // .draggable — its drag preview showed a black border and only nested.
+            // Drag this divider onto a subject/divider to nest it; a CUSTOM preview
+            // (clean capsule) avoids the default drag snapshot's black border.
+            .draggable("subject:\(subject.id?.uuidString ?? "")") { subjectDragPreview(subject) }
             .contextMenu { subjectContextMenu(subject) }
-            // Accept notes/subjects dropped onto the divider to file/nest them.
+            // Drop another subject/divider here to nest it under this divider.
             .dropDestination(for: String.self) { ids, _ in
                 handleDrop(ids.filter { $0.hasPrefix("subject:") }, into: subject)
             }
@@ -453,8 +452,9 @@ struct LibraryView: View {
                 roundedRowBackground(tint.opacity(isSelected ? 0.38 : 0.18))
                     .padding(.leading, CGFloat(depth) * 20)
             )
-            // Reorder via native drag (.onMove); nest via the context menu. No
-            // .draggable — its drag preview showed a black border and only nested.
+            // Drag this subject onto another subject/divider to nest it; a CUSTOM
+            // preview (clean capsule) avoids the default snapshot's black border.
+            .draggable("subject:\(subject.id?.uuidString ?? "")") { subjectDragPreview(subject) }
             .contextMenu { subjectContextMenu(subject) }
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                 Button(role: .destructive) {
@@ -529,6 +529,22 @@ struct LibraryView: View {
         }
         if changed { PersistenceController.shared.save() }
         return changed
+    }
+
+    /// A clean capsule shown under the finger while dragging a subject/divider —
+    /// replaces the default drag snapshot (which rendered a black border).
+    private func subjectDragPreview(_ subject: Subject) -> some View {
+        HStack(spacing: 8) {
+            if !subject.isDivider {
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .fill(Color(hex: subject.colorHex ?? "#0A84FF") ?? .accentColor)
+                    .frame(width: 11, height: 11)
+            }
+            Text(verbatim: subject.name ?? "—").font(.callout).lineLimit(1).foregroundStyle(.primary)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 7)
+        .background(.regularMaterial, in: Capsule())
+        .environment(\.layoutDirection, nameDirection(subject.name))
     }
 
     /// A name beginning with a Hebrew/Arabic letter reads right-to-left, so its

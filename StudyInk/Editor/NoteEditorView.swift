@@ -55,8 +55,6 @@ struct NoteEditorView: View {
     @State private var transformLassoActive = false
     /// Page-space point of a pending finger-tap "Paste" affordance (ink clipboard).
     @State private var pastePoint: CGPoint?
-    /// Smart Collapse: folded regions on the current page (session-scoped).
-    @State private var foldedBlocks: [FoldedBlock] = []
     /// Armed after a short delay so the content loader only shows for a SLOW load —
     /// a fast note switch shouldn't flash it (that read as a hiccup).
     @State private var loaderArmed = false
@@ -204,6 +202,20 @@ struct NoteEditorView: View {
             // Above the margin glyphs — a chat bubble must never sit under a ✓/~/?.
             aiOverlays
                 .zIndex(1)
+
+            // Coloured highlights over the ink each expanded guided step is about
+            // — same colour as that step's badge, so the student sees the link.
+            ForEach(guidedMode.stepHighlights) { h in
+                let r = transform.toScreen(h.rect).insetBy(dx: -4, dy: -2)
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(h.color.opacity(0.20))
+                    .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous).strokeBorder(h.color.opacity(0.7), lineWidth: 1.5))
+                    .frame(width: max(r.width, 8), height: max(r.height, 8))
+                    .position(x: r.midX, y: r.midY)
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+            }
+            .zIndex(2)
 
             // The Ambient Tutor's margin lane: glyphs anchored to the lines of
             // work, and the note that unfolds from a tapped glyph.
@@ -380,6 +392,8 @@ struct NoteEditorView: View {
                     // Pages strip occupies the trailing edge — slide aside.
                     trailingInset: showPageStrip ? 96 : 0
                 )
+                // Above the paste / region pills so a pill never covers the toolbar (#4).
+                .zIndex(48)
 
                 // The recorder lives in the top bar; the bar only surfaces
                 // while a session is live (scrubber + tap-to-seek hint).
@@ -566,34 +580,8 @@ struct NoteEditorView: View {
                         canvasController.engine?.duplicateStrokeSelection(rotation: t.0, scale: t.1, translation: t.2, selection: selection)
                         clearStrokeSelection()
                     },
-                    onDelete: { canvasController.engine?.deleteStrokeSelection(); clearStrokeSelection() },
-                    onCollapse: {
-                        // Keep the strokes (cancel restores the lifted ones); a cover
-                        // hides them. selection.bounds is canvas (inkScale×) space.
-                        let s = canvasController.inkScale
-                        let b = selection.bounds
-                        let pageRect = CGRect(x: b.minX / s, y: b.minY / s, width: b.width / s, height: b.height / s)
-                        canvasController.engine?.cancelStrokeSelection()
-                        withAnimation(.easeOut(duration: 0.25)) {
-                            foldedBlocks.append(FoldedBlock(rect: pageRect, count: selection.strokeIndices.count))
-                        }
-                        saveFolds()
-                        clearStrokeSelection()
-                    }
+                    onDelete: { canvasController.engine?.deleteStrokeSelection(); clearStrokeSelection() }
                 )
-            }
-
-            // Smart Collapse covers — hide folded blocks; tap to expand.
-            ForEach(foldedBlocks) { block in
-                FoldedBlockCover(
-                    block: block,
-                    transform: canvasController.canvasTransform(forPage: pageIndex),
-                    onExpand: {
-                        withAnimation(.easeOut(duration: 0.2)) { foldedBlocks.removeAll { $0.id == block.id } }
-                        saveFolds()
-                    }
-                )
-                .zIndex(30)
             }
 
             // Finger-tap paste menu (our theme): tap empty space with something
@@ -616,9 +604,10 @@ struct NoteEditorView: View {
                             }
                             dismissPasteMenu()
                         }
-                        if UIPasteboard.general.hasImages { pasteMenuDivider }
-                    }
-                    if UIPasteboard.general.hasImages {
+                    } else if UIPasteboard.general.hasImages {
+                        // ONLY when there's a genuine external image and no in-app ink:
+                        // copying ink also drops a system image, which made "Paste
+                        // image" appear redundantly after an ink copy (#7).
                         pasteMenuItem("media.pasteImage") { pasteImage(at: pt); dismissPasteMenu() }
                     }
                 }
@@ -679,9 +668,10 @@ struct NoteEditorView: View {
                     Spacer()
                     GuidedSuggestionCard(
                         suggestion: suggestion,
-                        onAccept: { guidedMode.accept(suggestion) },
-                        onDismiss: { withAnimation { guidedMode.suggestion = nil } },
-                        onExpand: { guidedMode.keepAlive() }
+                        onAccept: { guidedMode.clearHighlights(); guidedMode.accept(suggestion) },
+                        onDismiss: { guidedMode.clearHighlights(); withAnimation { guidedMode.suggestion = nil } },
+                        onExpand: { Task { await guidedMode.highlightSteps(suggestion) } },
+                        onCollapse: { guidedMode.clearHighlights() }
                     )
                     .padding(.bottom, 64)
                 }
@@ -719,7 +709,7 @@ struct NoteEditorView: View {
                             ambient.sensitivity = .subtle
                             guidedMode.isEnabled = false
                         } label: {
-                            Label("ai.guidedMode", systemImage: "lightbulb.fill")
+                            Label("ai.guidedMode", systemImage: "sparkles")
                                 .font(.caption2)
                                 .foregroundStyle(SemanticColor.aiCircleStroke)
                                 .padding(.horizontal, 10)
@@ -1001,6 +991,7 @@ struct NoteEditorView: View {
             // page change so it doesn't follow you to the next page.
             regionSelection = nil
             canvasController.lassoPoints = []
+            guidedMode.clearHighlights()   // step highlights belong to the page they're on
             persistOverlays(to: page(at: oldIndex))
             canvasController.engine?.refreshPage(oldIndex)
             loadPage()
@@ -1865,7 +1856,6 @@ extension NoteEditorView {
         editingBoxID = nil
         selectedMediaID = nil
         conceptHit = nil
-        foldedBlocks = loadFolds(pageIndex)
         refreshConceptLines()
     }
 
@@ -1879,25 +1869,6 @@ extension NoteEditorView {
             try? await Task.sleep(for: .seconds(0.8))
             guard !Task.isCancelled, page == currentPage else { return }
             conceptOCRLines = await NoteContextBuilder.ocrLines(for: page)
-        }
-    }
-
-    // MARK: - Smart Collapse persistence (per note + page, in UserDefaults)
-
-    private func foldsKey(_ index: Int) -> String? {
-        guard let id = note.id?.uuidString else { return nil }
-        return "folds.\(id).\(index)"
-    }
-    private func loadFolds(_ index: Int) -> [FoldedBlock] {
-        guard let key = foldsKey(index), let data = UserDefaults.standard.data(forKey: key) else { return [] }
-        return (try? JSONDecoder().decode([FoldedBlock].self, from: data)) ?? []
-    }
-    private func saveFolds() {
-        guard let key = foldsKey(pageIndex) else { return }
-        if foldedBlocks.isEmpty {
-            UserDefaults.standard.removeObject(forKey: key)
-        } else if let data = try? JSONEncoder().encode(foldedBlocks) {
-            UserDefaults.standard.set(data, forKey: key)
         }
     }
 

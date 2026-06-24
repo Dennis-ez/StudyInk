@@ -167,7 +167,6 @@ struct StrokeTransformOverlay: View {
     var onPaste: () -> Void = {}
     var onDuplicate: () -> Void = {}
     var onDelete: () -> Void = {}
-    var onCollapse: () -> Void = {}
 
     @State private var rotateStart: Double?
     @State private var dragStart: CGSize?
@@ -256,8 +255,6 @@ struct StrokeTransformOverlay: View {
             }
             menuDivider
             menuButton("Duplicate", action: onDuplicate)
-            menuDivider
-            menuButton("Fold", action: onCollapse)
             menuDivider
             menuButton("Delete", tint: .red, action: onDelete)
         }

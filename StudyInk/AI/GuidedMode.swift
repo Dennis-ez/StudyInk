@@ -9,9 +9,32 @@ struct GuidedSuggestion: Equatable, Identifiable {
     /// The ordered steps from where the student is to the next result — laid out
     /// when the card is tapped open. Each may contain LaTeX (rendered via AIRichText).
     var steps: [String] = []
+    /// Parallel to `steps`: the EXACT page text each step is about (verbatim, or
+    /// "" if none), so expanding the steps can highlight that ink on the page in
+    /// the step's colour. Resolved to a rect via OCR at expand time.
+    var stepRefs: [String] = []
     let createdAt = Date()
 
     var hasDetail: Bool { (why?.isEmpty == false) || !steps.isEmpty }
+
+    /// A distinct colour per step, shared by the step's badge and its page
+    /// highlight so the student sees what each step is talking about.
+    static let stepPalette: [Color] = [
+        Color(red: 0.25, green: 0.55, blue: 0.96),   // blue
+        Color(red: 0.30, green: 0.72, blue: 0.45),   // green
+        Color(red: 0.60, green: 0.42, blue: 0.90),   // purple
+        Color(red: 0.95, green: 0.55, blue: 0.20),   // orange
+        Color(red: 0.92, green: 0.40, blue: 0.62),   // pink
+        Color(red: 0.20, green: 0.70, blue: 0.72),   // teal
+    ]
+    static func stepColor(_ index: Int) -> Color { stepPalette[index % stepPalette.count] }
+}
+
+/// A coloured highlight over a page region a step is about (page coordinates).
+struct StepHighlight: Identifiable, Equatable {
+    let id = UUID()
+    var rect: CGRect
+    var color: Color
 }
 
 /// Proactive tutoring: evaluates the page ~3 seconds after the pen goes quiet
@@ -25,6 +48,9 @@ final class GuidedModeController: ObservableObject {
         didSet { isEnabled ? start() : stop() }
     }
     @Published var suggestion: GuidedSuggestion?
+    /// Coloured page highlights for the expanded suggestion's steps — each step's
+    /// referenced ink, tinted in the step's colour (page coordinates).
+    @Published var stepHighlights: [StepHighlight] = []
     /// Transient, non-tappable status text (e.g. "guided mode is watching").
     @Published var banner: String?
     /// True while the watcher is evaluating the page — drives the breathing badge.
@@ -64,6 +90,7 @@ final class GuidedModeController: ObservableObject {
         stopTasks()
         suggestion = nil
         banner = nil
+        clearHighlights()
         ambient?.clearHints()
     }
 
@@ -163,8 +190,8 @@ final class GuidedModeController: ObservableObject {
         - is ≤12 words, written in \(SystemPrompt.languageTarget).
         Do NOT comment on correct/complete/neat work, restate the obvious, or give generic encouragement.
         Reason briefly if you need to, then output ONLY a JSON object (you may fence it in a ```json block):
-        {"suggestion": "<the ≤12-word nudge>", "why": "<one short line on why this matters, ≤14 words>", "steps": ["<ordered steps from where they are now to the next result — each one short line, with LaTeX in $...$ where useful>"], "match_string": "<exact string copied verbatim from the page it refers to, or null>"}
-        `why` and `steps` are revealed only if the student taps for help, so DO give the real worked steps there (input → output), even though `suggestion` itself stays a nudge. Write `why`/`steps` in \(SystemPrompt.languageTarget). Keep `steps` to at most 6 items.
+        {"suggestion": "<the ≤12-word nudge>", "why": "<one short line on why this matters, ≤14 words>", "steps": ["<each step formatted as: what you do, then ' → ', then the RESULTING expression after that step in $...$>"], "step_refs": ["<for EACH step, the exact text already ON THE PAGE that this step is about — copied verbatim so it can be found — or empty string if none>"], "match_string": "<exact string copied verbatim from the page it refers to, or null>"}
+        `why` and `steps` are revealed only if the student taps for help, so DO give the real worked steps there (input → output). EVERY step must end with ' → ' and the resulting expression (in $...$) AFTER applying that step, so the student sees the output at each stage. `step_refs` MUST be the same length as `steps`, each one a short verbatim snippet from the student's page that the matching step refers to (for highlighting). Write `why`/`steps` in \(SystemPrompt.languageTarget). Keep `steps` to at most 6 items.
         If nothing clears that bar, output exactly {}.
 
         OCR/typed text (may be empty or wrong):
@@ -193,12 +220,20 @@ final class GuidedModeController: ObservableObject {
             var match: String?
             var why: String?
             var steps: [String] = []
+            var stepRefs: [String] = []
             if let data = extractJSON(from: raw)?.data(using: .utf8),
                let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
                 suggestion = object["suggestion"] as? String
                 match = object["match_string"] as? String
                 why = object["why"] as? String
-                steps = (object["steps"] as? [String])?.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty } ?? []
+                let rawSteps = (object["steps"] as? [String]) ?? []
+                let rawRefs = (object["step_refs"] as? [String]) ?? []
+                // Keep steps and their refs index-aligned, then drop blank steps.
+                let paired = rawSteps.enumerated().compactMap { i, s -> (String, String)? in
+                    s.trimmingCharacters(in: .whitespaces).isEmpty ? nil : (s, i < rawRefs.count ? rawRefs[i] : "")
+                }
+                steps = paired.map(\.0)
+                stepRefs = paired.map(\.1)
             }
             if suggestion?.isEmpty != false {
                 suggestion = Self.regexCapture(#""suggestion"\s*:\s*"((?:[^"\\]|\\.)*)""#, in: raw)
@@ -209,7 +244,8 @@ final class GuidedModeController: ObservableObject {
                 text: text,
                 matchString: (match?.isEmpty == false && match != "null") ? match : nil,
                 why: (why?.isEmpty == false && why != "null") ? why : nil,
-                steps: steps
+                steps: steps,
+                stepRefs: stepRefs
             )
             show(new)
             // The glyph is placed by the editor at the student's last pen location
@@ -227,6 +263,7 @@ final class GuidedModeController: ObservableObject {
 
     private func show(_ new: GuidedSuggestion) {
         Haptics.tap()
+        clearHighlights()   // drop the previous suggestion's page highlights
         log.insert(new, at: 0)
         if log.count > 50 { log.removeLast(log.count - 50) }
         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
@@ -239,11 +276,36 @@ final class GuidedModeController: ObservableObject {
             try? await Task.sleep(for: .seconds(15))
             guard !Task.isCancelled else { return }
             withAnimation { self?.suggestion = nil }
+            self?.clearHighlights()
         }
     }
 
     /// The student is reading the expanded steps — stop the auto-dismiss.
     func keepAlive() { dismissTask?.cancel() }
+
+    /// The steps were expanded — resolve each step's page reference to a rect via
+    /// OCR and publish coloured highlights so the matching ink lights up in the
+    /// step's colour. Best-effort: refs that don't match are simply skipped.
+    func highlightSteps(_ s: GuidedSuggestion) async {
+        keepAlive()
+        guard let page = tutor?.currentPage, !s.stepRefs.isEmpty else { return }
+        let lines = await NoteContextBuilder.ocrLines(for: page)
+        var out: [StepHighlight] = []
+        for (index, ref) in s.stepRefs.enumerated() {
+            let needle = ref.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard needle.count >= 2 else { continue }
+            if let line = lines.first(where: {
+                $0.text.localizedCaseInsensitiveContains(needle) || needle.localizedCaseInsensitiveContains($0.text)
+            }) {
+                out.append(StepHighlight(rect: line.rect, color: GuidedSuggestion.stepColor(index)))
+            }
+        }
+        stepHighlights = out
+    }
+
+    func clearHighlights() {
+        if !stepHighlights.isEmpty { stepHighlights = [] }
+    }
 
     /// Student tapped the card → open a real bubble anchored at the referenced text.
     func accept(_ suggestion: GuidedSuggestion) {
@@ -291,11 +353,17 @@ struct GuidedSuggestionCard: View {
     let suggestion: GuidedSuggestion
     var onAccept: () -> Void
     var onDismiss: () -> Void
-    /// Called when the student expands the steps — stops the auto-dismiss.
+    /// Called when the student expands the steps — stops the auto-dismiss and
+    /// lights up the steps' page highlights.
     var onExpand: () -> Void = {}
+    /// Called when the steps collapse — clears the page highlights.
+    var onCollapse: () -> Void = {}
 
     @State private var expanded = false
     private var isRTL: Bool { suggestion.text.isMostlyRTL }
+    /// Mirror the whole card to the right when EITHER the nudge or the steps/why
+    /// are Hebrew, so the steps UI reads right-to-left.
+    private var cardRTL: Bool { isRTL || detailHebrew }
     private var accent: Color { SemanticColor.aiCircleStroke }
 
     var body: some View {
@@ -320,17 +388,18 @@ struct GuidedSuggestionCard: View {
             if expanded {
                 Divider().overlay(accent.opacity(0.25))
                 if let why = suggestion.why, !why.isEmpty {
-                    detail(label: "ai.guided.why", body: why)
+                    detail(label: whyLabel, body: why)
                 }
                 if !suggestion.steps.isEmpty {
-                    detailHeader("ai.guided.how")
+                    detailHeader(howLabel)
                     ForEach(Array(suggestion.steps.enumerated()), id: \.offset) { index, step in
                         HStack(alignment: .top, spacing: 9) {
+                            // Each step's colour also tints its referenced ink on the page.
                             Text(verbatim: "\(index + 1)")
                                 .font(.caption.weight(.bold).monospacedDigit())
                                 .foregroundStyle(.white)
                                 .frame(width: 19, height: 19)
-                                .background(accent, in: Circle())
+                                .background(GuidedSuggestion.stepColor(index), in: Circle())
                             AIRichText(content: step)
                                 .font(.fraunces(15, weight: .regular, relativeTo: .subheadline))
                         }
@@ -353,23 +422,31 @@ struct GuidedSuggestionCard: View {
         .onTapGesture {
             if suggestion.hasDetail {
                 withAnimation(.snappy(duration: 0.22)) { expanded.toggle() }
-                if expanded { onExpand() }
+                if expanded { onExpand() } else { onCollapse() }
             } else {
                 onAccept()
             }
         }
-        .environment(\.layoutDirection, isRTL ? .rightToLeft : .leftToRight)
+        .environment(\.layoutDirection, cardRTL ? .rightToLeft : .leftToRight)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text("ai.guided.suggestion"))
     }
 
-    private func detailHeader(_ key: LocalizedStringKey) -> some View {
-        Text(key)
+    /// Labels follow the CONTENT language, not the device: Hebrew steps get
+    /// Hebrew "למה / איך" even on an English device.
+    private var detailHebrew: Bool {
+        (suggestion.why?.isMostlyRTL ?? false) || (suggestion.steps.first?.isMostlyRTL ?? false)
+    }
+    private var whyLabel: String { detailHebrew ? "למה" : "Why" }
+    private var howLabel: String { detailHebrew ? "איך" : "How" }
+
+    private func detailHeader(_ text: String) -> some View {
+        Text(verbatim: text)
             .font(.caption.weight(.semibold).smallCaps())
             .foregroundStyle(accent)
     }
 
-    private func detail(label: LocalizedStringKey, body: String) -> some View {
+    private func detail(label: String, body: String) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             detailHeader(label)
             AIRichText(content: body)
@@ -390,25 +467,70 @@ struct GuidedLogView: View {
                 ContentUnavailableView("ai.guided.log.empty", systemImage: "lightbulb")
             } else {
                 List(guidedMode.log) { item in
-                    Button {
-                        dismiss()
-                        guidedMode.accept(item)
-                    } label: {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(item.text.mathToUnicode())
-                                .font(.subheadline)
-                                .multilineTextAlignment(item.text.isMostlyRTL ? .trailing : .leading)
-                                .frame(maxWidth: .infinity, alignment: item.text.isMostlyRTL ? .trailing : .leading)
-                            Text(item.createdAt, style: .time)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+                    GuidedLogRow(item: item) { dismiss(); guidedMode.accept(item) }
                 }
                 .listStyle(.plain)
             }
         }
         .frame(minWidth: 300, minHeight: 240)
         .navigationTitle(Text("ai.guided.log"))
+    }
+}
+
+/// One history entry — the nudge, tap to expand its why + worked steps (with
+/// real LaTeX), or open it in chat.
+private struct GuidedLogRow: View {
+    let item: GuidedSuggestion
+    var onOpen: () -> Void
+    @State private var expanded = false
+    private var accent: Color { SemanticColor.aiCircleStroke }
+    private var hebrew: Bool {
+        (item.why?.isMostlyRTL ?? false) || (item.steps.first?.isMostlyRTL ?? false) || item.text.isMostlyRTL
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(alignment: .top, spacing: 8) {
+                AIRichText(content: item.text).font(.subheadline)
+                Spacer(minLength: 8)
+                if item.hasDetail {
+                    Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                        .font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+                }
+            }
+            Text(item.createdAt, style: .time).font(.caption2).foregroundStyle(.secondary)
+
+            if expanded {
+                if let why = item.why, !why.isEmpty {
+                    Text(verbatim: hebrew ? "למה" : "Why")
+                        .font(.caption2.weight(.semibold).smallCaps()).foregroundStyle(accent)
+                    AIRichText(content: why).font(.footnote)
+                }
+                if !item.steps.isEmpty {
+                    Text(verbatim: hebrew ? "איך" : "How")
+                        .font(.caption2.weight(.semibold).smallCaps()).foregroundStyle(accent)
+                    ForEach(Array(item.steps.enumerated()), id: \.offset) { i, step in
+                        HStack(alignment: .top, spacing: 8) {
+                            Text(verbatim: "\(i + 1)")
+                                .font(.caption2.weight(.bold).monospacedDigit()).foregroundStyle(.white)
+                                .frame(width: 16, height: 16).background(accent, in: Circle())
+                            AIRichText(content: step).font(.footnote)
+                        }
+                    }
+                    Button(action: onOpen) {
+                        Label { Text("ai.guided.openChat") } icon: { Image(systemName: "bubble.left.and.text.bubble.right") }
+                            .font(.caption2).foregroundStyle(accent)
+                    }
+                    .buttonStyle(.plain).padding(.top, 1)
+                }
+            }
+        }
+        .padding(.vertical, 2)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if item.hasDetail { withAnimation(.snappy(duration: 0.2)) { expanded.toggle() } }
+            else { onOpen() }
+        }
+        .environment(\.layoutDirection, hebrew ? .rightToLeft : .leftToRight)
     }
 }

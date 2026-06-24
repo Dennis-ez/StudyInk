@@ -108,9 +108,9 @@ struct GhostInkLayer: View {
         let p = transform.toScreen(ghost.anchor)
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
-                Text(verbatim: InkWriter.plainText(from: ghost.text))
-                    .font(.fraunces(20, weight: .semibold, relativeTo: .title3).italic())
-                    .foregroundStyle(AppTheme.current.aiAccent.opacity(pulse ? 1.0 : 0.78))
+                // The suggested next line as real 2D LaTeX, in the AI accent "ink".
+                AIInkMath(latex: ghost.text, color: AppTheme.current.aiAccent, fontSize: 20)
+                    .opacity(pulse ? 1.0 : 0.78)
                 Button(action: onAccept) {
                     HStack(spacing: 5) {
                         Circle().fill(AppTheme.current.aiAccent)
@@ -125,8 +125,8 @@ struct GhostInkLayer: View {
                     .overlay(Capsule().strokeBorder(SemanticColor.separator))
                 }
                 .buttonStyle(.plain)
-                // "Why is this the next step?" — reveals the model's one-line reason.
-                if ghost.why != nil {
+                // "Why is this the next step?" — reveals the reason AND the worked steps.
+                if ghost.hasDetail {
                     Button { withAnimation(.easeOut(duration: 0.2)) { showWhy.toggle() } } label: {
                         Circle().fill(SemanticColor.surface)
                             .frame(width: 22, height: 22)
@@ -147,16 +147,34 @@ struct GhostInkLayer: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(Text("ai.dismiss"))
             }
-            if showWhy, let why = ghost.why {
-                Text(verbatim: why)
-                    .font(.system(size: 12))
-                    .foregroundStyle(SemanticColor.textMutedColor)
-                    .multilineTextAlignment(why.isMostlyRTL ? .trailing : .leading)
-                    .padding(.horizontal, 10).padding(.vertical, 7)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(SemanticColor.separator))
-                    .frame(maxWidth: 240, alignment: .leading)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+            if showWhy, ghost.hasDetail {
+                let detailRTL = (ghost.why?.isMostlyRTL ?? false) || (ghost.steps.first?.isMostlyRTL ?? false)
+                VStack(alignment: .leading, spacing: 7) {
+                    // The reason — rendered with AIRichText so its LaTeX shows as math.
+                    if let why = ghost.why, !why.isEmpty {
+                        AIRichText(content: why).font(.system(size: 12))
+                    }
+                    // The ordered worked steps to reach the next line.
+                    if !ghost.steps.isEmpty {
+                        ForEach(Array(ghost.steps.enumerated()), id: \.offset) { index, step in
+                            HStack(alignment: .top, spacing: 8) {
+                                Text(verbatim: "\(index + 1)")
+                                    .font(.caption2.weight(.bold).monospacedDigit())
+                                    .foregroundStyle(.white)
+                                    .frame(width: 17, height: 17)
+                                    .background(AppTheme.current.aiAccent, in: Circle())
+                                AIRichText(content: step).font(.system(size: 12))
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 10).padding(.vertical, 8)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(SemanticColor.separator))
+                .frame(maxWidth: 280, alignment: detailRTL ? .trailing : .leading)
+                // Hebrew steps read right-to-left (number badge on the right).
+                .environment(\.layoutDirection, detailRTL ? .rightToLeft : .leftToRight)
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .fixedSize()
