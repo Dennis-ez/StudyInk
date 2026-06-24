@@ -54,6 +54,62 @@ struct NoteGridView: View {
         (s.children?.count(where: { !$0.isDivider }) ?? 0) + (s.notes?.count(where: { $0.deletedAt == nil }) ?? 0)
     }
 
+    // MARK: - Unified drag-to-move/nest (stage 3)
+
+    /// Move the dragged items INTO `folder` (nil = root): notes by UUID get filed
+    /// there; "subject:" folders get nested (cycle-guarded). Returns true if
+    /// anything moved.
+    private func moveItems(_ ids: [String], into folder: Subject?) -> Bool {
+        var changed = false
+        for id in ids {
+            if id.hasPrefix("subject:") {
+                let uuid = String(id.dropFirst("subject:".count))
+                if let dragged = fetchSubject(uuid), dragged != folder, canNest(dragged, into: folder) {
+                    let base = (FileTree.children(of: folder, in: context).map(\.sortIndex).max() ?? -1) + 1
+                    dragged.parent = folder
+                    dragged.sortIndex = base
+                    changed = true
+                }
+            } else if let note = allNotes.first(where: { $0.id?.uuidString == id }), note.subject != folder {
+                let base = (FileTree.children(of: folder, in: context).map(\.sortIndex).max() ?? -1) + 1
+                note.subject = folder
+                note.sortIndex = base
+                changed = true
+            }
+        }
+        if changed { PersistenceController.shared.save() }
+        return changed
+    }
+
+    private func fetchSubject(_ uuid: String) -> Subject? {
+        let r = NSFetchRequest<Subject>(entityName: "Subject")
+        return (try? context.fetch(r))?.first { $0.id?.uuidString == uuid }
+    }
+
+    /// A folder can't be nested into itself or any of its descendants. nil target
+    /// (root) is always allowed unless it's already at the root.
+    private func canNest(_ dragged: Subject, into target: Subject?) -> Bool {
+        guard let target else { return dragged.parent != nil }
+        if dragged == target { return false }
+        var node: Subject? = target
+        while let n = node {
+            if n == dragged { return false }
+            node = n.parent
+        }
+        return true
+    }
+
+    /// A clean capsule drag preview for a folder (no default black snapshot).
+    private func folderDragPreview(_ folder: Subject) -> some View {
+        let tint = Color(hex: folder.colorHex ?? "#0A84FF") ?? .accentColor
+        return HStack(spacing: 7) {
+            Image(systemName: "folder.fill").foregroundStyle(tint)
+            Text(verbatim: folder.name ?? "—").font(.callout).lineLimit(1)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 7)
+        .background(.regularMaterial, in: Capsule())
+    }
+
     @Environment(\.managedObjectContext) private var context
     @Environment(\.themePaper) private var themePaper
     @FetchRequest(
@@ -565,6 +621,10 @@ struct NoteGridView: View {
             }
         }
         .buttonStyle(.plain)
+        // Drag the folder itself (clean preview), and accept notes/folders dropped
+        // ONTO it to move/nest them.
+        .draggable("subject:\(folder.id?.uuidString ?? "")") { folderDragPreview(folder) }
+        .dropDestination(for: String.self) { ids, _ in moveItems(ids, into: folder) }
         .accessibilityLabel(Text(verbatim: folder.name ?? ""))
     }
 
@@ -581,6 +641,8 @@ struct NoteGridView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .draggable("subject:\(folder.id?.uuidString ?? "")") { folderDragPreview(folder) }
+        .dropDestination(for: String.self) { ids, _ in moveItems(ids, into: folder) }
         .accessibilityLabel(Text(verbatim: folder.name ?? ""))
     }
 
@@ -592,6 +654,8 @@ struct NoteGridView: View {
                     Text("library.allNotes").font(.callout).foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
+                // Drop onto a crumb to move the item UP into that folder (or root).
+                .dropDestination(for: String.self) { ids, _ in moveItems(ids, into: nil) }
                 ForEach(Array(breadcrumbs.enumerated()), id: \.element.objectID) { i, crumb in
                     Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
                     Button { onOpenFolder(crumb) } label: {
@@ -601,6 +665,7 @@ struct NoteGridView: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(i == breadcrumbs.count - 1)
+                    .dropDestination(for: String.self) { ids, _ in moveItems(ids, into: crumb) }
                 }
             }
             .padding(.horizontal, 28)
