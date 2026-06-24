@@ -148,6 +148,7 @@ struct GhostInkLayer: View {
                 .accessibilityLabel(Text("ai.dismiss"))
             }
             if showWhy, ghost.hasDetail {
+                let detailRTL = (ghost.why?.isMostlyRTL ?? false) || (ghost.steps.first?.isMostlyRTL ?? false)
                 VStack(alignment: .leading, spacing: 7) {
                     // The reason — rendered with AIRichText so its LaTeX shows as math.
                     if let why = ghost.why, !why.isEmpty {
@@ -170,7 +171,9 @@ struct GhostInkLayer: View {
                 .padding(.horizontal, 10).padding(.vertical, 8)
                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(SemanticColor.separator))
-                .frame(maxWidth: 280, alignment: .leading)
+                .frame(maxWidth: 280, alignment: detailRTL ? .trailing : .leading)
+                // Hebrew steps read right-to-left (number badge on the right).
+                .environment(\.layoutDirection, detailRTL ? .rightToLeft : .leftToRight)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }

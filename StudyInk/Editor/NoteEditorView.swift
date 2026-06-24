@@ -203,6 +203,20 @@ struct NoteEditorView: View {
             aiOverlays
                 .zIndex(1)
 
+            // Coloured highlights over the ink each expanded guided step is about
+            // — same colour as that step's badge, so the student sees the link.
+            ForEach(guidedMode.stepHighlights) { h in
+                let r = transform.toScreen(h.rect).insetBy(dx: -4, dy: -2)
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(h.color.opacity(0.20))
+                    .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous).strokeBorder(h.color.opacity(0.7), lineWidth: 1.5))
+                    .frame(width: max(r.width, 8), height: max(r.height, 8))
+                    .position(x: r.midX, y: r.midY)
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+            }
+            .zIndex(2)
+
             // The Ambient Tutor's margin lane: glyphs anchored to the lines of
             // work, and the note that unfolds from a tapped glyph.
             MarginLaneView(
@@ -654,9 +668,10 @@ struct NoteEditorView: View {
                     Spacer()
                     GuidedSuggestionCard(
                         suggestion: suggestion,
-                        onAccept: { guidedMode.accept(suggestion) },
-                        onDismiss: { withAnimation { guidedMode.suggestion = nil } },
-                        onExpand: { guidedMode.keepAlive() }
+                        onAccept: { guidedMode.clearHighlights(); guidedMode.accept(suggestion) },
+                        onDismiss: { guidedMode.clearHighlights(); withAnimation { guidedMode.suggestion = nil } },
+                        onExpand: { Task { await guidedMode.highlightSteps(suggestion) } },
+                        onCollapse: { guidedMode.clearHighlights() }
                     )
                     .padding(.bottom, 64)
                 }
@@ -976,6 +991,7 @@ struct NoteEditorView: View {
             // page change so it doesn't follow you to the next page.
             regionSelection = nil
             canvasController.lassoPoints = []
+            guidedMode.clearHighlights()   // step highlights belong to the page they're on
             persistOverlays(to: page(at: oldIndex))
             canvasController.engine?.refreshPage(oldIndex)
             loadPage()
