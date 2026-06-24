@@ -75,6 +75,7 @@ final class PersistenceController {
             attr("subjectContext", .string),            // AI tutor subject: calculus1 | discrete1 | custom
             attr("isFavorite", .boolean, default: false),
             attr("deletedAt", .date),                   // soft delete — purged 30 days later
+            attr("sortIndex", .integer32, default: 0),  // position in the unified file tree
         ]
 
         let page = NSEntityDescription(name: "Page", class: Page.self)

@@ -41,6 +41,9 @@ final class Note: NSManagedObject {
     @NSManaged var subjectContext: String?
     @NSManaged var isFavorite: Bool
     @NSManaged var deletedAt: Date?
+    /// Position among its siblings (other notes AND subfolders) inside its parent
+    /// folder — the unified file-tree ordering. Backfilled for existing notes.
+    @NSManaged var sortIndex: Int32
     @NSManaged var subject: Subject?
     @NSManaged var pages: Set<Page>?
     @NSManaged var recordings: Set<Recording>?
