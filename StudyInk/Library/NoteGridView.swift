@@ -15,8 +15,44 @@ struct NoteGridView: View {
     var onNoteClosed: () -> Void = {}
     var onNewNote: () -> Void = {}
     var onImportPDF: () -> Void = {}
+    /// Navigate the file browser into a folder (nil = root / All Notes).
+    var onOpenFolder: (Subject?) -> Void = { _ in }
 
     private var sort: LibrarySort { LibrarySort(rawValue: sortRaw) ?? .dateModified }
+
+    // MARK: - File-browser (stage 2) tree state
+
+    /// The folder currently being browsed (nil = root / All Notes).
+    private var currentFolder: Subject? {
+        if case .subject(let s) = section { return s }
+        return nil
+    }
+    /// Show subfolders + drill-down: inside a subject, or All Notes' default tab.
+    private var showFolderBrowse: Bool {
+        if case .subject = section { return true }
+        return section == .all && allTab == .all
+    }
+    /// The current folder's subfolders (dividers excluded — they're sidebar-only),
+    /// ordered by the unified tree position, name-filtered while searching.
+    private var subfolders: [Subject] {
+        guard showFolderBrowse else { return [] }
+        let kids = FileTree.children(of: currentFolder, in: context).compactMap { node -> Subject? in
+            if case .folder(let s) = node, !s.isDivider { return s }
+            return nil
+        }
+        guard !searchText.isEmpty else { return kids }
+        return kids.filter { ($0.name ?? "").localizedStandardContains(searchText) }
+    }
+    /// Root → current folder, for the breadcrumb trail.
+    private var breadcrumbs: [Subject] {
+        var chain: [Subject] = []
+        var node = currentFolder
+        while let n = node { chain.insert(n, at: 0); node = n.parent }
+        return chain
+    }
+    private func folderItemCount(_ s: Subject) -> Int {
+        (s.children?.count(where: { !$0.isDivider }) ?? 0) + (s.notes?.count(where: { $0.deletedAt == nil }) ?? 0)
+    }
 
     @Environment(\.managedObjectContext) private var context
     @Environment(\.themePaper) private var themePaper
@@ -79,7 +115,11 @@ struct NoteGridView: View {
             } else {
                 result = allNotes.filter { $0.deletedAt == nil }
                 switch allTab {
-                case .all, .deleted:
+                case .all:
+                    // Finder root: only the notes that sit at the top level — the
+                    // ones inside folders show when you navigate into the folder.
+                    result = result.filter { $0.subject == nil }
+                case .deleted:
                     break
                 case .recents:
                     let cutoff = Date().addingTimeInterval(-7 * 24 * 3600)
@@ -134,6 +174,8 @@ struct NoteGridView: View {
             }
             .padding(.horizontal, 28)
             .padding(.top, 24)
+            // Breadcrumb trail when browsing inside a folder.
+            if !breadcrumbs.isEmpty { breadcrumbBar }
             // Sub-filters live under the All Notes title — only there. Pill
             // tabs (Paper & Ink), not the iOS segmented control.
             if section == .all {
@@ -250,7 +292,7 @@ struct NoteGridView: View {
     @ViewBuilder
     private var content: some View {
         Group {
-            if notes.isEmpty {
+            if notes.isEmpty && subfolders.isEmpty {
                 if !searchText.isEmpty {
                     ContentUnavailableView("library.noResults", systemImage: "magnifyingglass")
                 } else if inTrash {
@@ -265,6 +307,10 @@ struct NoteGridView: View {
             } else if gridLayout {
                 ScrollView {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 190), spacing: DS.Space.xl)], spacing: DS.Space.xl) {
+                        // Subfolders first, then notes — the Finder tree at this level.
+                        ForEach(subfolders, id: \.objectID) { folder in
+                            folderCell(folder)
+                        }
                         ForEach(notes, id: \.objectID) { note in
                             noteCell(note)
                         }
@@ -274,6 +320,9 @@ struct NoteGridView: View {
                 }
             } else {
                 List {
+                    ForEach(subfolders, id: \.objectID) { folder in
+                        folderListRow(folder)
+                    }
                     ForEach(notes, id: \.objectID) { note in
                         noteListRow(note)
                             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
@@ -489,6 +538,74 @@ struct NoteGridView: View {
             .contextMenu { noteContextMenu(note) }
             .accessibilityLabel(Text(verbatim: note.title ?? ""))
         }
+    }
+
+    // MARK: - Folder cards / rows (stage 2)
+
+    private func folderCell(_ folder: Subject) -> some View {
+        let tint = Color(hex: folder.colorHex ?? "#0A84FF") ?? .accentColor
+        return Button { onOpenFolder(folder) } label: {
+            VStack(spacing: 0) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous).fill(tint.opacity(0.14))
+                    Image(systemName: "folder.fill").font(.system(size: 46)).foregroundStyle(tint)
+                }
+                .frame(maxWidth: .infinity)
+                .aspectRatio(9 / 10, contentMode: .fit)
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(SemanticColor.cardEdge))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(verbatim: folder.name ?? "").font(.callout.weight(.semibold)).foregroundStyle(.primary).lineLimit(1)
+                    Text(verbatim: "\(folderItemCount(folder))").font(.caption2.monospacedDigit())
+                        + Text(verbatim: " ") + Text("library.items").font(.caption2)
+                }
+                .font(.caption2).foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 8)
+                .environment(\.layoutDirection, (folder.name?.isMostlyRTL ?? false) ? .rightToLeft : .leftToRight)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(verbatim: folder.name ?? ""))
+    }
+
+    private func folderListRow(_ folder: Subject) -> some View {
+        let tint = Color(hex: folder.colorHex ?? "#0A84FF") ?? .accentColor
+        return Button { onOpenFolder(folder) } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "folder.fill").foregroundStyle(tint).frame(width: 26)
+                Text(verbatim: folder.name ?? "").font(.body).foregroundStyle(.primary).lineLimit(1)
+                Spacer()
+                Text(verbatim: "\(folderItemCount(folder))").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(verbatim: folder.name ?? ""))
+    }
+
+    /// Root → current folder, tappable to navigate up the tree.
+    @ViewBuilder private var breadcrumbBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 5) {
+                Button { onOpenFolder(nil) } label: {
+                    Text("library.allNotes").font(.callout).foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                ForEach(Array(breadcrumbs.enumerated()), id: \.element.objectID) { i, crumb in
+                    Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
+                    Button { onOpenFolder(crumb) } label: {
+                        Text(verbatim: crumb.name ?? "")
+                            .font(.callout)
+                            .foregroundStyle(i == breadcrumbs.count - 1 ? Color.primary : .secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(i == breadcrumbs.count - 1)
+                }
+            }
+            .padding(.horizontal, 28)
+        }
+        .padding(.top, 6)
     }
 
     private func gridCellLabel(_ note: Note) -> some View {

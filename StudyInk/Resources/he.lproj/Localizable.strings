@@ -120,6 +120,7 @@
 
 /* ספרייה */
 "library.allNotes" = "כל המחברות";
+"library.items" = "פריטים";
 "library.recents" = "אחרונים";
 "library.favorites" = "מועדפים";
 "library.recentlyDeleted" = "נמחקו לאחרונה";
