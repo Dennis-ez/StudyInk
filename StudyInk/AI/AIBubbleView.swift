@@ -189,11 +189,20 @@ struct AIBubbleView: View {
     /// Natural height for short threads; scrolls once content exceeds the
     /// (user-resizable) cap.
     private var thread: some View {
-        ViewThatFits(in: .vertical) {
-            threadContent
-            ScrollView { threadContent }
+        ScrollViewReader { proxy in
+            ViewThatFits(in: .vertical) {
+                threadContent
+                ScrollView { threadContent }
+            }
+            .frame(maxHeight: 360)   // fixed, scrollable thread (no resize handle)
+            // Asking a new question (or the answer streaming in) scrolls to the end.
+            .onChange(of: bubble.thread.count) { _, _ in
+                withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("threadBottom", anchor: .bottom) }
+            }
+            .onChange(of: bubble.thread.last?.answer) { _, _ in
+                proxy.scrollTo("threadBottom", anchor: .bottom)
+            }
         }
-        .frame(maxHeight: 360)   // fixed, scrollable thread (no resize handle)
     }
 
     private var threadContent: some View {
@@ -215,6 +224,7 @@ struct AIBubbleView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
+            Color.clear.frame(height: 1).id("threadBottom")   // scroll-to-end anchor
         }
         .padding(.leading, 18)
         .padding(.trailing, 15)

@@ -123,6 +123,10 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         canvas.backgroundColor = .clear
         canvas.isOpaque = false
         canvas.isScrollEnabled = false
+        // PKCanvasView is itself a UIScrollView; left on .automatic it folds the
+        // safe-area inset into its drawing space, so ink landed BELOW the pen
+        // (worst on tall imported-PDF pages reaching into the top inset). Pin it.
+        canvas.contentInsetAdjustmentBehavior = .never
         // Pin ONLY the PKCanvasView to light so PencilKit renders ink colors
         // LITERALLY (no appearance adaptation of the live tool — which on iOS
         // 26 still turns a near-white pen dark). The PAGE container stays on
@@ -555,7 +559,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         let actual = target - contentOffset.y
         if actual != 0 {
             contentOffset.y = target
-            publishGeometry()
+            publishGeometry(sync: true)
         }
         return actual
     }
@@ -594,7 +598,12 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         }
     }
 
-    private func publishGeometry() {
+    /// `sync` = publish on THIS runloop (no async hop). Use it from scroll/zoom
+    /// delegate callbacks so SwiftUI overlays (media, AI bubbles) track the native
+    /// page 1:1 instead of lagging a frame — that lag read as the images "floating"
+    /// / repositioning while navigating. The `apply` path (inside a SwiftUI view
+    /// update) must stay async to avoid publishing changes from within a view update.
+    private func publishGeometry(sync: Bool = false) {
         let zoom = zoomScale
         let origin = documentView.frame.origin
         let offset = contentOffset
@@ -606,15 +615,14 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         }
         guard origins != lastPublishedOrigins || zoom != controller.zoomScale else { return }
         lastPublishedOrigins = origins
-        // Live page-under-viewport for the navigator — cheap, and coalesced into
-        // this same per-frame publish so it costs no extra dispatch.
         let visible = nearestPageToCenter()
-        DispatchQueue.main.async { [weak controller] in
+        let apply: () -> Void = { [weak controller] in
             guard let controller else { return }
             if controller.zoomScale != zoom { controller.zoomScale = zoom }
             if controller.pageScreenOrigins != origins { controller.pageScreenOrigins = origins }
             if controller.visiblePageIndex != visible { controller.visiblePageIndex = visible }
         }
+        if sync { apply() } else { DispatchQueue.main.async(execute: apply) }
     }
 
     // MARK: - UIScrollViewDelegate
@@ -625,7 +633,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         // Only keep the overlays glued to their pages while scrolling. Activating
         // the live canvas is deferred to scrollViewDidEnd* (settleActivePage) so
         // the canvas isn't re-mounted on every page crossed mid-scroll.
-        publishGeometry()
+        publishGeometry(sync: true)
     }
 
     func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
@@ -646,7 +654,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
 
     func scrollViewDidZoom(_ scrollView: UIScrollView) {
         centerDocument()
-        publishGeometry()
+        publishGeometry(sync: true)
         // Programmatic/snap zooms never call didEndZooming — debounce a raster
         // pass after the last zoom tick so the page backgrounds stay sharp. (The
         // ink is permanently supersampled, so it needs no per-zoom pass.)

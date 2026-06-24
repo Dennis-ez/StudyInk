@@ -147,11 +147,15 @@ struct MathBlockView: UIViewRepresentable {
     }
 
     private func configure(_ label: MTMathUILabel) {
-        label.latex = latex
-        label.labelMode = display ? .display : .text
-        label.textColor = color
-        label.fontSize = fontSize
-        label.textAlignment = .left
+        // Setting `latex` re-typesets (expensive). When the AI bubble repositions
+        // every scroll frame, updateUIView fires with the SAME latex — re-typesetting
+        // each frame tanked scrolling. Only touch a property when it actually changed.
+        let mode: MTMathUILabelMode = display ? .display : .text
+        if label.latex != latex { label.latex = latex }
+        if label.labelMode != mode { label.labelMode = mode }
+        if label.textColor != color { label.textColor = color }
+        if label.fontSize != fontSize { label.fontSize = fontSize }
+        if label.textAlignment != .left { label.textAlignment = .left }
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView label: MTMathUILabel, context: Context) -> CGSize? {
