@@ -197,7 +197,8 @@ struct NoteEditorView: View {
 
             // Current page's editable overlays (other pages render their media
             // and text inside the engine's cached page images).
-            MediaLayer(items: $mediaItems, transform: transform, selectedItemID: $selectedMediaID, snap: snapMetrics)
+            MediaLayer(items: $mediaItems, transform: transform, selectedItemID: $selectedMediaID, snap: snapMetrics,
+                       onAutoScroll: { canvasController.autoScroll(by: $0) })
             TextBoxLayer(boxes: $textBoxes, transform: transform, editingBoxID: $editingBoxID, snap: snapMetrics)
 
             // Above the margin glyphs — a chat bubble must never sit under a ✓/~/?.
@@ -679,7 +680,8 @@ struct NoteEditorView: View {
                     GuidedSuggestionCard(
                         suggestion: suggestion,
                         onAccept: { guidedMode.accept(suggestion) },
-                        onDismiss: { withAnimation { guidedMode.suggestion = nil } }
+                        onDismiss: { withAnimation { guidedMode.suggestion = nil } },
+                        onExpand: { guidedMode.keepAlive() }
                     )
                     .padding(.bottom, 64)
                 }
@@ -1226,7 +1228,10 @@ struct NoteEditorView: View {
         let item = MediaItemModel(fileName: name, x: r.minX + 24, y: r.minY + 24, width: r.width, height: r.height)
         mediaItems.append(item)
         persistOverlays()
-        selectedMediaID = item.id
+        // Don't auto-select the copy: its media action bar popped up right where
+        // the region pill was and read as "the pill is still there". Tap the copy
+        // to move it.
+        selectedMediaID = nil
         Haptics.success()
     }
 
@@ -1866,9 +1871,15 @@ extension NoteEditorView {
 
     /// Re-OCR the current page (off main) so tap-to-define knows where each line
     /// of writing sits. Cheap and cached; refreshed on page load and after edits.
+    /// Deferred a beat so its page render doesn't pile onto the open-note render
+    /// load (that contention produced black, ink-less pages).
     private func refreshConceptLines() {
         guard let page = currentPage else { conceptOCRLines = []; return }
-        Task { conceptOCRLines = await NoteContextBuilder.ocrLines(for: page) }
+        Task {
+            try? await Task.sleep(for: .seconds(0.8))
+            guard !Task.isCancelled, page == currentPage else { return }
+            conceptOCRLines = await NoteContextBuilder.ocrLines(for: page)
+        }
     }
 
     // MARK: - Smart Collapse persistence (per note + page, in UserDefaults)

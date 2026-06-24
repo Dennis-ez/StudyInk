@@ -9,6 +9,9 @@ struct MediaLayer: View {
     let transform: CanvasTransform
     @Binding var selectedItemID: UUID?
     var snap: SnapMetrics?
+    /// Nudge the page scroll by `dy` while dragging near a screen edge; returns
+    /// the delta actually applied.
+    var onAutoScroll: (CGFloat) -> CGFloat = { _ in 0 }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -18,6 +21,7 @@ struct MediaLayer: View {
                     isSelected: selectedItemID == item.id,
                     transform: transform,
                     snap: snap,
+                    onAutoScroll: onAutoScroll,
                     onSelect: { selectedItemID = item.id },
                     onDelete: {
                         MediaStore.delete(fileName: item.fileName)
@@ -49,6 +53,7 @@ private struct MediaItemView: View {
     let isSelected: Bool
     let transform: CanvasTransform
     var snap: SnapMetrics?
+    var onAutoScroll: (CGFloat) -> CGFloat = { _ in 0 }
     let onSelect: () -> Void
     let onDelete: () -> Void
     let onDuplicate: () -> Void
@@ -58,6 +63,11 @@ private struct MediaItemView: View {
     @State private var resizeStart: CGRect?
     @State private var pinchStart: CGRect?
     @State private var rotateStart: Double?
+    // Edge auto-scroll while dragging: a repeating nudge + the page-space amount
+    // already scrolled (added back into the drag so the item tracks the finger).
+    @State private var edgeScrollTimer: Timer?
+    @State private var edgeDir: CGFloat = 0
+    @State private var dragScrollAccum: CGFloat = 0
     // Crop mode keeps a normalized [0,1] rectangle of the region to KEEP.
     @State private var cropMode = false
     @State private var cropNorm = CGRect(x: 0, y: 0, width: 1, height: 1)
@@ -188,17 +198,45 @@ private struct MediaItemView: View {
     // MARK: - Move / rotate
 
     private var dragGesture: some Gesture {
-        DragGesture(minimumDistance: 4)
+        DragGesture(minimumDistance: 4, coordinateSpace: .global)
             .onChanged { value in
-                if dragStart == nil { dragStart = CGPoint(x: item.x, y: item.y) }
+                if dragStart == nil { dragStart = CGPoint(x: item.x, y: item.y); dragScrollAccum = 0 }
                 guard let start = dragStart else { return }
                 var x = start.x + value.translation.width / transform.zoomScale
-                var y = start.y + value.translation.height / transform.zoomScale
+                // dragScrollAccum carries any auto-scroll so the item keeps tracking
+                // the finger as the page slides under it.
+                var y = start.y + value.translation.height / transform.zoomScale + dragScrollAccum
                 if let snap { x = snap.snappedX(x); y = snap.snappedY(y) }
                 item.x = x
                 item.y = y
+                updateEdgeScroll(globalY: value.location.y)
             }
-            .onEnded { _ in dragStart = nil }
+            .onEnded { _ in dragStart = nil; stopEdgeScroll() }
+    }
+
+    /// Drag near the top/bottom of the screen → auto-scroll the page that way so
+    /// you can drop the element on an off-screen part.
+    private func updateEdgeScroll(globalY: CGFloat) {
+        let h = UIScreen.main.bounds.height
+        let zone: CGFloat = 110
+        edgeDir = globalY < zone ? -1 : (globalY > h - zone ? 1 : 0)
+        if edgeDir == 0 { stopEdgeScroll() }
+        else if edgeScrollTimer == nil {
+            edgeScrollTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { _ in
+                guard edgeDir != 0 else { return }
+                let actual = onAutoScroll(edgeDir * 16)
+                guard actual != 0 else { return }
+                let dyPage = actual / max(transform.zoomScale, 0.01)
+                dragScrollAccum += dyPage
+                item.y += dyPage
+            }
+        }
+    }
+
+    private func stopEdgeScroll() {
+        edgeScrollTimer?.invalidate()
+        edgeScrollTimer = nil
+        edgeDir = 0
     }
 
     private var twoFingerRotation: some Gesture {

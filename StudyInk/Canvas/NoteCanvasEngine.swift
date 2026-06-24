@@ -485,8 +485,12 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         let dark = traitCollection.userInterfaceStyle == .dark
         let container = containers[index]
         let renderScale = imageRenderScale
+        // Pre-rasterize ink on the main actor (we're already on main here), then
+        // composite off-main with no main hop — the old main.sync inside the
+        // detached render stalled under open-note load (black, ink-less pages).
+        let ink = PageRenderer.inkLayer(for: snapshot, darkMode: dark, scale: renderScale)
         Task.detached(priority: .utility) {
-            let image = PageRenderer.render(snapshot, darkMode: dark, scale: renderScale)
+            let image = PageRenderer.render(snapshot, darkMode: dark, scale: renderScale, inkLayer: ink)
             await MainActor.run { [weak self] in
                 guard container.pageIndex == index else { return }
                 container.imageView.image = image
@@ -537,6 +541,21 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         if controller.currentPageIndex != index {
             DispatchQueue.main.async { [controller] in controller.currentPageIndex = index }
         }
+    }
+
+    /// Nudge the vertical scroll by `dy` points, clamped to the content. Returns
+    /// the delta actually applied — used for edge auto-scroll while dragging a
+    /// media element toward the top/bottom of the screen.
+    func autoScroll(by dy: CGFloat) -> CGFloat {
+        let minY = -adjustedContentInset.top
+        let maxY = max(minY, contentSize.height - bounds.height)
+        let target = min(max(contentOffset.y + dy, minY), maxY)
+        let actual = target - contentOffset.y
+        if actual != 0 {
+            contentOffset.y = target
+            publishGeometry()
+        }
+        return actual
     }
 
     /// The page nearest the viewport center (document space).

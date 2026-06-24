@@ -310,6 +310,9 @@
 "ai.quiz.prefix %lld" = "שאלה %lld:";
 "ai.guidedMode" = "מצב מודרך";
 "ai.guided.suggestion" = "הצעת המורה";
+"ai.guided.why" = "למה";
+"ai.guided.how" = "איך";
+"ai.guided.openChat" = "פתיחה בצ׳אט";
 "ai.guided.activated" = "המצב המודרך פועל — אעקוב אחרי העמוד ואציע הצעות תוך כדי כתיבה";
 "ai.guided.disable" = "כיבוי המצב המודרך";
 "ai.guided.log" = "היסטוריית הצעות";

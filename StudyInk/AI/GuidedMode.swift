@@ -4,7 +4,14 @@ struct GuidedSuggestion: Equatable, Identifiable {
     let id = UUID()
     let text: String
     let matchString: String?
+    /// One line on WHY this matters (shown when the card is expanded).
+    var why: String?
+    /// The ordered steps from where the student is to the next result — laid out
+    /// when the card is tapped open. Each may contain LaTeX (rendered via AIRichText).
+    var steps: [String] = []
     let createdAt = Date()
+
+    var hasDetail: Bool { (why?.isEmpty == false) || !steps.isEmpty }
 }
 
 /// Proactive tutoring: evaluates the page ~3 seconds after the pen goes quiet
@@ -156,7 +163,8 @@ final class GuidedModeController: ObservableObject {
         - is ≤12 words, written in \(SystemPrompt.languageTarget).
         Do NOT comment on correct/complete/neat work, restate the obvious, or give generic encouragement.
         Reason briefly if you need to, then output ONLY a JSON object (you may fence it in a ```json block):
-        {"suggestion": "<one sentence>", "match_string": "<exact string copied verbatim from the page it refers to, or null>"}
+        {"suggestion": "<the ≤12-word nudge>", "why": "<one short line on why this matters, ≤14 words>", "steps": ["<ordered steps from where they are now to the next result — each one short line, with LaTeX in $...$ where useful>"], "match_string": "<exact string copied verbatim from the page it refers to, or null>"}
+        `why` and `steps` are revealed only if the student taps for help, so DO give the real worked steps there (input → output), even though `suggestion` itself stays a nudge. Write `why`/`steps` in \(SystemPrompt.languageTarget). Keep `steps` to at most 6 items.
         If nothing clears that bar, output exactly {}.
 
         OCR/typed text (may be empty or wrong):
@@ -183,17 +191,26 @@ final class GuidedModeController: ObservableObject {
             // can cut it off mid-string): fall back to a regex on the values.
             var suggestion: String?
             var match: String?
+            var why: String?
+            var steps: [String] = []
             if let data = extractJSON(from: raw)?.data(using: .utf8),
                let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
                 suggestion = object["suggestion"] as? String
                 match = object["match_string"] as? String
+                why = object["why"] as? String
+                steps = (object["steps"] as? [String])?.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty } ?? []
             }
             if suggestion?.isEmpty != false {
                 suggestion = Self.regexCapture(#""suggestion"\s*:\s*"((?:[^"\\]|\\.)*)""#, in: raw)
                 match = match ?? Self.regexCapture(#""match_string"\s*:\s*"((?:[^"\\]|\\.)*)""#, in: raw)
             }
             guard let text = suggestion, !text.isEmpty else { return }
-            let new = GuidedSuggestion(text: text, matchString: (match?.isEmpty == false && match != "null") ? match : nil)
+            let new = GuidedSuggestion(
+                text: text,
+                matchString: (match?.isEmpty == false && match != "null") ? match : nil,
+                why: (why?.isEmpty == false && why != "null") ? why : nil,
+                steps: steps
+            )
             show(new)
             // The glyph is placed by the editor at the student's last pen location
             // (the OCR is too garbled to text-match the model's clean match_string).
@@ -224,6 +241,9 @@ final class GuidedModeController: ObservableObject {
             withAnimation { self?.suggestion = nil }
         }
     }
+
+    /// The student is reading the expanded steps — stop the auto-dismiss.
+    func keepAlive() { dismissTask?.cancel() }
 
     /// Student tapped the card → open a real bubble anchored at the referenced text.
     func accept(_ suggestion: GuidedSuggestion) {
@@ -264,39 +284,97 @@ final class GuidedModeController: ObservableObject {
     }
 }
 
-/// Bottom suggestion card UI.
+/// Bottom suggestion card UI. The nudge is shown collapsed; tapping lays out the
+/// "why" and the ordered steps (input → output), with real LaTeX via AIRichText
+/// and the AI accent so it reads in the tutor's own "ink".
 struct GuidedSuggestionCard: View {
     let suggestion: GuidedSuggestion
     var onAccept: () -> Void
     var onDismiss: () -> Void
+    /// Called when the student expands the steps — stops the auto-dismiss.
+    var onExpand: () -> Void = {}
 
+    @State private var expanded = false
     private var isRTL: Bool { suggestion.text.isMostlyRTL }
+    private var accent: Color { SemanticColor.aiCircleStroke }
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "lightbulb.fill")
-                .foregroundStyle(SemanticColor.aiCircleStroke)
-            Text(suggestion.text.mathToUnicode())
-                .font(.subheadline)
-                .multilineTextAlignment(isRTL ? .trailing : .leading)
-            Spacer(minLength: 6)
-            Button(action: onDismiss) {
-                Lucide("x", size: 13)
-                    .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: expanded ? 11 : 0) {
+            // The nudge row.
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "lightbulb.fill").foregroundStyle(accent)
+                AIRichText(content: suggestion.text)
+                    .font(.subheadline)
+                Spacer(minLength: 6)
+                if suggestion.hasDetail {
+                    Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                Button(action: onDismiss) {
+                    Lucide("x", size: 13).foregroundStyle(.secondary)
+                }
+                .accessibilityLabel(Text("ai.dismiss"))
             }
-            .accessibilityLabel(Text("ai.dismiss"))
+
+            if expanded {
+                Divider().overlay(accent.opacity(0.25))
+                if let why = suggestion.why, !why.isEmpty {
+                    detail(label: "ai.guided.why", body: why)
+                }
+                if !suggestion.steps.isEmpty {
+                    detailHeader("ai.guided.how")
+                    ForEach(Array(suggestion.steps.enumerated()), id: \.offset) { index, step in
+                        HStack(alignment: .top, spacing: 9) {
+                            Text(verbatim: "\(index + 1)")
+                                .font(.caption.weight(.bold).monospacedDigit())
+                                .foregroundStyle(.white)
+                                .frame(width: 19, height: 19)
+                                .background(accent, in: Circle())
+                            AIRichText(content: step)
+                                .font(.fraunces(15, weight: .regular, relativeTo: .subheadline))
+                        }
+                    }
+                    Button(action: onAccept) {
+                        Label { Text("ai.guided.openChat") } icon: { Image(systemName: "bubble.left.and.text.bubble.right") }
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(accent)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 2)
+                }
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .studyGlass(cornerRadius: 16)
         .frame(maxWidth: 480)
         .contentShape(Rectangle())
-        .onTapGesture(perform: onAccept)
+        .onTapGesture {
+            if suggestion.hasDetail {
+                withAnimation(.snappy(duration: 0.22)) { expanded.toggle() }
+                if expanded { onExpand() }
+            } else {
+                onAccept()
+            }
+        }
         .environment(\.layoutDirection, isRTL ? .rightToLeft : .leftToRight)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
         .accessibilityLabel(Text("ai.guided.suggestion"))
-        .accessibilityValue(Text(suggestion.text))
-        .accessibilityAddTraits(.isButton)
+    }
+
+    private func detailHeader(_ key: LocalizedStringKey) -> some View {
+        Text(key)
+            .font(.caption.weight(.semibold).smallCaps())
+            .foregroundStyle(accent)
+    }
+
+    private func detail(label: LocalizedStringKey, body: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            detailHeader(label)
+            AIRichText(content: body)
+                .font(.fraunces(15, weight: .regular, relativeTo: .subheadline))
+        }
     }
 }
 

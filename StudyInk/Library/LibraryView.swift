@@ -259,6 +259,7 @@ struct LibraryView: View {
                 ForEach(rootSubjects, id: \.objectID) { subject in
                     subjectRows(subject, depth: 0)
                 }
+                .onMove { from, to in moveSiblings(of: nil, from: from, to: to) }
             }
         }
             .scrollContentBackground(.hidden)
@@ -344,6 +345,7 @@ struct LibraryView: View {
                     ForEach(sortedChildren(of: subject), id: \.objectID) { child in
                         subjectRows(child, depth: depth + 1)
                     }
+                    .onMove { from, to in moveSiblings(of: subject, from: from, to: to) }
                 }
             }
         )
@@ -397,10 +399,10 @@ struct LibraryView: View {
             // weird black band behind the divider in dark mode.
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
-            .draggable("subject:\(subject.id?.uuidString ?? "")")
+            // Reorder via native drag (.onMove); nest via the context menu. No
+            // .draggable — its drag preview showed a black border and only nested.
             .contextMenu { subjectContextMenu(subject) }
-            // A divider is a container for OTHER subjects/dividers — accept those
-            // (notes are ignored: a divider can't be selected to view its notes).
+            // Accept notes/subjects dropped onto the divider to file/nest them.
             .dropDestination(for: String.self) { ids, _ in
                 handleDrop(ids.filter { $0.hasPrefix("subject:") }, into: subject)
             }
@@ -451,7 +453,8 @@ struct LibraryView: View {
                 roundedRowBackground(tint.opacity(isSelected ? 0.38 : 0.18))
                     .padding(.leading, CGFloat(depth) * 20)
             )
-            .draggable("subject:\(subject.id?.uuidString ?? "")")
+            // Reorder via native drag (.onMove); nest via the context menu. No
+            // .draggable — its drag preview showed a black border and only nested.
             .contextMenu { subjectContextMenu(subject) }
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                 Button(role: .destructive) {
@@ -475,6 +478,18 @@ struct LibraryView: View {
 
     private func siblingIndex(of subject: Subject) -> Int {
         siblings(of: subject)?.firstIndex(of: subject) ?? 0
+    }
+
+    /// Native List drag-reorder (Apple-Lists style) within a sibling group:
+    /// reorder the pool and renumber sortIndex so the new order sticks. `parent`
+    /// nil = the top level.
+    private func moveSiblings(of parent: Subject?, from source: IndexSet, to destination: Int) {
+        var pool = parent.map { sortedChildren(of: $0) } ?? rootSubjects
+        pool.move(fromOffsets: source, toOffset: destination)
+        withAnimation {
+            for (position, sibling) in pool.enumerated() { sibling.sortIndex = Int32(position) }
+            PersistenceController.shared.save()
+        }
     }
 
     /// Swap sort positions with the neighbor `offset` away (±1), normalizing

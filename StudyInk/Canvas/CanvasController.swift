@@ -171,6 +171,13 @@ final class CanvasController: NSObject, ObservableObject {
         engine?.scrollToPage(index, animated: animated)
     }
 
+    /// Edge auto-scroll while dragging an element: nudge the scroll by `dy` and
+    /// return the delta actually applied (so the dragged item can keep up).
+    @discardableResult
+    func autoScroll(by dy: CGFloat) -> CGFloat {
+        engine?.autoScroll(by: dy) ?? 0
+    }
+
     /// Flush the engine's debounced ink save while the index→page mapping is
     /// still valid. Must run before any reorder/duplicate/delete of pages.
     func commitPendingInk() {
