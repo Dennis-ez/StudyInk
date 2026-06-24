@@ -30,6 +30,27 @@ enum LibrarySection: Hashable {
     }
 }
 
+/// Reliable drop target for the sidebar (drag a subject/divider — or a note from
+/// the grid — onto a row to nest/file it). Reads the payload from the drop's item
+/// providers, so it works no matter where the drag started (.dropDestination on
+/// List rows was flaky).
+struct SidebarDropDelegate: DropDelegate {
+    let onDrop: ([String]) -> Bool
+
+    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
+    func performDrop(info: DropInfo) -> Bool {
+        let providers = info.itemProviders(for: [UTType.text, UTType.plainText, UTType.utf8PlainText])
+        guard !providers.isEmpty else { return false }
+        for provider in providers {
+            provider.loadObject(ofClass: NSString.self) { obj, _ in
+                guard let id = obj as? String else { return }
+                DispatchQueue.main.async { _ = onDrop([id]) }
+            }
+        }
+        return true
+    }
+}
+
 /// The home screen: smart sections + subjects (folders + dividers) in the
 /// sidebar, notes in a grid or list, full-text + handwriting-OCR search.
 struct LibraryView: View {
@@ -252,7 +273,7 @@ struct LibraryView: View {
                 // Dropping a nested folder/divider on the header pulls it out
                 // to the top level.
                 .contentShape(Rectangle())
-                .dropDestination(for: String.self) { ids, _ in
+                .onDrop(of: [.text], delegate: SidebarDropDelegate { ids in
                     var changed = false
                     for item in ids where item.hasPrefix("subject:") {
                         let uuid = String(item.dropFirst("subject:".count))
@@ -263,7 +284,7 @@ struct LibraryView: View {
                     }
                     if changed { PersistenceController.shared.save() }
                     return changed
-                }
+                })
             ) {
                 ForEach(rootSubjects, id: \.objectID) { subject in
                     subjectRows(subject, depth: 0)
@@ -408,12 +429,13 @@ struct LibraryView: View {
             .listRowSeparator(.hidden)
             // Drag this divider onto a subject/divider to nest it; a CUSTOM preview
             // (clean capsule) avoids the default drag snapshot's black border.
-            .draggable("subject:\(subject.id?.uuidString ?? "")") { subjectDragPreview(subject) }
+            .onDrag({ NSItemProvider(object: "subject:\(subject.id?.uuidString ?? "")" as NSString) },
+                    preview: { subjectDragPreview(subject) })
             .contextMenu { subjectContextMenu(subject) }
-            // Drop another subject/divider here to nest it under this divider.
-            .dropDestination(for: String.self) { ids, _ in
+            // Drop a subject/divider here to nest it under this divider.
+            .onDrop(of: [.text], delegate: SidebarDropDelegate { ids in
                 handleDrop(ids.filter { $0.hasPrefix("subject:") }, into: subject)
-            }
+            })
         } else {
             let tint = Color(hex: subject.colorHex ?? "#0A84FF") ?? .accentColor
             let isSelected = selection == .subject(subject)
@@ -463,7 +485,8 @@ struct LibraryView: View {
             )
             // Drag this subject onto another subject/divider to nest it; a CUSTOM
             // preview (clean capsule) avoids the default snapshot's black border.
-            .draggable("subject:\(subject.id?.uuidString ?? "")") { subjectDragPreview(subject) }
+            .onDrag({ NSItemProvider(object: "subject:\(subject.id?.uuidString ?? "")" as NSString) },
+                    preview: { subjectDragPreview(subject) })
             .contextMenu { subjectContextMenu(subject) }
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                 Button(role: .destructive) {
@@ -474,9 +497,9 @@ struct LibraryView: View {
                     .tint(Color("errorRed"))
             }
             // Accepts notes (to file them) and subjects/dividers (to nest them).
-            .dropDestination(for: String.self) { ids, _ in
+            .onDrop(of: [.text], delegate: SidebarDropDelegate { ids in
                 handleDrop(ids, into: subject)
-            }
+            })
         }
     }
 

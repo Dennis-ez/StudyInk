@@ -1,5 +1,6 @@
 import SwiftUI
 import CoreData
+import UniformTypeIdentifiers
 
 /// Notes of the selected section (subject, smart list, or trash), as a grid or
 /// list, filtered by search against title + typed text + handwriting OCR.
@@ -86,6 +87,55 @@ struct NoteGridView: View {
         return (try? context.fetch(r))?.first { $0.id?.uuidString == uuid }
     }
 
+    // MARK: - Drag-to-reorder (stage 3b)
+
+    /// The drag payload id for a node: a bare note UUID, or "subject:<uuid>".
+    private func dragID(for node: FileNode) -> String {
+        switch node {
+        case .note(let n): return n.id?.uuidString ?? ""
+        case .folder(let s): return "subject:\(s.id?.uuidString ?? "")"
+        }
+    }
+    private func nodeMatches(_ node: FileNode, _ id: String) -> Bool { dragID(for: node) == id }
+    private func setSortIndex(_ node: FileNode, _ index: Int32) {
+        switch node {
+        case .note(let n): n.sortIndex = index
+        case .folder(let s): s.sortIndex = index
+        }
+    }
+
+    /// Live reorder: move the dragged item to `target`'s slot among the current
+    /// folder's children and renumber sortIndex. No save (the pending values
+    /// reflow the grid); `commitReorder` saves on drop.
+    private func reorderItem(_ draggedID: String, to target: FileNode) {
+        var children = FileTree.children(of: currentFolder, in: context)
+        guard let from = children.firstIndex(where: { nodeMatches($0, draggedID) }),
+              let to = children.firstIndex(where: { $0.id == target.id }), from != to else { return }
+        children.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
+        for (i, node) in children.enumerated() { setSortIndex(node, Int32(i)) }
+    }
+    private func commitReorder() { PersistenceController.shared.save() }
+
+    private func noteDragPreview(_ note: Note) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: "doc.text").foregroundStyle(.secondary)
+            Text(verbatim: note.title ?? "—").font(.callout).lineLimit(1).foregroundStyle(.primary)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 7)
+        .background(.regularMaterial, in: Capsule())
+    }
+
+    /// The drop delegate for a node (reorder over notes, nest onto folders).
+    private func dropDelegate(_ node: FileNode) -> FileItemDropDelegate {
+        FileItemDropDelegate(
+            target: node,
+            draggedID: $draggedID,
+            reorder: reorderItem,
+            nest: { moveItems([$0], into: $1) },
+            commit: commitReorder
+        )
+    }
+
     /// A folder can't be nested into itself or any of its descendants. nil target
     /// (root) is always allowed unless it's already at the root.
     private func canNest(_ dragged: Subject, into target: Subject?) -> Bool {
@@ -122,6 +172,8 @@ struct NoteGridView: View {
     @FocusState private var noteRenameFocused: Bool
     @State private var autoOpenNote: Note?
     @State private var selectedIDs: Set<NSManagedObjectID> = []
+    /// The drag payload of the item currently being dragged (reorder/nest).
+    @State private var draggedID: String?
     /// Pending delete awaiting the user's confirmation.
     @State private var deleteRequest: DeleteRequest?
 
@@ -595,7 +647,13 @@ struct NoteGridView: View {
             .buttonStyle(.plain)
             // Zoom in/out between this cell and the editor (the source of the zoom).
             .noteZoomSource(id: note.objectID, in: zoomNamespace)
-            .draggable((note.id ?? UUID()).uuidString)
+            // Drag to reorder among notes, or onto a folder to file it there.
+            .onDrag({
+                let id = note.id?.uuidString ?? ""
+                draggedID = id
+                return NSItemProvider(object: id as NSString)
+            }, preview: { noteDragPreview(note) })
+            .onDrop(of: [.text], delegate: dropDelegate(.note(note)))
             .contextMenu { noteContextMenu(note) }
             .accessibilityLabel(Text(verbatim: note.title ?? ""))
         }
@@ -626,10 +684,14 @@ struct NoteGridView: View {
             }
         }
         .buttonStyle(.plain)
-        // Drag the folder itself (clean preview), and accept notes/folders dropped
-        // ONTO it to move/nest them.
-        .draggable("subject:\(folder.id?.uuidString ?? "")") { folderDragPreview(folder) }
-        .dropDestination(for: String.self) { ids, _ in moveItems(ids, into: folder) }
+        // Drag the folder (reorder among siblings), and accept notes/folders
+        // dropped ONTO it to nest them.
+        .onDrag({
+            let id = "subject:\(folder.id?.uuidString ?? "")"
+            draggedID = id
+            return NSItemProvider(object: id as NSString)
+        }, preview: { folderDragPreview(folder) })
+        .onDrop(of: [.text], delegate: dropDelegate(.folder(folder)))
         .accessibilityLabel(Text(verbatim: folder.name ?? ""))
     }
 
@@ -646,8 +708,12 @@ struct NoteGridView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .draggable("subject:\(folder.id?.uuidString ?? "")") { folderDragPreview(folder) }
-        .dropDestination(for: String.self) { ids, _ in moveItems(ids, into: folder) }
+        .onDrag({
+            let id = "subject:\(folder.id?.uuidString ?? "")"
+            draggedID = id
+            return NSItemProvider(object: id as NSString)
+        }, preview: { folderDragPreview(folder) })
+        .onDrop(of: [.text], delegate: dropDelegate(.folder(folder)))
         .accessibilityLabel(Text(verbatim: folder.name ?? ""))
     }
 
@@ -660,7 +726,7 @@ struct NoteGridView: View {
                 }
                 .buttonStyle(.plain)
                 // Drop onto a crumb to move the item UP into that folder (or root).
-                .dropDestination(for: String.self) { ids, _ in moveItems(ids, into: nil) }
+                .onDrop(of: [.text], delegate: SidebarDropDelegate { moveItems($0, into: nil) })
                 ForEach(Array(breadcrumbs.enumerated()), id: \.element.objectID) { i, crumb in
                     Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
                     Button { onOpenFolder(crumb) } label: {
@@ -670,7 +736,7 @@ struct NoteGridView: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(i == breadcrumbs.count - 1)
-                    .dropDestination(for: String.self) { ids, _ in moveItems(ids, into: crumb) }
+                    .onDrop(of: [.text], delegate: SidebarDropDelegate { moveItems($0, into: crumb) })
                 }
             }
             .padding(.horizontal, 28)
@@ -818,6 +884,43 @@ struct NoteGridView: View {
 
     private func approximateSize(_ note: Note) -> Int {
         note.sortedPages.reduce(0) { $0 + ($1.drawingData?.count ?? 0) + ($1.customTemplatePDF?.count ?? 0) }
+    }
+}
+
+/// Reliable drag reorder + nest for the file grid. Dragging OVER a note reorders
+/// the dragged item into that slot live; dropping ON a folder nests it.
+struct FileItemDropDelegate: DropDelegate {
+    let target: FileNode
+    @Binding var draggedID: String?
+    let reorder: (String, FileNode) -> Void   // sets sortIndex (no save)
+    let nest: (String, Subject) -> Void        // moves into a folder (saves)
+    let commit: () -> Void                      // saves a reorder
+
+    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
+
+    func dropEntered(info: DropInfo) {
+        guard let id = draggedID, !id.isEmpty, !matches(target, id) else { return }
+        // Live reorder while hovering another note; a folder stays a nest target.
+        if case .note = target { reorder(id, target) }
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        guard let id = draggedID else { return false }
+        defer { draggedID = nil }
+        if case .folder(let folder) = target, !matches(target, id) {
+            nest(id, folder)
+        } else {
+            reorder(id, target)
+            commit()
+        }
+        return true
+    }
+
+    private func matches(_ node: FileNode, _ id: String) -> Bool {
+        switch node {
+        case .note(let n): return n.id?.uuidString == id
+        case .folder(let s): return "subject:\(s.id?.uuidString ?? "")" == id
+        }
     }
 }
 
