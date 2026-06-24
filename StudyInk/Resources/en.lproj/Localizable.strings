@@ -120,6 +120,7 @@
 
 /* Library */
 "library.allNotes" = "All Notes";
+"library.items" = "items";
 "library.recents" = "Recents";
 "library.favorites" = "Favorites";
 "library.recentlyDeleted" = "Recently Deleted";

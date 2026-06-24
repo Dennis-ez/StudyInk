@@ -106,7 +106,12 @@ struct LibraryView: View {
                         sidebarCollapsed = false
                     },
                     onNewNote: addNote,
-                    onImportPDF: { importingPDF = true }
+                    onImportPDF: { importingPDF = true },
+                    onOpenFolder: { folder in
+                        withAnimation(.snappy(duration: 0.2)) {
+                            selection = folder.map { .subject($0) } ?? .all
+                        }
+                    }
                 )
                 // The title AND the action cluster live in the content header
                 // now; the nav bar only appears to host the multi-select tools.
@@ -734,6 +739,8 @@ struct LibraryView: View {
         if case .subject(let s) = selection { subject = s }
         let note = Note.create(in: context, title: String(localized: "library.untitledNote"), subject: subject)
         if selection == .favorites { note.isFavorite = true }
+        // Append to the end of the current folder's tree order.
+        note.sortIndex = (FileTree.children(of: subject, in: context).map(\.sortIndex).max() ?? -1) + 1
         PersistenceController.shared.save()
         autoOpenNote = note
     }
