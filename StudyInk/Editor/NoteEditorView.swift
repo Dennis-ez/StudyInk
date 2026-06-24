@@ -1017,6 +1017,14 @@ struct NoteEditorView: View {
         // Rotation should feel like part of the lasso, not a second mode:
         // picking the lasso arms select-and-rotate right away.
         .onChange(of: canvasController.toolState.kind) { _, kind in
+            // Picking a different tool deselects whatever's currently selected
+            // (committing any in-progress move first), so you can't draw with a
+            // stray selection still active.
+            if strokeSelection != nil { applyStrokeTransform() }
+            commitOpenShapeEdit()
+            if regionSelection != nil { withAnimation { regionSelection = nil } }
+            selectedMediaID = nil
+            editingBoxID = nil
             if kind == .lasso {
                 withAnimation { transformLassoActive = true }
             } else if transformLassoActive {

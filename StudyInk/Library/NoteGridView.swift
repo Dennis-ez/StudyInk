@@ -417,6 +417,9 @@ struct NoteGridView: View {
         )) {
             if let note = autoOpenNote {
                 NoteEditorContainer(note: note)
+                    // Zoom in/out to/from the note's cell, iOS app-open style, with
+                    // the drag-to-dismiss disabled (it used to pop the editor mid-draw).
+                    .noteZoomDestination(id: note.objectID, in: zoomNamespace)
             }
         }
         .onChange(of: section) {
@@ -590,6 +593,8 @@ struct NoteGridView: View {
                 gridCellLabel(note)
             }
             .buttonStyle(.plain)
+            // Zoom in/out between this cell and the editor (the source of the zoom).
+            .noteZoomSource(id: note.objectID, in: zoomNamespace)
             .draggable((note.id ?? UUID()).uuidString)
             .contextMenu { noteContextMenu(note) }
             .accessibilityLabel(Text(verbatim: note.title ?? ""))
@@ -737,6 +742,7 @@ struct NoteGridView: View {
                 listRowLabel(note)
             }
             .buttonStyle(.plain)
+            .noteZoomSource(id: note.objectID, in: zoomNamespace)
             // No .draggable here: its horizontal drag swallowed the swipe
             // gesture, so swipe-to-delete never triggered in list mode.
             // (Drag-to-file-into-a-subject still works from the grid.)
@@ -815,18 +821,27 @@ struct NoteGridView: View {
     }
 }
 
-/// Both no-ops. The iOS 18 zoom transition (.navigationTransition(.zoom))
-/// these used to apply brings its own interactive dismissal — drag DOWN or
-/// drag RIGHT pops the editor, with no API to disable just the gesture. That
-/// was the "drag takes me back to the main screen" the user kept hitting
-/// after every edge-pan recognizer was already disabled. Plain push wins.
+/// iOS-app-style zoom in/out between a note's cell and the editor (iOS 18+). The
+/// zoom's interactive drag-to-dismiss — which used to pop the editor mid-draw —
+/// is disabled, so only the Back button closes it; the zoom-out still plays.
 extension View {
+    @ViewBuilder
     func noteZoomSource(id: some Hashable, in namespace: Namespace.ID) -> some View {
-        self
+        if #available(iOS 18, *) {
+            matchedTransitionSource(id: id, in: namespace)
+        } else {
+            self
+        }
     }
 
+    @ViewBuilder
     func noteZoomDestination(id: some Hashable, in namespace: Namespace.ID) -> some View {
-        self
+        if #available(iOS 18, *) {
+            navigationTransition(.zoom(sourceID: id, in: namespace))
+                .interactiveDismissDisabled(true)
+        } else {
+            self
+        }
     }
 }
 
