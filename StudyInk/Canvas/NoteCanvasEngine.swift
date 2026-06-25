@@ -11,6 +11,19 @@ final class InkCanvasView: PKCanvasView {
         false
     }
 
+    // PencilKit shifts this scroll view's contentOffset mid-stroke (it tries to
+    // keep the active stroke "visible"), which slid the WHOLE drawing down under
+    // the pen and snapped it back on lift — the "ink is offset under the pen"
+    // bug. Our geometry shows the ENTIRE page at once (bounds = page × inkScale)
+    // and scrolling is disabled, so the offset must always be zero — pin it.
+    override var contentOffset: CGPoint {
+        get { super.contentOffset }
+        set { super.contentOffset = .zero }
+    }
+    override func setContentOffset(_ contentOffset: CGPoint, animated: Bool) {
+        super.setContentOffset(.zero, animated: false)
+    }
+
     override func didMoveToWindow() {
         super.didMoveToWindow()
         stripEditMenuInteractions()
