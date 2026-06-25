@@ -266,89 +266,80 @@ struct LibraryView: View {
         // sidebar material so it reads as a solid, full-height panel.
         ZStack {
             themeSidebar.ignoresSafeArea()
-            // Explicit selection buttons: List(selection:) silently stopped
-            // selecting once rows became custom HStacks.
-            List {
+            // A ScrollView + LazyVStack, NOT a List: List rows swallow custom
+            // .onDrop (only .onMove fires), which is why dragging a subject into
+            // another never worked. Plain stacked rows behave like the grid, so
+            // reorder/nest drops fire — and the row heights are ours to set.
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 4) {
 
-            // Search — a rounded paper field with a ⌘K hint chip.
-            HStack(spacing: DS.Space.sm) {
-                Lucide("search", size: 16).foregroundStyle(.secondary)
-                TextField("library.searchPrompt", text: $searchText)
-                    .textFieldStyle(.plain)
-                    .font(.callout)
-                if searchText.isEmpty {
-                    Text(verbatim: "⌘K")
-                        .font(.system(.caption2, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 5).padding(.vertical, 2)
-                        .background(SemanticColor.separator.opacity(0.5), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
-                } else {
-                    Button { searchText = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
-                        .buttonStyle(.plain)
-                }
-            }
-            .frame(height: 38)
-            .padding(.horizontal, DS.Space.md)
-            .background(themePaper, in: RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous).strokeBorder(SemanticColor.separator))
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
-
-            Section {
-                // Just All Notes at the top — Recents / Favorites / Recently
-                // Deleted live as filter chips under the All Notes title instead.
-                sectionRow(.all, lucide: "layers", count: activeNotes.count)
-            }
-            Section(header:
-                HStack {
-                    Text("library.subjects")
-                        .font(.system(size: 11.5, weight: .bold))
-                        .tracking(1.1)
-                        .textCase(.uppercase)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    // New folder/divider lives next to its section title.
-                    Menu {
-                        Button { addSubject(kind: "folder") } label: { Label("library.newSubject", systemImage: "folder.badge.plus") }
-                        Button { addSubject(kind: "divider") } label: { Label("library.newDivider", systemImage: "minus") }
-                    } label: {
-                        Lucide("plus", size: 16)
-                    }
-                    .accessibilityLabel(Text("library.newSubject"))
-                }
-                // Dropping a nested folder/divider on the header pulls it out
-                // to the top level.
-                .contentShape(Rectangle())
-                .onDrop(of: [.text], delegate: SidebarDropDelegate { ids in
-                    var changed = false
-                    for item in ids where item.hasPrefix("subject:") {
-                        let uuid = String(item.dropFirst("subject:".count))
-                        if let dragged = allSubjects.first(where: { $0.id?.uuidString == uuid }), dragged.parent != nil {
-                            withAnimation { dragged.parent = nil }
-                            changed = true
+                    // Search — a rounded paper field with a ⌘K hint chip.
+                    HStack(spacing: DS.Space.sm) {
+                        Lucide("search", size: 16).foregroundStyle(.secondary)
+                        TextField("library.searchPrompt", text: $searchText)
+                            .textFieldStyle(.plain)
+                            .font(.callout)
+                        if searchText.isEmpty {
+                            Text(verbatim: "⌘K")
+                                .font(.system(.caption2, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 5).padding(.vertical, 2)
+                                .background(SemanticColor.separator.opacity(0.5), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                        } else {
+                            Button { searchText = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                                .buttonStyle(.plain)
                         }
                     }
-                    if changed { PersistenceController.shared.save() }
-                    return changed
-                })
-            ) {
-                // ONE list row PER ROOT subtree. A List cell is the drag-LIFT unit,
-                // so putting the whole tree in a single row lifted EVERY subject when
-                // dragging one. Per-root scopes the lift to that subtree, while the
-                // inner VStack still lets custom .onDrop fire (bare List rows swallow
-                // drops — only .onMove works there). Each subtree is a plain VStack.
-                ForEach(rootSubjects, id: \.objectID) { subject in
-                    subjectRows(subject, depth: 0)
-                        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
+                    .frame(height: 38)
+                    .padding(.horizontal, DS.Space.md)
+                    .background(themePaper, in: RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous).strokeBorder(SemanticColor.separator))
+                    .padding(.horizontal, 10)
+                    .padding(.top, 10)
+                    .padding(.bottom, 4)
+
+                    sectionRow(.all, lucide: "layers", count: activeNotes.count)
+
+                    // Subjects header — title + new-folder menu; drop here to un-nest.
+                    HStack {
+                        Text("library.subjects")
+                            .font(.system(size: 11.5, weight: .bold))
+                            .tracking(1.1)
+                            .textCase(.uppercase)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Menu {
+                            Button { addSubject(kind: "folder") } label: { Label("library.newSubject", systemImage: "folder.badge.plus") }
+                            Button { addSubject(kind: "divider") } label: { Label("library.newDivider", systemImage: "minus") }
+                        } label: {
+                            Lucide("plus", size: 16)
+                        }
+                        .accessibilityLabel(Text("library.newSubject"))
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                    .padding(.bottom, 2)
+                    .contentShape(Rectangle())
+                    .onDrop(of: [.text], delegate: SidebarDropDelegate { ids in
+                        var changed = false
+                        for item in ids where item.hasPrefix("subject:") {
+                            let uuid = String(item.dropFirst("subject:".count))
+                            if let dragged = allSubjects.first(where: { $0.id?.uuidString == uuid }), dragged.parent != nil {
+                                withAnimation { dragged.parent = nil }
+                                changed = true
+                            }
+                        }
+                        if changed { PersistenceController.shared.save() }
+                        return changed
+                    })
+
+                    ForEach(rootSubjects, id: \.objectID) { subject in
+                        subjectRows(subject, depth: 0)
+                    }
                 }
+                .padding(.bottom, 20)
             }
-        }
-            .scrollContentBackground(.hidden)
-            // Plain (not .sidebar) = edge-to-edge rows, no grouped inset.
-            .listStyle(.plain)
-            .environment(\.defaultMinListRowHeight, 44)
+            .scrollIndicators(.hidden)
             // Settings pinned to the very bottom of the sidebar.
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 Button { showSettings = true } label: {
@@ -394,11 +385,12 @@ struct LibraryView: View {
                     .foregroundStyle(.secondary)
             }
             .foregroundStyle(.primary)
-            .frame(height: 40)
+            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity, minHeight: 44)
         }
         .buttonStyle(SidebarRowButtonStyle())
         // Selected = subtle fill + a 3pt accent bar inset at the leading edge.
-        .listRowBackground(
+        .background(
             roundedRowBackground(selected ? SemanticColor.fillSelected : .clear)
                 .overlay(alignment: .leading) {
                     if selected {
@@ -408,7 +400,6 @@ struct LibraryView: View {
                     }
                 }
         )
-        .listRowSeparator(.hidden)
     }
 
     private func roundedRowBackground(_ color: Color) -> some View {
@@ -440,7 +431,7 @@ struct LibraryView: View {
         return content()
             .padding(.horizontal, 12)        // inside the capsule (List used to inset this)
             .padding(.leading, inset)        // tree indent
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
             .background(roundedRowBackground(fill).padding(.leading, inset))
             .overlay { dropHintOverlay(subject, depth: depth) }
             .contentShape(Rectangle())
@@ -519,7 +510,7 @@ struct LibraryView: View {
                     .onSubmit(commitInlineRename)
             }
             .padding(.horizontal, 12).padding(.leading, CGFloat(depth) * 20)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
             // Same rounded, subject-tinted fill as a normal subject row.
             .background(
                 roundedRowBackground((Color(hex: subject.colorHex ?? "#0A84FF") ?? .accentColor).opacity(0.18))
