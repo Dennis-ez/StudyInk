@@ -62,6 +62,14 @@ struct MarginItem: Identifiable {
 
 /// The tutor's predicted next step, shown as faint amber ghost text ahead of
 /// the pen. Flick/tap to accept → it's written as real ink.
+/// A "grade my answer" prompt: a glyph anchored to the student's last line that,
+/// when tapped, grades the page.
+struct GradePrompt: Equatable {
+    var pageIndex: Int
+    /// Page-space point of the student's last work (the glyph parks at this height).
+    var anchor: CGPoint
+}
+
 struct GhostSuggestion {
     var pageIndex: Int
     /// Page-space anchor. For an inline completion it's the MIDDLE of the line
@@ -377,6 +385,20 @@ final class AmbientTutorController: ObservableObject {
 
     func dismissGhost() {
         withAnimation(.easeOut(duration: 0.2)) { ghost = nil }
+    }
+
+    /// A "grade my answer" glyph anchored to the student's last line — shown after
+    /// they finish writing; tapping it runs checkWork on the page.
+    @Published var gradePrompt: GradePrompt?
+
+    func offerGrade(pageIndex: Int, anchor: CGPoint) {
+        guard !isChecking else { return }
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+            gradePrompt = GradePrompt(pageIndex: pageIndex, anchor: anchor)
+        }
+    }
+    func clearGradePrompt() {
+        if gradePrompt != nil { withAnimation(.easeOut(duration: 0.2)) { gradePrompt = nil } }
     }
 
     /// Called when the student writes again — the ghost is stale; clear it and

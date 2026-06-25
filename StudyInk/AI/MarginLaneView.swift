@@ -14,6 +14,8 @@ struct MarginLaneView: View {
     var onShowWhy: (MarginItem) -> Void = { _ in }
     var onOpenHint: (MarginItem) -> Void = { _ in }
     var onAcceptGhost: (GhostSuggestion) -> Void = { _ in }
+    /// The student tapped the "grade my answer" glyph.
+    var onGrade: () -> Void = {}
 
     /// Smallest page-space x a glyph may sit at (keeps it on the page for a
     /// left-margin question); right-column questions sit beside their own line.
@@ -87,6 +89,18 @@ struct MarginLaneView: View {
                         onAccept: { onAcceptGhost(g) },
                         onDismiss: { ambient.dismissGhost() }
                     )
+                }
+
+                // "Grade my answer" glyph — parks in the trailing margin at the
+                // student's last line; tap it to grade the page.
+                if let gp = ambient.gradePrompt, gp.pageIndex == pageIndex, !ambient.isChecking {
+                    let y = transform.toScreen(gp.anchor).y
+                    GradeGlyphView(onTap: onGrade, onDismiss: { ambient.clearGradePrompt() })
+                        .position(
+                            x: geo.size.width - 52 - trailingInset,
+                            y: min(max(y, 110), geo.size.height - 90)
+                        )
+                        .transition(.scale(scale: 0.5).combined(with: .opacity))
                 }
             }
         }
@@ -226,6 +240,42 @@ struct AmbientGlyphView: View {
         case .note:
             Circle().fill(glyph.color).frame(width: 9, height: 9)
         }
+    }
+}
+
+/// "Grade my answer" glyph shown after the student finishes writing — a breathing
+/// accent pill (tap → grade the page) with a small dismiss.
+struct GradeGlyphView: View {
+    var onTap: () -> Void
+    var onDismiss: () -> Void
+    @State private var breathe = false
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Button(action: onTap) {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.seal.fill").font(.system(size: 15, weight: .semibold))
+                    Text("ambient.check").font(.caption.weight(.semibold)).lineLimit(1)
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 12).padding(.vertical, 8)
+                .background(AppTheme.current.aiAccent, in: Capsule())
+                .shadow(color: AppTheme.current.aiAccent.opacity(breathe ? 0.45 : 0.2), radius: breathe ? 12 : 6)
+            }
+            .buttonStyle(.plain)
+            Button(action: onDismiss) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(SemanticColor.textMutedColor)
+                    .frame(width: 22, height: 22)
+                    .background(SemanticColor.surface, in: Circle())
+                    .overlay(Circle().strokeBorder(SemanticColor.separator))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text("ai.dismiss"))
+        }
+        .fixedSize()
+        .onAppear { withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) { breathe = true } }
     }
 }
 
