@@ -88,7 +88,16 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     /// inkScale×, so ink is scaled at the load/save/AI-insert boundaries (see
     /// displayIntoCanvas / canonicalFromCanvas). KILL SWITCH: set to 1 to fully
     /// revert to plain page-coordinate, transform-zoom behaviour.
-    private let inkScale: CGFloat = 4
+    ///
+    /// FLIPPED 4 → 1 (2026-06-25): the 4× supersample counter-scales the live
+    /// PKCanvasView with a transform, and on the iOS 26 SDK PencilKit renders the
+    /// IN-PROGRESS stroke through that transform incorrectly — the live ink trailed
+    /// offset under the pen and only snapped into place on lift (the bug the user
+    /// filmed; the page itself wasn't moving — #135/#137 confirmed — the live
+    /// preview was). inkScale = 1 = no transform = native PencilKit, so the live
+    /// stroke lands exactly under the pen. Cost: deep zoom past 3× goes soft again
+    /// (transform-zoom raster cap) until the canvas gets true native zoom.
+    private let inkScale: CGFloat = 1
     /// Cached-render resolution in PIXELS per point, raised when zoomed in.
     /// Starts at the screen scale so adjacent (inactive) pages are retina-sharp
     /// at default zoom, not a soft 1x bitmap.
