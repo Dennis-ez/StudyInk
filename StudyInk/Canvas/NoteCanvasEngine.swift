@@ -109,6 +109,12 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     /// must NOT move the document (re-inset / recentre) — that slid the page under
     /// the pen mid-stroke. Reset triggers one settling layout on lift.
     private var strokeInFlight = false
+    /// Snap a shape WHILE the pen is still down? Disabled: doing so requires turning
+    /// off PencilKit's drawing gesture mid-stroke, which cancels the live touch — the
+    /// snapped shape was dropped before it persisted ("ink disappears" on hold) and
+    /// the live node-adjust never tracked. Shapes still snap reliably ON LIFT
+    /// (scheduleShapeRecognition). Re-enable only with on-device gesture testing.
+    private let holdSnapEnabled = false
     private var lastPublishedOrigins: [CGPoint] = []
     private var keyboardObservers: [NSObjectProtocol] = []
     private weak var holdRecognizer: UILongPressGestureRecognizer?
@@ -902,6 +908,9 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     /// Mid-stroke hold detected: recognize from raw touch points, cancel the
     /// in-flight PencilKit stroke, and lay down the clean shape immediately.
     private func handleHoldSnap(rawPoints: [CGPoint]) {
+        // Mid-stroke snapping is off — it cancelled the live touch and ate the ink.
+        // The stroke keeps drawing; scheduleShapeRecognition snaps it on lift.
+        guard holdSnapEnabled else { return }
         guard controller.autoShapes, controller.toolState.kind.isInking else { return }
         guard var shape = ShapeRecognizer.recognize(points: rawPoints, minDiagonal: 60 * inkScale) else { return }
         if controller.snapToGrid,
