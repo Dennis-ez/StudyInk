@@ -1,4 +1,5 @@
 import SwiftUI
+import PencilKit
 
 /// The tutor's margin lane: glyphs anchored in page-content space (they scroll/
 /// zoom with the ink), and the note that unfolds from a tapped glyph. Empty
@@ -107,10 +108,11 @@ struct MarginLaneView: View {
     }
 }
 
-/// The predicted next step, rendered as faint AI "ink" written in right where it
-/// belongs on the page. Beside it sits ONE small pin — tap it to read WHY (and the
-/// worked steps) and to dismiss. Tap the ink itself (or flick it right) to keep it
-/// — the editor then lays it down as real ink; flick left to drop it.
+/// The predicted next step, rendered as the SAME faint handwriting it'll become
+/// (InkWriter strokes, rasterized) — placed exactly where accepting will write it,
+/// inside a dashed accent box so it reads as a suggestion, not committed ink.
+/// Beside it sits ONE pin: tap for the WHY + steps and to dismiss. Tap the ink
+/// (or flick right) to keep it; flick left to drop it.
 struct GhostInkLayer: View {
     let ghost: GhostSuggestion
     let transform: CanvasTransform
@@ -118,57 +120,115 @@ struct GhostInkLayer: View {
     var onDismiss: () -> Void
     @State private var pulse = false
     @State private var showDetail = false
+    @State private var preview: PreviewState = .rendering
+
+    private enum PreviewState { case rendering; case ready(UIImage, CGSize); case failed }
 
     private var detailRTL: Bool {
         (ghost.why?.isMostlyRTL ?? false) || (ghost.steps.first?.isMostlyRTL ?? false)
     }
 
     var body: some View {
+        Group {
+            switch preview {
+            case .ready(let image, let pageSize): handwriting(image, pageSize)
+            case .failed:                          typesetFallback
+            case .rendering:                       Color.clear.frame(width: 1, height: 1)
+            }
+        }
+        .task(id: ghost.text) { await renderPreview() }
+    }
+
+    /// The faint handwriting preview, sized + placed to match where accepting writes.
+    private func handwriting(_ image: UIImage, _ pageSize: CGSize) -> some View {
+        let z = transform.zoomScale
+        let dw = pageSize.width * z, dh = pageSize.height * z
+        // writeInk lands inline = vertically centred on the line at anchor.x; a new
+        // line = top-left at the anchor. Match it so the preview IS where the ink goes.
+        let centerPage = ghost.inline
+            ? CGPoint(x: ghost.anchor.x + pageSize.width / 2, y: ghost.anchor.y)
+            : CGPoint(x: ghost.anchor.x + pageSize.width / 2, y: ghost.anchor.y + pageSize.height / 2)
+        let c = transform.toScreen(centerPage)
+        return ZStack(alignment: .topTrailing) {
+            Image(uiImage: image)
+                .resizable().interpolation(.high)
+                .frame(width: dw, height: dh)
+                .opacity(pulse ? 0.55 : 0.34)
+                // Dashed accent box → clearly a SUGGESTION, not real ink.
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .strokeBorder(AppTheme.current.aiAccent.opacity(0.55),
+                                      style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                        .padding(-5)
+                )
+                .contentShape(Rectangle())
+                .onTapGesture { onAccept() }
+            pin.offset(x: 18, y: -14)
+        }
+        .frame(width: dw, height: dh)
+        .overlay(alignment: .topLeading) {
+            if showDetail { detailCard.fixedSize().offset(x: 0, y: dh + 12) }
+        }
+        .highPriorityGesture(flick)
+        .onAppear { withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) { pulse = true } }
+        .position(c)
+        .transition(.opacity)
+    }
+
+    /// Fallback if InkWriter can't render the expression: the typeset form, faint.
+    private var typesetFallback: some View {
         let p = transform.toScreen(ghost.anchor)
-        VStack(alignment: .leading, spacing: 7) {
-            HStack(alignment: .center, spacing: 7) {
-                // The suggested next line, written in as faint 2D AI ink. Tap to
-                // keep it (the editor lays it down as real ink).
-                AIInkMath(latex: ghost.text, color: AppTheme.current.aiAccent, fontSize: 20)
-                    .opacity(pulse ? 0.6 : 0.4)
-                    .contentShape(Rectangle())
-                    .onTapGesture { onAccept() }
-
-                // The pin — the only chrome. Tap to explain WHY / dismiss.
-                Button { withAnimation(.easeOut(duration: 0.2)) { showDetail.toggle() } } label: {
-                    Image(systemName: "pin.fill")
-                        .font(.system(size: 11, weight: .semibold))
-                        .rotationEffect(.degrees(showDetail ? 0 : 32))
-                        .foregroundStyle(showDetail ? Color.white : AppTheme.current.aiAccent)
-                        .frame(width: 26, height: 26)
-                        .background(Circle().fill(showDetail ? AppTheme.current.aiAccent : SemanticColor.surface))
-                        .overlay(Circle().strokeBorder(SemanticColor.separator))
-                        .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(Text("ambient.why"))
-            }
-
-            if showDetail {
-                detailCard
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
+        return HStack(alignment: .center, spacing: 7) {
+            AIInkMath(latex: ghost.text, color: AppTheme.current.aiAccent, fontSize: 20)
+                .opacity(0.5).contentShape(Rectangle()).onTapGesture { onAccept() }
+            pin
         }
         .fixedSize()
-        // Gesture BEFORE .position so the flick area is the ghost itself, not
-        // the whole screen (which would block drawing).
-        .highPriorityGesture(
-            DragGesture(minimumDistance: 28).onEnded { v in
-                if v.translation.width > 24 { onAccept() } else if v.translation.width < -24 { onDismiss() }
-            }
-        )
-        .onAppear {
-            withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) { pulse = true }
-        }
-        // Sit the ink where the next step goes: continuing the current line for an
-        // inline completion, or just in from the margin for a new line below.
+        .overlay(alignment: .topLeading) { if showDetail { detailCard.fixedSize().offset(y: 36) } }
+        .highPriorityGesture(flick)
         .position(x: p.x + (ghost.inline ? 64 : 34), y: p.y)
         .transition(.opacity)
+    }
+
+    private var flick: some Gesture {
+        DragGesture(minimumDistance: 28).onEnded { v in
+            if v.translation.width > 24 { onAccept() } else if v.translation.width < -24 { onDismiss() }
+        }
+    }
+
+    /// The pin — tap to explain WHY / dismiss.
+    private var pin: some View {
+        Button { withAnimation(.easeOut(duration: 0.2)) { showDetail.toggle() } } label: {
+            Image(systemName: "pin.fill")
+                .font(.system(size: 11, weight: .semibold))
+                .rotationEffect(.degrees(showDetail ? 0 : 32))
+                .foregroundStyle(showDetail ? Color.white : AppTheme.current.aiAccent)
+                .frame(width: 26, height: 26)
+                .background(Circle().fill(showDetail ? AppTheme.current.aiAccent : SemanticColor.surface))
+                .overlay(Circle().strokeBorder(SemanticColor.separator))
+                .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("ambient.why"))
+    }
+
+    /// Rasterize the suggestion as the SAME handwriting `writeInk` would lay down.
+    @MainActor private func renderPreview() async {
+        let text = ghost.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { preview = .failed; return }
+        let fontSize: CGFloat = 22
+        let strokes = await Task.detached(priority: .userInitiated) { () -> [PKStroke] in
+            let accent = UIColor(AppTheme.current.aiAccent)
+            return InkWriter.strokes(for: text, topLeft: .zero, fontSize: fontSize,
+                                     ink: PKInk(.pen, color: accent),
+                                     strokeWidth: max(2.4, fontSize * 0.135))
+        }.value
+        guard !strokes.isEmpty else { preview = .failed; return }
+        let drawing = PKDrawing(strokes: strokes)
+        let b = drawing.bounds
+        guard b.width > 1, b.height > 1 else { preview = .failed; return }
+        let image = drawing.image(from: b, scale: max(3, UIScreen.main.scale))
+        withAnimation(.easeIn(duration: 0.2)) { preview = .ready(image, b.size) }
     }
 
     /// Tapped-pin detail: the reason + worked steps, and keep / dismiss.
