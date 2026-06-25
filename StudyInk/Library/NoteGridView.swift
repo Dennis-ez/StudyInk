@@ -666,12 +666,15 @@ struct NoteGridView: View {
         return Button { onOpenFolder(folder) } label: {
             VStack(spacing: 0) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous).fill(tint.opacity(0.14))
+                    tint.opacity(0.16)
                     Image(systemName: "folder.fill").font(.system(size: 46)).foregroundStyle(tint)
                 }
                 .frame(maxWidth: .infinity)
                 .aspectRatio(9 / 10, contentMode: .fit)
-                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(SemanticColor.cardEdge))
+                .clipped()
+                .overlay(alignment: .bottom) {
+                    Rectangle().fill(SemanticColor.cardEdge).frame(height: 1)
+                }
                 // Footer styled IDENTICALLY to a note card's (same fonts + padding)
                 // so a folder card and a note card are exactly the same height.
                 VStack(alignment: .leading, spacing: 3) {
@@ -684,6 +687,12 @@ struct NoteGridView: View {
                 .padding(.horizontal, 12).padding(.vertical, 10)
                 .environment(\.layoutDirection, (folder.name?.isMostlyRTL ?? false) ? .rightToLeft : .leftToRight)
             }
+            // Same card shell as a note (gridCellLabel) so a folder and a note are
+            // pixel-for-pixel the same size, just with a colour-tile cover.
+            .background(SemanticColor.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(SemanticColor.cardEdge))
+            .elevation(.e1)
         }
         .buttonStyle(.plain)
         // Drag the folder (reorder among siblings), and accept notes/folders
