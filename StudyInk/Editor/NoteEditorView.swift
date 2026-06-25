@@ -19,6 +19,8 @@ struct NoteEditorView: View {
     @State private var showPageStrip = false
     /// Debounce for the ambient ghost suggestion (fires when the pen goes idle).
     @State private var ghostIdleTask: Task<Void, Never>?
+    /// Debounce for the "grade my answer" glyph (fires when the pen goes idle).
+    @State private var gradePromptTask: Task<Void, Never>?
     /// 0 = closed, 1 = notes pane, 2 = notes pane + subjects sidebar.
     @State private var drawerStage = 0
     /// Subject chosen in the drawer's subjects pane (.some(nil) = All Notes).
@@ -280,6 +282,12 @@ struct NoteEditorView: View {
                         on: canvasController.canvasView
                     )
                     ambient.invalidateGhost()
+                },
+                // The "grade my answer" glyph — grade the whole page.
+                onGrade: {
+                    ambient.clearGradePrompt()
+                    canvasController.commitPendingInk()
+                    Task { await ambient.checkWork(note: note, pageIndex: pageIndex, darkMode: colorScheme == .dark) }
                 }
             )
 
@@ -781,6 +789,7 @@ struct NoteEditorView: View {
         .onChange(of: canvasController.drawingGestureBeganToken) { _, _ in
             ambient.invalidateGhost()
             scheduleGhostSuggestion()
+            scheduleGradePrompt()
             if pastePoint != nil { pastePoint = nil }
         }
         // When the watcher produces a nudge, drop its "?" glyph at the student's
@@ -1685,6 +1694,21 @@ extension NoteEditorView {
             guard lastStrokeIsWriting else { return }
             canvasController.commitPendingInk()
             await ambient.suggestNext(note: note, pageIndex: pageIndex, darkMode: colorScheme == .dark, auto: true)
+        }
+    }
+
+    /// Debounced: when the pen rests after WRITING, offer a "grade my answer" glyph
+    /// at the last line. Independent of the tutor sensitivity — it's a tap-to-grade
+    /// affordance, not a proactive hint. Writing again clears/re-arms it.
+    private func scheduleGradePrompt() {
+        gradePromptTask?.cancel()
+        ambient.clearGradePrompt()       // student resumed — drop the stale prompt
+        guard !distractionFree else { return }
+        gradePromptTask = Task {
+            try? await Task.sleep(nanoseconds: 3_500_000_000)
+            guard !Task.isCancelled, lastStrokeIsWriting, !ambient.isChecking,
+                  let anchor = lastStrokeAnchor else { return }
+            ambient.offerGrade(pageIndex: pageIndex, anchor: anchor)
         }
     }
 
