@@ -672,14 +672,16 @@ struct NoteGridView: View {
                 .frame(maxWidth: .infinity)
                 .aspectRatio(9 / 10, contentMode: .fit)
                 .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(SemanticColor.cardEdge))
+                // Footer styled IDENTICALLY to a note card's (same fonts + padding)
+                // so a folder card and a note card are exactly the same height.
                 VStack(alignment: .leading, spacing: 3) {
                     Text(verbatim: folder.name ?? "").font(.callout.weight(.semibold)).foregroundStyle(.primary).lineLimit(1)
-                    Text(verbatim: "\(folderItemCount(folder))").font(.caption2.monospacedDigit())
-                        + Text(verbatim: " ") + Text("library.items").font(.caption2)
+                    (Text(verbatim: "\(folderItemCount(folder))").font(.caption.monospacedDigit())
+                        + Text(verbatim: " ") + Text("library.items").font(.caption))
+                        .foregroundStyle(.secondary)
                 }
-                .font(.caption2).foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 8)
+                .padding(.horizontal, 12).padding(.vertical, 10)
                 .environment(\.layoutDirection, (folder.name?.isMostlyRTL ?? false) ? .rightToLeft : .leftToRight)
             }
         }

@@ -96,6 +96,10 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     private var rasterWorkItem: DispatchWorkItem?
     private var shapeWorkItem: DispatchWorkItem?
     private var lastStrokeCount = 0
+    /// True from a stroke's first touch until pen-up. While true, layoutSubviews
+    /// must NOT move the document (re-inset / recentre) — that slid the page under
+    /// the pen mid-stroke. Reset triggers one settling layout on lift.
+    private var strokeInFlight = false
     private var lastPublishedOrigins: [CGPoint] = []
     private var keyboardObservers: [NSObjectProtocol] = []
     private weak var holdRecognizer: UILongPressGestureRecognizer?
@@ -345,6 +349,10 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        // While a stroke is in flight, leave the document exactly where it is — a
+        // re-inset/recenter here slides the page out from under the pen (and snaps
+        // back on lift). The lift triggers a settling layout.
+        guard !strokeInFlight else { publishGeometry(); return }
         let top = safeAreaInsets.top + topGutter
         if abs(contentInset.top - top) > 0.5 {
             let restingAtTop = contentOffset.y <= -contentInset.top + 1
@@ -402,6 +410,11 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         // asynchronously, so the canvas stays hidden until it catches up.
         canvas.alpha = 0
         container.imageView.isHidden = false
+        // On note-open the active page was never pre-rendered (only inactive pages
+        // are), so its cached imageView is blank — you stared at an empty page until
+        // the canvas faded in AND PencilKit rendered. Render it now so the ink shows
+        // straight away, with the live canvas taking over behind it.
+        if container.imageView.image == nil { renderImage(for: index) }
         canvas.isUserInteractionEnabled = true
         applyCanvasGeometry(pageSize: pageSizes[index])
         container.addSubview(canvas)
@@ -978,6 +991,18 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     private let eraserCursor = UIView()
 
     @objc private func drawingGestureMoved(_ recognizer: UIGestureRecognizer) {
+        switch recognizer.state {
+        case .began:
+            // Freeze the scroll geometry for the duration of the stroke. A stroke
+            // fires @Published callbacks (undo state, ambient tutor) that re-render
+            // the editor; the resulting layout pass recomputed contentInset and
+            // recentred the document, sliding the whole page DOWN under the pen and
+            // snapping it back on lift. Don't move the page while writing.
+            strokeInFlight = true
+        case .ended, .cancelled, .failed:
+            if strokeInFlight { strokeInFlight = false; setNeedsLayout() }
+        default: break
+        }
         if recognizer.state == .began {
             // Starting to write dismisses transient chrome: the notes drawer
             // (when the intercept is armed) and the toolbar's color strip.
