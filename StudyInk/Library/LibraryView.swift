@@ -547,9 +547,6 @@ struct LibraryView: View {
             let isSelected = selection == .subject(subject)
             // Subject rows carry their color as a soft wash; selection darkens it.
             subjectRowChrome(subject, depth: depth, fill: tint.opacity(isSelected ? 0.38 : 0.18)) {
-              Button {
-                selection = .subject(subject)
-              } label: {
                 HStack(spacing: 10) {
                     // The subject IS its color — a rounded chip, not a folder glyph.
                     RoundedRectangle(cornerRadius: 3, style: .continuous)
@@ -583,9 +580,12 @@ struct LibraryView: View {
                 }
                 // Hebrew/Arabic names mirror the row so the name reads from the right.
                 .environment(\.layoutDirection, nameDirection(subject.name))
-              }
-              .buttonStyle(.plain)
+                .contentShape(Rectangle())
             }
+            // Tap to select. A plain .onTapGesture (not a Button) coexists with the
+            // row's .onDrag — a Button's tap fought the drag recognizer and dropped
+            // taps, so selecting a subject sometimes took several tries.
+            .onTapGesture { selection = .subject(subject) }
             .contextMenu { subjectContextMenu(subject) }
         }
     }

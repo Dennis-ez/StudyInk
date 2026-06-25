@@ -852,10 +852,14 @@ struct NoteEditorView: View {
             canvasController.onStroke = { index, stroke in
                 let center = CGPoint(x: stroke.renderBounds.midX, y: stroke.renderBounds.midY)
                 if index == pageIndex { lastStrokeAnchor = center }
-                // A handwriting stroke is small; a big stroke is a doodle/underline/
-                // diagram, which shouldn't trigger a "next step" suggestion.
+                // Only a handwriting stroke should arm the proactive tutor. Two tells
+                // that a stroke is a DIAGRAM/doodle (axis, graph curve, underline,
+                // circle), not writing: it's big, OR it's a long near-straight line
+                // (path length ≈ its diagonal). Handwriting is small AND curvy.
                 let diag = hypot(stroke.renderBounds.width, stroke.renderBounds.height)
-                lastStrokeIsWriting = diag < 170
+                let straightness = diag > 1 ? Self.strokeLength(stroke) / diag : 2
+                let isLine = straightness < 1.3 && diag > 55
+                lastStrokeIsWriting = diag < 170 && !isLine
                 audio.logStroke(at: center, pageIndex: index)
                 guidedMode.strokeOccurred()
             }
@@ -1648,6 +1652,23 @@ extension NoteEditorView {
         .frame(maxWidth: .infinity, alignment: .center)
         .allowsHitTesting(false)
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: ambient.notice)
+    }
+
+    /// Approx on-screen length of a stroke (sum of sampled segment lengths). A
+    /// near-straight line has length ≈ its bounding-box diagonal; handwriting is
+    /// far curvier — used to keep the tutor from firing on diagram lines.
+    private static func strokeLength(_ stroke: PKStroke) -> CGFloat {
+        let path = stroke.path
+        guard path.count > 1 else { return 0 }
+        let step = max(1, path.count / 48)
+        var len: CGFloat = 0
+        var prev = path[0].location
+        for i in stride(from: step, to: path.count, by: step) {
+            let p = path[i].location
+            len += hypot(p.x - prev.x, p.y - prev.y)
+            prev = p
+        }
+        return len
     }
 
     /// Debounced: when the pen rests ~2.5s after writing, the ambient tutor
