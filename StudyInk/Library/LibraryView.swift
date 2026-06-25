@@ -389,7 +389,9 @@ struct LibraryView: View {
             }
             .foregroundStyle(.primary)
             .padding(.horizontal, 12)
-            .frame(maxWidth: .infinity, minHeight: 44)
+            // Match the subject rows' height — the List used to give this row more
+            // room; the ScrollView conversion had shrunk it.
+            .frame(maxWidth: .infinity, minHeight: 54)
         }
         .buttonStyle(SidebarRowButtonStyle())
         // Selected = subtle fill + a 3pt accent bar inset at the leading edge.
