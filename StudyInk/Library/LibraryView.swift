@@ -333,8 +333,11 @@ struct LibraryView: View {
                         return changed
                     })
 
-                    ForEach(rootSubjects, id: \.objectID) { subject in
-                        subjectRows(subject, depth: 0)
+                    // Subject rows flush against each other (no inter-row gap).
+                    VStack(spacing: 0) {
+                        ForEach(rootSubjects, id: \.objectID) { subject in
+                            subjectRows(subject, depth: 0)
+                        }
                     }
                 }
                 .padding(.bottom, 20)
@@ -412,7 +415,7 @@ struct LibraryView: View {
     @ViewBuilder
     private func subjectRows(_ subject: Subject, depth: Int) -> AnyView {
         AnyView(
-            VStack(spacing: 2) {
+            VStack(spacing: 0) {
                 subjectRow(subject, depth: depth)
                 if !collapsedSubjects.contains(subject.objectID) {
                     ForEach(sortedChildren(of: subject), id: \.objectID) { child in
@@ -429,10 +432,11 @@ struct LibraryView: View {
     private func subjectRowChrome<V: View>(_ subject: Subject, depth: Int, fill: Color, @ViewBuilder _ content: () -> V) -> some View {
         let inset = CGFloat(depth) * 20
         return content()
-            .padding(.horizontal, 12)        // inside the capsule (List used to inset this)
+            .padding(.horizontal, 12)        // content inset (List used to provide this)
             .padding(.leading, inset)        // tree indent
-            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
-            .background(roundedRowBackground(fill).padding(.leading, inset))
+            .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
+            // Full-height fill (no vertical inset) so rows sit flush, no gap between.
+            .background(fill.padding(.leading, inset))
             .overlay { dropHintOverlay(subject, depth: depth) }
             .contentShape(Rectangle())
             .onDrag({ NSItemProvider(object: "subject:\(subject.id?.uuidString ?? "")" as NSString) },
@@ -510,10 +514,10 @@ struct LibraryView: View {
                     .onSubmit(commitInlineRename)
             }
             .padding(.horizontal, 12).padding(.leading, CGFloat(depth) * 20)
-            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
-            // Same rounded, subject-tinted fill as a normal subject row.
+            .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
+            // Same flush, subject-tinted fill as a normal subject row.
             .background(
-                roundedRowBackground((Color(hex: subject.colorHex ?? "#0A84FF") ?? .accentColor).opacity(0.18))
+                (Color(hex: subject.colorHex ?? "#0A84FF") ?? .accentColor).opacity(0.18)
                     .padding(.leading, CGFloat(depth) * 20)
             )
             // Focus on the next runloop so the field is in the responder chain

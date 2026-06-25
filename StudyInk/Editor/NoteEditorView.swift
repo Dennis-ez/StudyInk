@@ -50,6 +50,10 @@ struct NoteEditorView: View {
     @State private var showAIDrawPrompt = false
     @State private var aiDrawText = ""
     @State private var lastStrokeAnchor: CGPoint?
+    /// False when the most recent stroke was a big shape/scribble (a circle, an
+    /// underline, a doodle) rather than handwriting — used to suppress the proactive
+    /// tutor so it doesn't fire after you annotate/doodle instead of solving.
+    @State private var lastStrokeIsWriting = true
     @State private var askLassoActive = false
     @State private var showGuidedLog = false
     @State private var transformLassoActive = false
@@ -848,6 +852,10 @@ struct NoteEditorView: View {
             canvasController.onStroke = { index, stroke in
                 let center = CGPoint(x: stroke.renderBounds.midX, y: stroke.renderBounds.midY)
                 if index == pageIndex { lastStrokeAnchor = center }
+                // A handwriting stroke is small; a big stroke is a doodle/underline/
+                // diagram, which shouldn't trigger a "next step" suggestion.
+                let diag = hypot(stroke.renderBounds.width, stroke.renderBounds.height)
+                lastStrokeIsWriting = diag < 170
                 audio.logStroke(at: center, pageIndex: index)
                 guidedMode.strokeOccurred()
             }
@@ -1648,8 +1656,12 @@ extension NoteEditorView {
         ghostIdleTask?.cancel()
         guard ambient.sensitivity == .helpful, !distractionFree else { return }
         ghostIdleTask = Task {
-            try? await Task.sleep(nanoseconds: 3_200_000_000)
+            try? await Task.sleep(nanoseconds: 4_200_000_000)
             guard !Task.isCancelled else { return }
+            // Only suggest after WRITING settles — not after a doodle/annotation
+            // (circle, underline). That was the tutor "firing at things it
+            // shouldn't" while the student was just marking up the page.
+            guard lastStrokeIsWriting else { return }
             canvasController.commitPendingInk()
             await ambient.suggestNext(note: note, pageIndex: pageIndex, darkMode: colorScheme == .dark, auto: true)
         }
