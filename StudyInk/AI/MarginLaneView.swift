@@ -93,88 +93,51 @@ struct MarginLaneView: View {
     }
 }
 
-/// The predicted next step, rendered as faint pulsing amber text below the last
-/// line with a flick/tap-to-accept chip. It's a text layer (cheap) until
-/// accepted, when the editor writes it as real ink.
+/// The predicted next step, rendered as faint AI "ink" written in right where it
+/// belongs on the page. Beside it sits ONE small pin — tap it to read WHY (and the
+/// worked steps) and to dismiss. Tap the ink itself (or flick it right) to keep it
+/// — the editor then lays it down as real ink; flick left to drop it.
 struct GhostInkLayer: View {
     let ghost: GhostSuggestion
     let transform: CanvasTransform
     var onAccept: () -> Void
     var onDismiss: () -> Void
     @State private var pulse = false
-    @State private var showWhy = false
+    @State private var showDetail = false
+
+    private var detailRTL: Bool {
+        (ghost.why?.isMostlyRTL ?? false) || (ghost.steps.first?.isMostlyRTL ?? false)
+    }
 
     var body: some View {
         let p = transform.toScreen(ghost.anchor)
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                // The suggested next line as real 2D LaTeX, in the AI accent "ink".
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(alignment: .center, spacing: 7) {
+                // The suggested next line, written in as faint 2D AI ink. Tap to
+                // keep it (the editor lays it down as real ink).
                 AIInkMath(latex: ghost.text, color: AppTheme.current.aiAccent, fontSize: 20)
-                    .opacity(pulse ? 1.0 : 0.78)
-                Button(action: onAccept) {
-                    HStack(spacing: 5) {
-                        Circle().fill(AppTheme.current.aiAccent)
-                            .frame(width: 15, height: 15)
-                            .overlay(Lucide("sparkles", size: 8).foregroundStyle(.white))
-                        Text("ambient.flickAccept")
-                            .font(.system(size: 11))
-                            .foregroundStyle(SemanticColor.textMutedColor)
-                    }
-                    .padding(.horizontal, 8).padding(.vertical, 3)
-                    .background(SemanticColor.surface, in: Capsule())
-                    .overlay(Capsule().strokeBorder(SemanticColor.separator))
-                }
-                .buttonStyle(.plain)
-                // "Why is this the next step?" — reveals the reason AND the worked steps.
-                if ghost.hasDetail {
-                    Button { withAnimation(.easeOut(duration: 0.2)) { showWhy.toggle() } } label: {
-                        Circle().fill(SemanticColor.surface)
-                            .frame(width: 22, height: 22)
-                            .overlay(Text(verbatim: "?").font(.system(size: 12, weight: .bold)).foregroundStyle(AppTheme.current.aiAccent))
-                            .overlay(Circle().strokeBorder(SemanticColor.separator))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(Text("ambient.why"))
-                }
-                // Explicit dismiss — for when you don't want the suggestion (no
-                // need to flick it away).
-                Button(action: onDismiss) {
-                    Circle().fill(SemanticColor.surface)
-                        .frame(width: 22, height: 22)
-                        .overlay(Lucide("x", size: 11).foregroundStyle(SemanticColor.textMutedColor))
+                    .opacity(pulse ? 0.6 : 0.4)
+                    .contentShape(Rectangle())
+                    .onTapGesture { onAccept() }
+
+                // The pin — the only chrome. Tap to explain WHY / dismiss.
+                Button { withAnimation(.easeOut(duration: 0.2)) { showDetail.toggle() } } label: {
+                    Image(systemName: "pin.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .rotationEffect(.degrees(showDetail ? 0 : 32))
+                        .foregroundStyle(showDetail ? Color.white : AppTheme.current.aiAccent)
+                        .frame(width: 26, height: 26)
+                        .background(Circle().fill(showDetail ? AppTheme.current.aiAccent : SemanticColor.surface))
                         .overlay(Circle().strokeBorder(SemanticColor.separator))
+                        .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(Text("ai.dismiss"))
+                .accessibilityLabel(Text("ambient.why"))
             }
-            if showWhy, ghost.hasDetail {
-                let detailRTL = (ghost.why?.isMostlyRTL ?? false) || (ghost.steps.first?.isMostlyRTL ?? false)
-                VStack(alignment: .leading, spacing: 7) {
-                    // The reason — rendered with AIRichText so its LaTeX shows as math.
-                    if let why = ghost.why, !why.isEmpty {
-                        AIRichText(content: why).font(.system(size: 12))
-                    }
-                    // The ordered worked steps to reach the next line.
-                    if !ghost.steps.isEmpty {
-                        ForEach(Array(ghost.steps.enumerated()), id: \.offset) { index, step in
-                            HStack(alignment: .top, spacing: 8) {
-                                Text(verbatim: "\(index + 1)")
-                                    .font(.caption2.weight(.bold).monospacedDigit())
-                                    .foregroundStyle(.white)
-                                    .frame(width: 17, height: 17)
-                                    .background(AppTheme.current.aiAccent, in: Circle())
-                                AIRichText(content: step).font(.system(size: 12))
-                            }
-                        }
-                    }
-                }
-                .padding(.horizontal, 10).padding(.vertical, 8)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(SemanticColor.separator))
-                .frame(maxWidth: 280, alignment: detailRTL ? .trailing : .leading)
-                // Hebrew steps read right-to-left (number badge on the right).
-                .environment(\.layoutDirection, detailRTL ? .rightToLeft : .leftToRight)
-                .transition(.opacity.combined(with: .move(edge: .top)))
+
+            if showDetail {
+                detailCard
+                    .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .fixedSize()
@@ -188,8 +151,54 @@ struct GhostInkLayer: View {
         .onAppear {
             withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) { pulse = true }
         }
-        .position(x: p.x + 80, y: p.y)
+        // Sit the ink where the next step goes: continuing the current line for an
+        // inline completion, or just in from the margin for a new line below.
+        .position(x: p.x + (ghost.inline ? 64 : 34), y: p.y)
         .transition(.opacity)
+    }
+
+    /// Tapped-pin detail: the reason + worked steps, and keep / dismiss.
+    private var detailCard: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            if let why = ghost.why, !why.isEmpty {
+                AIRichText(content: why).font(.system(size: 12))
+            }
+            if !ghost.steps.isEmpty {
+                ForEach(Array(ghost.steps.enumerated()), id: \.offset) { index, step in
+                    HStack(alignment: .top, spacing: 8) {
+                        Text(verbatim: "\(index + 1)")
+                            .font(.caption2.weight(.bold).monospacedDigit())
+                            .foregroundStyle(.white)
+                            .frame(width: 17, height: 17)
+                            .background(AppTheme.current.aiAccent, in: Circle())
+                        AIRichText(content: step).font(.system(size: 12))
+                    }
+                }
+            }
+            HStack(spacing: 10) {
+                // Keep — write the suggestion in as real ink.
+                Button(action: onAccept) {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
+                        .padding(.horizontal, 14).padding(.vertical, 6)
+                        .background(AppTheme.current.aiAccent, in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text("ambient.flickAccept"))
+                Button(action: onDismiss) {
+                    Text("ai.dismiss").font(.caption.weight(.semibold)).foregroundStyle(SemanticColor.textMutedColor)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.top, 1)
+            .environment(\.layoutDirection, .leftToRight)   // keep/dismiss stay LTR
+        }
+        .padding(.horizontal, 11).padding(.vertical, 9)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(SemanticColor.separator))
+        .frame(maxWidth: 280, alignment: detailRTL ? .trailing : .leading)
+        // Hebrew reason/steps read right-to-left (number badge on the right).
+        .environment(\.layoutDirection, detailRTL ? .rightToLeft : .leftToRight)
     }
 }
 
