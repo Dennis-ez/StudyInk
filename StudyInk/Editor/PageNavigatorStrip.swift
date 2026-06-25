@@ -200,6 +200,10 @@ private struct PageReorderDropDelegate: DropDelegate {
 /// ink, stickers/media, and typed text — at the displayed size.
 struct PageThumbnailView: View {
     @ObservedObject var page: Page
+    /// Library cover mode: fill the cell (crop to the page top, like a real
+    /// notebook cover) so a note thumbnail matches a folder thumbnail's full-bleed
+    /// box. Default (strip) keeps the whole page in view (fit) with its own frame.
+    var fillCover: Bool = false
     @Environment(\.colorScheme) private var colorScheme
     @State private var thumbnail: UIImage?
     /// True once we know the page is empty OR have rendered its image — so a
@@ -229,7 +233,8 @@ struct PageThumbnailView: View {
                 if let thumbnail {
                     Image(uiImage: thumbnail)
                         .resizable()
-                        .scaledToFit()
+                        .aspectRatio(contentMode: fillCover ? .fill : .fit)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 } else if !resolved {
                     // Still rendering — the ink-stroke loader, not a beachball.
                     // (A blank page resolves immediately, so it never spins.)
@@ -244,8 +249,10 @@ struct PageThumbnailView: View {
                 DispatchQueue.main.async { displayWidth = width }
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.quaternary))
+        // In cover mode the grid card supplies its own clip + border, so don't
+        // round/stroke a smaller rect inside it.
+        .clipShape(RoundedRectangle(cornerRadius: fillCover ? 0 : 8))
+        .overlay { if !fillCover { RoundedRectangle(cornerRadius: 8).strokeBorder(.quaternary) } }
         .task(id: page.drawingData) { renderThumbnail() }
         .onChange(of: page.mediaItemsData) { renderThumbnail() }
         .onChange(of: page.textBoxesData) { renderThumbnail() }

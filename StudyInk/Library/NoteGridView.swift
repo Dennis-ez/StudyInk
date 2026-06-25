@@ -751,8 +751,9 @@ struct NoteGridView: View {
             // notebook, not a landscape tile.
             Group {
                 if let first = note.sortedPages.first {
-                    PageThumbnailView(page: first)
-                        .aspectRatio(3 / 4, contentMode: .fill)
+                    // Fill the cover box (crop to the page top) so a note thumbnail
+                    // matches a folder thumbnail's full-bleed size.
+                    PageThumbnailView(page: first, fillCover: true)
                 } else {
                     Rectangle().fill(SemanticColor.sidebarBackground)
                 }

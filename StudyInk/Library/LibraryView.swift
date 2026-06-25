@@ -332,17 +332,17 @@ struct LibraryView: View {
                     return changed
                 })
             ) {
-                // The whole subject tree lives in ONE list row as a plain VStack:
-                // List rows swallow custom .onDrop (only .onMove works there), so a
-                // VStack is the only way drag-to-reorder AND drag-to-nest both fire.
-                VStack(spacing: 2) {
-                    ForEach(rootSubjects, id: \.objectID) { subject in
-                        subjectRows(subject, depth: 0)
-                    }
+                // ONE list row PER ROOT subtree. A List cell is the drag-LIFT unit,
+                // so putting the whole tree in a single row lifted EVERY subject when
+                // dragging one. Per-root scopes the lift to that subtree, while the
+                // inner VStack still lets custom .onDrop fire (bare List rows swallow
+                // drops — only .onMove works there). Each subtree is a plain VStack.
+                ForEach(rootSubjects, id: \.objectID) { subject in
+                    subjectRows(subject, depth: 0)
+                        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
                 }
-                .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
             }
         }
             .scrollContentBackground(.hidden)
