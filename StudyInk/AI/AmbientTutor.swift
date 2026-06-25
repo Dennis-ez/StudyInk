@@ -117,9 +117,7 @@ final class AmbientTutorController: ObservableObject {
     /// read as "regrade — you got it wrong", which bypasses the cache for a fresh
     /// pass instead of replaying the same (possibly wrong) verdicts.
     private var lastCheckSignature: String?
-    // Default to `subtle` (no proactive pop-ups). `helpful` auto-suggested a next
-    // step ~3s after every stroke — it surprised users mid-scribble. Opt in to it.
-    @AppStorage("ambient.sensitivity") private var sensitivityRaw = AmbientSensitivity.subtle.rawValue
+    @AppStorage("ambient.sensitivity") private var sensitivityRaw = AmbientSensitivity.helpful.rawValue
 
     var sensitivity: AmbientSensitivity {
         get { AmbientSensitivity(rawValue: sensitivityRaw) ?? .helpful }
