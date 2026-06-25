@@ -208,6 +208,16 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         eraserCursor.backgroundColor = UIColor.systemGray.withAlphaComponent(0.12)
         canvas.addSubview(eraserCursor)
 
+        // DEBUG pen tracker: a red dot at the EXACT touch point. A screen recording
+        // can't show the physical Pencil, so this is the only way to see a gap
+        // between the pen and the rendered ink. Off unless Settings → debug toggle.
+        penTracker.isUserInteractionEnabled = false
+        penTracker.isHidden = true
+        penTracker.layer.borderWidth = 2 * inkScale
+        penTracker.layer.borderColor = UIColor.systemRed.cgColor
+        penTracker.backgroundColor = UIColor.systemRed.withAlphaComponent(0.22)
+        canvas.addSubview(penTracker)
+
         // Circle & Ask trigger: hold the Pencil still for ~1s.
         let hold = UILongPressGestureRecognizer(target: self, action: #selector(pencilHeld(_:)))
         hold.minimumPressDuration = 1.0
@@ -989,6 +999,28 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
 
     /// Circle the size of the eraser stroke, following the touch while erasing.
     private let eraserCursor = UIView()
+    /// DEBUG: red dot pinned to the raw touch point (Settings → "Pen tracker").
+    private let penTracker = UIView()
+
+    /// Show the debug pen marker at the exact touch point so a screen recording
+    /// reveals any offset between the pen and the ink. No-op unless the toggle is on.
+    private func updatePenTracker(for recognizer: UIGestureRecognizer) {
+        guard UserDefaults.standard.bool(forKey: "debug.penTracker") else {
+            if !penTracker.isHidden { penTracker.isHidden = true }
+            return
+        }
+        switch recognizer.state {
+        case .began, .changed:
+            let d = 18 * inkScale
+            penTracker.bounds = CGRect(x: 0, y: 0, width: d, height: d)
+            penTracker.layer.cornerRadius = d / 2
+            penTracker.center = recognizer.location(in: canvas)
+            canvas.bringSubviewToFront(penTracker)
+            penTracker.isHidden = false
+        default:
+            penTracker.isHidden = true
+        }
+    }
 
     @objc private func drawingGestureMoved(_ recognizer: UIGestureRecognizer) {
         switch recognizer.state {
@@ -1009,6 +1041,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
             if interceptTap?.isEnabled == true { controller.onInterceptedTap?() }
             controller.noteDrawingGestureBegan()
         }
+        updatePenTracker(for: recognizer)
         guard controller.toolState.kind == .eraserPixel || controller.toolState.kind == .eraserObject else {
             eraserCursor.isHidden = true
             return

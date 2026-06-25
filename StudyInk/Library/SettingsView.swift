@@ -20,6 +20,7 @@ struct SettingsView: View {
     @AppStorage("settings.ai.replyLanguage") private var replyLanguageRaw = AIReplyLanguage.device.rawValue
     @AppStorage("settings.defaultTemplate") private var defaultTemplate = "wideRuled"
     @AppStorage("settings.defaultTemplateSpacing") private var defaultSpacing = 1.0
+    @AppStorage("debug.penTracker") private var penTrackerDebug = false
     @Environment(\.dismiss) private var dismiss
 
     /// Which sidebar section is showing in the content pane.
@@ -468,6 +469,13 @@ struct SettingsView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    Divider()
+                    Toggle(isOn: $penTrackerDebug) {
+                        Label(title: { Text(verbatim: "Pen tracker (debug)") },
+                              icon: { Image(systemName: "pencil.tip.crop.circle") })
+                    }
+                    Text(verbatim: "Shows a red dot at the pen tip while writing, so a screen recording reveals any gap between the pen and the ink.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
             }
             .sheet(isPresented: $showAIDebug) {
