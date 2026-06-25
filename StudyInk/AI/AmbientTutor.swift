@@ -159,6 +159,18 @@ final class AmbientTutorController: ObservableObject {
         withAnimation(.easeOut(duration: 0.2)) { openItemID = nil }
     }
 
+    /// Drop glyphs whose anchored ink is gone (the student erased that line).
+    /// `inkRects` = page-space render bounds of every remaining stroke on the page.
+    func pruneGlyphs(pageIndex: Int, inkRects: [CGRect]) {
+        let survivors = items.filter { item in
+            item.pageIndex != pageIndex
+                || inkRects.contains { $0.intersects(item.anchorRect) }
+        }
+        guard survivors.count != items.count else { return }
+        if let open = openItemID, !survivors.contains(where: { $0.id == open }) { openItemID = nil }
+        withAnimation(.easeOut(duration: 0.2)) { items = survivors }
+    }
+
     func clear(pageIndex: Int? = nil) {
         withAnimation(.easeOut(duration: 0.2)) {
             if let p = pageIndex { items.removeAll { $0.pageIndex == p } }

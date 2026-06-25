@@ -871,6 +871,9 @@ struct NoteEditorView: View {
                 lastStrokeIsWriting = diag < 170 && !isLine
                 audio.logStroke(at: center, pageIndex: index)
                 guidedMode.strokeOccurred()
+                // Erasing fires this too: drop any glyph whose ink is now gone.
+                let inkRects = (canvasController.canvasView?.drawing.strokes ?? []).map(\.renderBounds)
+                ambient.pruneGlyphs(pageIndex: index, inkRects: inkRects)
             }
             canvasController.onInterceptedTap = {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { closeDrawer() }
