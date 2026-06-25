@@ -115,6 +115,9 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     /// the live node-adjust never tracked. Shapes still snap reliably ON LIFT
     /// (scheduleShapeRecognition). Re-enable only with on-device gesture testing.
     private let holdSnapEnabled = false
+    /// Bumped on each active-page reveal; the delayed reveal only fires if its
+    /// token is still current (so a re-bridge supersedes an in-flight one).
+    private var revealToken = 0
     private var lastPublishedOrigins: [CGPoint] = []
     private var keyboardObservers: [NSObjectProtocol] = []
     private weak var holdRecognizer: UILongPressGestureRecognizer?
@@ -350,6 +353,10 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
             isProgrammaticChange = false
             lastStrokeCount = drawing.strokes.count
             seededActiveDrawing = true
+            // The drawing only just arrived (cold open: providers wire AFTER mount),
+            // so the canvas was revealed empty. Re-bridge: show the cached ink now
+            // and re-reveal once PencilKit has drawn the seeded strokes.
+            bridgeActiveReveal(index: activeIndex)
         }
         // Active page's content (cached render incl. ink) is up → drop the loader.
         if containers.indices.contains(activeIndex), containers[activeIndex].snapshot != nil {
@@ -435,35 +442,51 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         // asynchronously, so the canvas stays hidden until it catches up.
         canvas.alpha = 0
         container.imageView.isHidden = false
-        // On note-open the active page was never pre-rendered (only inactive pages
-        // are), so its cached imageView is blank — you stared at an empty page until
-        // the canvas faded in AND PencilKit rendered. Render it now so the ink shows
-        // straight away, with the live canvas taking over behind it.
-        if container.imageView.image == nil { renderImage(for: index) }
         canvas.isUserInteractionEnabled = true
         applyCanvasGeometry(pageSize: pageSizes[index])
         container.addSubview(canvas)
         isProgrammaticChange = true
         // Storage → display: black ink shows near-white on a dark canvas, scaled
-        // up into the canvas's inkScale (native-sharp) coordinate space.
+        // up into the canvas's inkScale coordinate space.
         canvas.drawing = displayIntoCanvas(controller.drawingProvider?(index) ?? PKDrawing())
         isProgrammaticChange = false
         // If the provider is wired up, this page is fully loaded (an empty page
         // is legitimately empty). If not, ensureContent() seeds it once the
         // provider connects.
         seededActiveDrawing = controller.drawingProvider != nil
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) { [weak self, weak container] in
-            guard let self, self.activeIndex == index else { return }
-            self.canvas.alpha = 1
-            container?.imageView.isHidden = true
-            if PerfMonitor.shared.activity == "page-mount" { PerfMonitor.shared.setActivity("idle") }
-        }
+        // Show the page's cached render (incl. ink) and keep the live canvas hidden
+        // behind it until PencilKit has rendered — so the ink shows immediately
+        // instead of a blank page for a beat.
+        bridgeActiveReveal(index: index)
         // The undo stack is per-canvas, not per-page: undoing after a page
         // switch would resurrect the previous page's ink on this one.
         canvas.undoManager?.removeAllActions()
         shapeWorkItem?.cancel()
         lastStrokeCount = canvas.drawing.strokes.count
         DispatchQueue.main.async { [controller] in controller.refreshUndoState() }
+    }
+
+    /// Bridge a page's reveal: show its cached render (background + ink) and keep
+    /// the live canvas hidden behind it for `delay`, until PencilKit has rendered
+    /// the swapped-in drawing. Token-guarded so a later bridge (e.g. once the
+    /// drawing provider connects on a cold open) supersedes an earlier one instead
+    /// of revealing a still-empty canvas.
+    private func bridgeActiveReveal(index: Int, delay: TimeInterval = 0.22) {
+        guard containers.indices.contains(index) else { return }
+        let container = containers[index]
+        revealToken += 1
+        let token = revealToken
+        canvas.alpha = 0
+        container.imageView.isHidden = false
+        // Render the active page's cached ink at high priority (it's the thing the
+        // user is waiting to see). Only inactive pages are pre-rendered elsewhere.
+        if container.imageView.image == nil { renderImage(for: index, priority: .userInitiated) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self, weak container] in
+            guard let self, self.activeIndex == index, self.revealToken == token else { return }
+            self.canvas.alpha = 1
+            container?.imageView.isHidden = true
+            if PerfMonitor.shared.activity == "page-mount" { PerfMonitor.shared.setActivity("idle") }
+        }
     }
 
     private func activatePage(_ index: Int) {
@@ -536,7 +559,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         return entries[index].split(separator: "|").first
     }
 
-    private func renderImage(for index: Int, revealWhenReady: Bool = false) {
+    private func renderImage(for index: Int, revealWhenReady: Bool = false, priority: TaskPriority = .utility) {
         guard containers.indices.contains(index),
               let snapshot = controller.snapshotProvider?(index) else { return }
         let dark = traitCollection.userInterfaceStyle == .dark
@@ -546,7 +569,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         // composite off-main with no main hop — the old main.sync inside the
         // detached render stalled under open-note load (black, ink-less pages).
         let ink = PageRenderer.inkLayer(for: snapshot, darkMode: dark, scale: renderScale)
-        Task.detached(priority: .utility) {
+        Task.detached(priority: priority) {
             let image = PageRenderer.render(snapshot, darkMode: dark, scale: renderScale, inkLayer: ink)
             await MainActor.run { [weak self] in
                 guard container.pageIndex == index else { return }
