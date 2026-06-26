@@ -136,10 +136,6 @@ struct GhostInkLayer: View {
 
     private enum PreviewState { case rendering; case ready([[CGPoint]], CGRect); case failed }
 
-    private var detailRTL: Bool {
-        (ghost.why?.isMostlyRTL ?? false) || (ghost.steps.first?.isMostlyRTL ?? false)
-    }
-
     var body: some View {
         Group {
             switch preview {
@@ -188,7 +184,7 @@ struct GhostInkLayer: View {
         }
         .frame(width: dw, height: dh)
         .overlay(alignment: .topLeading) {
-            if showDetail { detailCard.fixedSize().offset(x: 0, y: dh + 12) }
+            if showDetail { ghostSteps.fixedSize().offset(x: 0, y: dh + 12) }
         }
         .highPriorityGesture(flick)
         .position(c)
@@ -204,7 +200,7 @@ struct GhostInkLayer: View {
             whyButton
         }
         .fixedSize()
-        .overlay(alignment: .topLeading) { if showDetail { detailCard.fixedSize().offset(y: 36) } }
+        .overlay(alignment: .topLeading) { if showDetail { ghostSteps.fixedSize().offset(y: 36) } }
         .highPriorityGesture(flick)
         .position(x: p.x + (ghost.inline ? 64 : 34), y: p.y)
         .transition(.opacity)
@@ -274,48 +270,25 @@ struct GhostInkLayer: View {
         }
     }
 
-    /// Tapped-pin detail: the reason + worked steps, and keep / dismiss.
-    private var detailCard: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            if let why = ghost.why, !why.isEmpty {
-                AIRichText(content: why).font(.system(size: 12))
-            }
-            if !ghost.steps.isEmpty {
-                ForEach(Array(ghost.steps.enumerated()), id: \.offset) { index, step in
-                    HStack(alignment: .top, spacing: 8) {
-                        Text(verbatim: "\(index + 1)")
-                            .font(.caption2.weight(.bold).monospacedDigit())
-                            .foregroundStyle(.white)
-                            .frame(width: 17, height: 17)
-                            .background(AppTheme.current.aiAccent, in: Circle())
-                        AIRichText(content: step).font(.system(size: 12))
-                    }
+    /// Tapped-"?" detail: the SAME inline step UI the grade-note / hint use — the
+    /// why + worked steps. Keep = tap the ink or flick right; dismiss = flick left.
+    private var ghostSteps: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            StepDetailCard(why: ghost.why, steps: ghost.steps,
+                           onDismiss: { withAnimation(.easeOut(duration: 0.2)) { showDetail = false } })
+            // Keep — write the suggestion in as real ink (the step card has no verb).
+            Button(action: onAccept) {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark").font(.system(size: 11, weight: .bold))
+                    Text("ambient.flickAccept").font(.caption.weight(.semibold))
                 }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14).padding(.vertical, 7)
+                .background(AppTheme.current.aiAccent, in: Capsule())
             }
-            HStack(spacing: 10) {
-                // Keep — write the suggestion in as real ink.
-                Button(action: onAccept) {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
-                        .padding(.horizontal, 14).padding(.vertical, 6)
-                        .background(AppTheme.current.aiAccent, in: Capsule())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(Text("ambient.flickAccept"))
-                Button(action: onDismiss) {
-                    Text("ai.dismiss").font(.caption.weight(.semibold)).foregroundStyle(SemanticColor.textMutedColor)
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.top, 1)
-            .environment(\.layoutDirection, .leftToRight)   // keep/dismiss stay LTR
+            .buttonStyle(.plain)
+            .environment(\.layoutDirection, .leftToRight)
         }
-        .padding(.horizontal, 11).padding(.vertical, 9)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(SemanticColor.separator))
-        .frame(maxWidth: 280, alignment: detailRTL ? .trailing : .leading)
-        // Hebrew reason/steps read right-to-left (number badge on the right).
-        .environment(\.layoutDirection, detailRTL ? .rightToLeft : .leftToRight)
     }
 }
 
