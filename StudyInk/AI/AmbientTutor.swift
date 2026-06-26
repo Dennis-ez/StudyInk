@@ -70,6 +70,16 @@ struct GradePrompt: Equatable {
     var anchor: CGPoint
 }
 
+/// An inline "why" explanation rendered as worked steps (the step UI), shown in
+/// place near the line instead of opening the AI chat bubble.
+struct StepExplanation: Equatable {
+    var pageIndex: Int
+    var anchor: CGPoint
+    var why: String?
+    var steps: [String]
+    var isLoading: Bool
+}
+
 struct GhostSuggestion {
     var pageIndex: Int
     /// Page-space anchor. For an inline completion it's the MIDDLE of the line
@@ -412,6 +422,35 @@ final class AmbientTutorController: ObservableObject {
     func clearGradePrompt() {
         if gradePrompt != nil { withAnimation(.easeOut(duration: 0.2)) { gradePrompt = nil } }
     }
+
+    /// Inline "why" → worked steps, shown in the step UI near the line (NOT the AI
+    /// chat bubble). Used by the grade-result note, the hint glyph, etc.
+    @Published var explanation: StepExplanation?
+
+    func explainSteps(focus: String, anchor: CGPoint, pageIndex: Int, note: Note, darkMode: Bool) async {
+        withAnimation(.easeOut(duration: 0.2)) {
+            explanation = StepExplanation(pageIndex: pageIndex, anchor: anchor, why: nil, steps: [], isLoading: true)
+        }
+        do {
+            let context = await NoteContextBuilder.build(note: note, currentPageIndex: pageIndex, darkMode: darkMode)
+            var blocks = context.blocks
+            blocks.append(.text("The student wants to understand this point in their work: \"\(focus)\". Explain it as a short ordered sequence of WORKED steps that follow from / correct their actual work on the page. Output JSON ONLY: {\"why\":\"<ONE short sentence, in the student's WRITTEN language, saying which rule/operation and on what>\",\"steps\":[\"<each step: what you do, then ' → ', then the RESULTING expression in $...$; at most 5>\"]}. Write \"why\" and \"steps\" in \(SystemPrompt.languageTarget)."))
+            let raw = try await AIService.send(system: Self.explainSystem, messages: [.user(blocks)], maxTokens: 1200)
+            let (_, why, steps) = Self.parseGhost(raw)
+            // Don't clobber a newer request.
+            guard explanation?.anchor == anchor, explanation?.isLoading == true else { return }
+            withAnimation(.easeOut(duration: 0.2)) {
+                explanation = StepExplanation(pageIndex: pageIndex, anchor: anchor, why: why, steps: steps, isLoading: false)
+            }
+        } catch {
+            if explanation?.anchor == anchor { explanation = nil }
+        }
+    }
+    func dismissExplanation() {
+        if explanation != nil { withAnimation(.easeOut(duration: 0.2)) { explanation = nil } }
+    }
+
+    private static let explainSystem = "You are a calculus/algebra tutor. READ the student's handwriting from the page image (OCR is unreliable — trust the image) and any problem statement on the page. Explain the requested point as a SHORT ordered sequence of worked steps that follow from the student's own work — each step is one action and its resulting expression. Output ONLY the requested JSON: no prose, no greeting, no chat."
 
     /// Called when the student writes again — the ghost is stale; clear it and
     /// re-arm so a fresh suggestion can come for the new line.
