@@ -852,6 +852,7 @@ struct LibraryView: View {
         // Append to the end of the current folder's tree order.
         note.sortIndex = (FileTree.children(of: subject, in: context).map(\.sortIndex).max() ?? -1) + 1
         PersistenceController.shared.save()
+        Haptics.tap()
         autoOpenNote = note
     }
 

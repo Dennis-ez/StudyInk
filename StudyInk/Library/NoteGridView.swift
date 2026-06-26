@@ -579,6 +579,7 @@ struct NoteGridView: View {
     private func openNote(_ note: Note) {
         // The editor is presented full-screen (window level), so it's independent
         // of the content-column width — no sidebar-collapse dance, no desk strip.
+        Haptics.tap()
         autoOpenNote = note
     }
 
@@ -619,6 +620,7 @@ struct NoteGridView: View {
         let note = Note.create(in: context, title: String(localized: "library.untitledNote"), subject: subject)
         if section == .favorites { note.isFavorite = true }
         PersistenceController.shared.save()
+        Haptics.tap()
         autoOpenNote = note
     }
 
