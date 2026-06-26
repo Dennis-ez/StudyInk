@@ -475,9 +475,10 @@ struct MarginNoteView: View {
             }
             .padding(.bottom, 8)
 
-            Text(verbatim: item.body)
+            // Render LaTeX as math (folds $…$ / \cdot, typesets heavy math) instead
+            // of spilling raw $$…$$ onto the card.
+            AIRichText(content: item.body)
                 .font(.subheadline)
-                .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
 
             if let result = item.result, !result.isEmpty {
