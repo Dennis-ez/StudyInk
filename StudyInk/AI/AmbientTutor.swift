@@ -436,7 +436,7 @@ final class AmbientTutorController: ObservableObject {
             var blocks = context.blocks
             blocks.append(.text("The student wants to understand this point in their work: \"\(focus)\". Explain it as a short ordered sequence of WORKED steps that follow from / correct their actual work on the page. Output JSON ONLY: {\"why\":\"<ONE short sentence, in the student's WRITTEN language, saying which rule/operation and on what>\",\"steps\":[\"<each step: what you do, then ' → ', then the RESULTING expression in $...$; at most 5>\"]}. Write \"why\" and \"steps\" in \(SystemPrompt.languageTarget)."))
             let raw = try await AIService.send(system: Self.explainSystem, messages: [.user(blocks)], maxTokens: 1200)
-            let (_, why, steps) = Self.parseGhost(raw)
+            let (why, steps) = Self.parseSteps(raw)
             // Don't clobber a newer request.
             guard explanation?.anchor == anchor, explanation?.isLoading == true else { return }
             withAnimation(.easeOut(duration: 0.2)) {
@@ -562,6 +562,34 @@ final class AmbientTutorController: ObservableObject {
         }
         // 4) Genuinely plain text — treat the whole thing as the next line.
         return (raw, nil, [])
+    }
+
+    /// Parse {"why","steps"} for the inline explanation (no "next" field, so the
+    /// ghost parser — which requires "next" — can't be reused).
+    private static func parseSteps(_ raw: String) -> (String?, [String]) {
+        let src = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let s = src.firstIndex(of: "{"), let e = src.lastIndex(of: "}"),
+           let data = String(src[s...e]).data(using: .utf8),
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            let why = (obj["why"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let steps = (obj["steps"] as? [String])?.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty } ?? []
+            return ((why?.isEmpty == false) ? why : nil, steps)
+        }
+        // Regex fallback (truncation / stray escaping): the why, then each quoted
+        // string inside the steps array.
+        let why = firstCapture(#""why"\s*:\s*"((?:[^"\\]|\\.)*)""#, in: src).map(unescapeJSON)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        var steps: [String] = []
+        if let arr = firstCapture(#""steps"\s*:\s*\[(.*)\]"#, in: src),
+           let re = try? NSRegularExpression(pattern: #""((?:[^"\\]|\\.)*)""#, options: [.dotMatchesLineSeparators]) {
+            for m in re.matches(in: arr, range: NSRange(arr.startIndex..., in: arr)) {
+                if let r = Range(m.range(at: 1), in: arr) {
+                    let v = unescapeJSON(String(arr[r])).trimmingCharacters(in: .whitespaces)
+                    if !v.isEmpty { steps.append(v) }
+                }
+            }
+        }
+        return ((why?.isEmpty == false) ? why : nil, steps)
     }
 
     /// First capture group of `pattern` in `s`, or nil.
