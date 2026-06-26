@@ -103,6 +103,19 @@ struct MarginLaneView: View {
                         )
                         .transition(.scale(scale: 0.5).combined(with: .opacity))
                 }
+
+                // Inline "why" explanation as worked steps (the step UI), near the
+                // line — replaces opening the AI chat bubble.
+                if let ex = ambient.explanation, ex.pageIndex == pageIndex {
+                    let p = transform.toScreen(ex.anchor)
+                    StepDetailCard(why: ex.why, steps: ex.steps, isLoading: ex.isLoading,
+                                   onDismiss: { ambient.dismissExplanation() })
+                        .position(
+                            x: min(max(p.x, 180), geo.size.width - 170 - trailingInset),
+                            y: min(max(p.y + 34, 160), geo.size.height - 190)
+                        )
+                        .transition(.scale(scale: 0.92, anchor: .top).combined(with: .opacity))
+                }
             }
         }
     }
@@ -370,6 +383,57 @@ struct GradeGlyphView: View {
         }
         .fixedSize()
         .onAppear { withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) { breathe = true } }
+    }
+}
+
+/// Inline "why" → worked steps, shown in place (the step UI) instead of the AI
+/// chat bubble. Used by the ghost's "?", the grade-result note, and the hint glyph.
+struct StepDetailCard: View {
+    let why: String?
+    let steps: [String]
+    var isLoading: Bool = false
+    var onDismiss: () -> Void
+
+    private var rtl: Bool { (why?.isMostlyRTL ?? false) || (steps.first?.isMostlyRTL ?? false) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 7) {
+                Lucide("sparkles", size: 12).foregroundStyle(AppTheme.current.aiAccent)
+                Text("ambient.why").font(.caption.weight(.semibold)).foregroundStyle(SemanticColor.textMutedColor)
+                Spacer(minLength: 6)
+                Button(action: onDismiss) { Lucide("x", size: 12).foregroundStyle(SemanticColor.textMutedColor) }
+                    .buttonStyle(.plain).accessibilityLabel(Text("ai.dismiss"))
+            }
+            .environment(\.layoutDirection, .leftToRight)
+
+            if isLoading {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("ai.thinking").font(.caption).foregroundStyle(.secondary)
+                }
+            } else {
+                if let why, !why.isEmpty { AIRichText(content: why).font(.system(size: 12)) }
+                ForEach(Array(steps.enumerated()), id: \.offset) { i, step in
+                    HStack(alignment: .top, spacing: 8) {
+                        Text(verbatim: "\(i + 1)")
+                            .font(.caption2.weight(.bold).monospacedDigit()).foregroundStyle(.white)
+                            .frame(width: 17, height: 17).background(AppTheme.current.aiAccent, in: Circle())
+                        AIRichText(content: step).font(.system(size: 12))
+                    }
+                }
+                if steps.isEmpty && (why?.isEmpty ?? true) {
+                    Text("ambient.notice.noSuggestion").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .frame(maxWidth: 300, alignment: rtl ? .trailing : .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(SemanticColor.separator))
+        .shadow(color: AppTheme.current.aiAccent.opacity(0.14), radius: 16, y: 6)
+        // Hebrew reason/steps read right-to-left (number badge on the right).
+        .environment(\.layoutDirection, rtl ? .rightToLeft : .leftToRight)
     }
 }
 

@@ -255,18 +255,17 @@ struct NoteEditorView: View {
                     }
                 },
                 onShowWhy: { item in
+                    // Worked steps in the inline step UI — NOT the AI chat bubble.
                     ambient.dismiss()
-                    Task { await tutor.ask(question: "Explain why: \(item.body)", anchor: askAnchor) }
+                    let anchor = CGPoint(x: item.anchorRect.midX, y: item.anchorRect.maxY)
+                    Task { await ambient.explainSteps(focus: item.body, anchor: anchor, pageIndex: pageIndex, note: note, darkMode: colorScheme == .dark) }
                 },
                 onOpenHint: { item in
-                    // A watcher's "?" — highlight the line it flagged RIGHT AWAY (so
-                    // the student sees what it's about before the answer streams in),
-                    // then open the full explanation there. The glyph PERSISTS: only a
-                    // new nudge, a check, or switching the watcher off clears it —
-                    // opening it does not.
+                    // A watcher's "?" — highlight the line it flagged RIGHT AWAY, then
+                    // show the worked steps inline (the step UI), NOT the chat bubble.
                     ambient.focus(on: item)
-                    let anchor = CGPoint(x: item.anchorRect.midX, y: item.anchorRect.midY)
-                    Task { await tutor.ask(question: item.body, anchor: anchor) }
+                    let anchor = CGPoint(x: item.anchorRect.midX, y: item.anchorRect.maxY)
+                    Task { await ambient.explainSteps(focus: item.body, anchor: anchor, pageIndex: pageIndex, note: note, darkMode: colorScheme == .dark) }
                 },
                 onAcceptGhost: { g in
                     ambient.dismissGhost()
