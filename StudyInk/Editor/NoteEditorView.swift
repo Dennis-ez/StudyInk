@@ -783,12 +783,10 @@ struct NoteEditorView: View {
         // reserves no canvas height; the title/time sit in the gutter above
         // the page instead.
         .overlay(alignment: .top) { floatingHeader }
-        // Ambient: each new stroke invalidates the ghost and re-arms the idle
-        // timer; when the pen rests, the tutor suggests the next step.
+        // Ambient: each new stroke clears any pending suggestion and re-arms the
+        // single arbiter; when the pen rests, the arbiter emits AT MOST ONE thing.
         .onChange(of: canvasController.drawingGestureBeganToken) { _, _ in
-            ambient.invalidateGhost()
-            scheduleGhostSuggestion()
-            scheduleGradePrompt()
+            scheduleAmbient()
             if pastePoint != nil { pastePoint = nil }
         }
         // When the watcher produces a nudge, drop its "?" glyph at the student's
@@ -1682,35 +1680,36 @@ extension NoteEditorView {
         return len
     }
 
-    /// Debounced: when the pen rests ~2.5s after writing, the ambient tutor
-    /// suggests the next step (Helpful sensitivity only).
-    private func scheduleGhostSuggestion() {
+    /// THE ARBITER (handoff §1, "the one rule"): every idle pause runs through one
+    /// place that emits AT MOST ONE proactive surface — never a ghost AND a grade
+    /// pill on the same pause. Writing again clears whatever was up and re-arms.
+    ///
+    /// Sensitivity = eligibility, not volume (§3.5):
+    ///   off     → nothing
+    ///   subtle  → grade offer only (no proactive ghost)
+    ///   helpful → next-step ghost when there's a clear continuation, else a grade offer
+    private func scheduleAmbient() {
         ghostIdleTask?.cancel()
-        guard ambient.sensitivity == .helpful, !distractionFree else { return }
-        ghostIdleTask = Task {
-            try? await Task.sleep(nanoseconds: 4_200_000_000)
-            guard !Task.isCancelled else { return }
-            // Only suggest after WRITING settles — not after a doodle/annotation
-            // (circle, underline). That was the tutor "firing at things it
-            // shouldn't" while the student was just marking up the page.
-            guard lastStrokeIsWriting else { return }
-            canvasController.commitPendingInk()
-            await ambient.suggestNext(note: note, pageIndex: pageIndex, darkMode: colorScheme == .dark, auto: true)
-        }
-    }
-
-    /// Debounced: when the pen rests after WRITING, offer a "grade my answer" glyph
-    /// at the last line. Independent of the tutor sensitivity — it's a tap-to-grade
-    /// affordance, not a proactive hint. Writing again clears/re-arms it.
-    private func scheduleGradePrompt() {
         gradePromptTask?.cancel()
-        ambient.clearGradePrompt()       // student resumed — drop the stale prompt
-        guard !distractionFree else { return }
-        gradePromptTask = Task {
-            try? await Task.sleep(nanoseconds: 3_500_000_000)
-            guard !Task.isCancelled, lastStrokeIsWriting, !ambient.isChecking,
-                  let anchor = lastStrokeAnchor else { return }
-            ambient.offerGrade(pageIndex: pageIndex, anchor: anchor)
+        ambient.invalidateGhost()
+        ambient.clearGradePrompt()
+        guard ambient.sensitivity != .off, !distractionFree else { return }
+        ghostIdleTask = Task {
+            try? await Task.sleep(nanoseconds: 3_900_000_000)
+            // Doodle / diagram line → the tutor stays silent (intent: sketching).
+            guard !Task.isCancelled, lastStrokeIsWriting, !ambient.isChecking else { return }
+            canvasController.commitPendingInk()
+            let dark = colorScheme == .dark
+            // Helpful: try the next-step continuation first. suggestNext(auto) only
+            // fires on an UNFINISHED line (mid-derivation), so a finished line leaves
+            // ghost == nil → fall through to the grade offer. One surface, never two.
+            if ambient.sensitivity == .helpful {
+                await ambient.suggestNext(note: note, pageIndex: pageIndex, darkMode: dark, auto: true)
+            }
+            guard !Task.isCancelled else { return }
+            if ambient.ghost == nil, let anchor = lastStrokeAnchor {
+                ambient.offerGrade(pageIndex: pageIndex, anchor: anchor)
+            }
         }
     }
 

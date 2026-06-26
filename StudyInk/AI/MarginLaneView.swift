@@ -131,7 +131,6 @@ struct GhostInkLayer: View {
     let transform: CanvasTransform
     var onAccept: () -> Void
     var onDismiss: () -> Void
-    @State private var pulse = false
     @State private var showDetail = false
     @State private var preview: PreviewState = .rendering
 
@@ -157,7 +156,10 @@ struct GhostInkLayer: View {
         let z = transform.zoomScale
         let dw = bounds.width * z, dh = bounds.height * z
         let lineW = max(2.4, 22 * 0.135) * z
-        let color = AppTheme.current.aiAccent
+        // Handoff §6: the trace is the STUDENT'S own ink, dimmed — NOT amber, NO box.
+        // The only amber is the "?" marker; AI-ness is conveyed by the marker, not by
+        // decorating the math.
+        let color = Color.primary
         // writeInk lands inline = vertically centred on the line at anchor.x; a new
         // line = top-left at the anchor. Match it so the preview IS where the ink goes.
         let centerPage = ghost.inline
@@ -177,14 +179,9 @@ struct GhostInkLayer: View {
                 }
             }
             .frame(width: dw, height: dh)
-            // Looks like the real ink, just a touch lighter, with a dashed box so it
-            // still reads as a SUGGESTION rather than committed work.
-            .opacity(pulse ? 0.95 : 0.72)
-            .overlay(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .strokeBorder(color.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
-                    .padding(-5)
-            )
+            // The student's ink at ~30% (§7 --ai-ghost-opacity) — a faint under-trace,
+            // STATIC (no pulse: §7 "at most one breathing element on screen").
+            .opacity(0.30)
             .contentShape(Rectangle())
             .onTapGesture { onAccept() }
             whyButton.offset(x: 18, y: -14)
@@ -194,7 +191,6 @@ struct GhostInkLayer: View {
             if showDetail { detailCard.fixedSize().offset(x: 0, y: dh + 12) }
         }
         .highPriorityGesture(flick)
-        .onAppear { withAnimation(.easeInOut(duration: 1.7).repeatForever(autoreverses: true)) { pulse = true } }
         .position(c)
         .transition(.opacity)
     }
