@@ -29,6 +29,28 @@ what"), not just the pixels.
   "Noteworthy" hand font with true 2-D fractions), not typeset text, whenever it
   puts math on the page.
 
+### Where things live on screen (the zones)
+
+The editor is: a full-page canvas, a vertical **tool rail on the LEFT**, a small
+floating **header top-LEFT** (back, note title), an **action cluster top-RIGHT**
+(undo/redo, mic, ⋯, duplicate, **"AI Tutor"** button), a **page-navigator strip on
+the RIGHT edge** (page x/y), and a **"Guided Mode" pill bottom-LEFT**. Everything
+the AI shows must respect these:
+
+- **Inline (on the line):** next-step suggestion ink, accepted ink, the result a
+  correction writes. Lives in the page's content flow, scrolls/zooms with the ink.
+- **Left margin lane:** the per-line glyphs (✓ correct, ~ correction, ? hint) sit
+  just left of the equation they're about.
+- **Right margin:** the "grade my answer" pill parks here, at the last line's
+  height (kept clear of the page-navigator strip).
+- **Floating card near the line:** the step card ("why"), the unfolded grade-note —
+  parked toward the trailing side at the glyph's height, never under the strip.
+- **Panel (center, draggable):** the AI Tutor chat. The one heavy surface.
+- **Corner badge:** a breathing ✦ sparkle (top-right area) signals "AI is working."
+
+A good redesign assigns **each kind of help to exactly one zone** and keeps the
+zones from competing for the same pixels.
+
 ---
 
 ## The AI surfaces
@@ -129,6 +151,60 @@ now*. This is the main thing to fix. Consider:
   Define a consistent zoning so the page never feels cluttered.
 - **State & persistence:** when do glyphs/cards clear (erase the ink → glyph gone
   already; page change; new check; explicit dismiss)? What persists across sessions?
+
+## Clear paths — what should happen, moment by moment
+
+Design these as coherent, **non-overlapping** flows. For each: the **trigger**, then
+**what shows and WHERE** (which zone), the **interaction**, and how it **resolves**.
+These are the target paths to make crisp — today they collide; your job is to give
+each a clean lane.
+
+1. **Student writes a step, then pauses (mid-problem).**
+   Trigger: a handwriting stroke settles ~a few seconds, more work clearly remains.
+   → Show: at most the **next-step suggestion** (inline, where the next line goes) —
+   *or nothing* if confidence is low. Not the grade pill at the same time.
+   Interaction: tap/flick-right keeps it (writes ink); flick-left or keep writing
+   dismisses. Resolve: clears the moment they write or move on.
+
+2. **Student writes what looks like a final answer, then pauses.**
+   Trigger: a line that reads as a result/conclusion + a longer pause.
+   → Show: the **"grade this" offer** (right margin, at that line) — *instead of* a
+   next-step suggestion. Interaction: tap → grade. Resolve: offer replaced by the
+   ✓/~ results; × or new writing dismisses.
+
+3. **Student is stuck** (rewrites/erases the same line, no progress, long pause).
+   → Show: a single **hint** (left-margin "?" at that line), not a full answer.
+   Interaction: tap → the **step card** (why + worked steps) by the line. Resolve:
+   persists until they progress, re-check, or dismiss.
+
+4. **Student makes a clear error** (only knowable after a check, or a high-confidence
+   live catch). → Show: a **~ correction glyph** on that line. Tap → grade-note card
+   with **Fix it** (writes the correction inline) and **Show why** (step card).
+   Never silently "auto-correct" the page.
+
+5. **Student doodles / sketches a graph / underlines.** → Show **nothing**. The
+   tutor must read this as not-an-answer and stay silent (define the UX signal for
+   "this stroke was a diagram," beyond the current size/straightness heuristic).
+
+6. **Student asks "why" / taps "show why"** (from a suggestion, a correction, or a
+   hint). → Show: the **step card** by the relevant line — never the chat panel.
+   Card streams a loading state, then the reason + numbered worked steps; × dismiss.
+
+7. **Student accepts a suggestion.** → The faded dashed preview is replaced by
+   **committed ink** in the SAME place (no jump). Any "?" for it goes away. The next
+   pause may offer the next step from there.
+
+8. **Student dismisses repeatedly / ignores offers.** → The tutor should **back off**
+   (longer waits, fewer offers) — design how dismissals teach restraint, and how the
+   student re-summons help on demand when they do want it.
+
+9. **Student erases the ink a glyph points to.** → The glyph **disappears**
+   automatically (already implemented) — keep this invariant across all page-anchored
+   AI marks (a suggestion/card whose line is gone should clear too).
+
+10. **Student opens the AI Tutor chat.** → The chat is for **open-ended questions**;
+    proactive/contextual help stays on the page. Decide what (if anything) the chat
+    should surface that the page surfaces can't.
 
 ## Known pain points to solve
 
