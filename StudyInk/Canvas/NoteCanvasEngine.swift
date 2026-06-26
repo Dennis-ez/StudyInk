@@ -767,12 +767,20 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
             container.imageView.layer.contentsScale = raster
             container.setNeedsDisplay()
         }
-        // The live canvas is permanently supersampled (inkScale× geometry at
-        // screen scale), so it's ALREADY native-sharp and never needs a per-zoom
-        // raster pass. Re-applying contentScaleFactor here on every zoom-end
-        // forced PencilKit to re-rasterize its ink, which showed as a one-frame
-        // ink "reposition" glitch on release — so it's gone. The canvas's scale
-        // is set once at mount.
+        // At inkScale = 1 the live canvas is NOT supersampled, so transform-zoom
+        // magnifies its 1× ink into blur — re-rasterize PencilKit's ink at the zoom
+        // resolution (capped at the raster wall). The old "one-frame reposition
+        // glitch" only happened with the TRANSFORMED supersampled canvas; at
+        // inkScale = 1 the canvas is untransformed, so it's safe. (Skipped when
+        // inkScale > 1, where the canvas is already native-sharp.)
+        if inkScale == 1 {
+            canvas.contentScaleFactor = raster
+            func bumpScale(_ layer: CALayer) {
+                if abs(layer.contentsScale - raster) > 0.01 { layer.contentsScale = raster; layer.setNeedsDisplay() }
+                layer.sublayers?.forEach(bumpScale)
+            }
+            bumpScale(canvas.layer)
+        }
         // Cached full-page bitmaps of inactive pages are NOT tiled — render at
         // screen scale (retina-sharp at rest) and bump with zoom, but cap the
         // zoom contribution at 2x to keep memory sane (zoomed past that you're

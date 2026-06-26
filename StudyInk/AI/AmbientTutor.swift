@@ -169,6 +169,16 @@ final class AmbientTutorController: ObservableObject {
         withAnimation(.easeOut(duration: 0.2)) { openItemID = nil }
     }
 
+    /// A NEW stroke landing on a glyph's line means the student EDITED that line —
+    /// the verdict no longer applies, so resolve (remove) the glyph. (§7 "editing
+    /// the line auto-resolves its glyph".)
+    func resolveGlyphs(pageIndex: Int, editedBy rect: CGRect) {
+        let survivors = items.filter { $0.pageIndex != pageIndex || !$0.anchorRect.intersects(rect) }
+        guard survivors.count != items.count else { return }
+        if let open = openItemID, !survivors.contains(where: { $0.id == open }) { openItemID = nil }
+        withAnimation(.easeOut(duration: 0.2)) { items = survivors }
+    }
+
     /// Drop glyphs whose anchored ink is gone (the student erased that line).
     /// `inkRects` = page-space render bounds of every remaining stroke on the page.
     func pruneGlyphs(pageIndex: Int, inkRects: [CGRect]) {

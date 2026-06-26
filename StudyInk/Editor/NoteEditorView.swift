@@ -239,7 +239,10 @@ struct NoteEditorView: View {
                     ambient.dismiss()
                     if let result = item.result {
                         let rect = item.anchorRect
-                        let fontSize = max(16, min(34, rect.height * 0.95))
+                        // The line's rect HEIGHT is inflated by fractions (num+rule+
+                        // denom), so * 0.95 wrote huge ink. Match the student's glyph
+                        // size: a much smaller factor, capped ~handwriting size.
+                        let fontSize = max(15, min(24, rect.height * 0.42))
                         // Write the corrected line just BELOW the student's line
                         // (writing to the right overlaps their work), verbatim —
                         // `result` is already the full corrected expression.
@@ -672,23 +675,9 @@ struct NoteEditorView: View {
                 .zIndex(41)
             }
 
-            // Guided-mode bottom suggestion card. High zIndex so nothing (AI overlay,
-            // margin lane) can sit over it.
-            if let suggestion = guidedMode.suggestion {
-                VStack {
-                    Spacer()
-                    GuidedSuggestionCard(
-                        suggestion: suggestion,
-                        onAccept: { guidedMode.clearHighlights(); guidedMode.accept(suggestion) },
-                        onDismiss: { guidedMode.clearHighlights(); withAnimation { guidedMode.suggestion = nil } },
-                        onExpand: { Task { await guidedMode.highlightSteps(suggestion) } },
-                        onCollapse: { guidedMode.clearHighlights() }
-                    )
-                    .padding(.bottom, 64)
-                }
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-                .zIndex(60)
-            }
+            // (Handoff §1) The guided suggestion no longer POPS UP a bottom card —
+            // it becomes a dormant lane glyph (placed via onChange below) that the
+            // student taps to open the inline step card. No auto-opening surface.
 
             // Guided-mode status: transient banner on activation + a persistent
             // "watching" chip while enabled (tap to turn off).
@@ -871,6 +860,8 @@ struct NoteEditorView: View {
                 // Erasing fires this too: drop any glyph whose ink is now gone.
                 let inkRects = (canvasController.canvasView?.drawing.strokes ?? []).map(\.renderBounds)
                 ambient.pruneGlyphs(pageIndex: index, inkRects: inkRects)
+                // Editing a graded line (a new stroke ON it) resolves its glyph.
+                ambient.resolveGlyphs(pageIndex: index, editedBy: stroke.renderBounds)
             }
             canvasController.onInterceptedTap = {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { closeDrawer() }
