@@ -841,9 +841,12 @@ struct NoteEditorView: View {
             guidedMode.tutor = tutor
             guidedMode.ambient = ambient
             ghostWitness.tutor = tutor
-            // Guided Mode (proactive watching) is folded into the sensitivity:
-            // Helpful watches, Subtle/Off don't.
-            guidedMode.isEnabled = (ambient.sensitivity == .helpful)
+            // Proactive watching is now owned entirely by the single arbiter
+            // (scheduleAmbient), gated on ambient.sensitivity. The legacy
+            // guidedMode controller is kept inert — enabling it would re-introduce
+            // the parallel AI call AND a checkPage() on note-open (the "guide
+            // popped up the moment I entered the page" misfire).
+            guidedMode.isEnabled = false
             audio.attach(note: note)
             canvasController.onStroke = { index, stroke in
                 let center = CGPoint(x: stroke.renderBounds.midX, y: stroke.renderBounds.midY)
@@ -857,7 +860,11 @@ struct NoteEditorView: View {
                 let isLine = straightness < 1.3 && diag > 55
                 lastStrokeIsWriting = diag < 170 && !isLine
                 audio.logStroke(at: center, pageIndex: index)
-                guidedMode.strokeOccurred()
+                // NOTE: the legacy guidedMode per-stroke watcher used to fire a
+                // SECOND proactive AI call here (in parallel with the arbiter in
+                // scheduleAmbient), giving two AI calls + two surfaces per pause
+                // and firing on the wrong context. The single arbiter (armed on
+                // drawingGestureBeganToken) is now the sole proactive source.
                 // Erasing fires this too: drop any glyph whose ink is now gone.
                 let inkRects = (canvasController.canvasView?.drawing.strokes ?? []).map(\.renderBounds)
                 ambient.pruneGlyphs(pageIndex: index, inkRects: inkRects)
@@ -1013,7 +1020,9 @@ struct NoteEditorView: View {
                 UserDefaults.standard.set(newIndex, forKey: "note.lastPage.\(key)")
             }
             tutor.pageChanged(to: newIndex)
-            guidedMode.pageTurned()
+            // (Legacy guidedMode.pageTurned() removed — it fired an unprompted
+            // proactive AI call on every page turn. The arbiter only acts when
+            // the pen actually rests, so a page turn alone no longer nags.)
             if canvasController.currentPageIndex != newIndex {
                 canvasController.scrollToPage(newIndex)
             }
@@ -1756,8 +1765,7 @@ extension NoteEditorView {
                 }
             } label: { Label("ambient.suggest", systemImage: "wand.and.rays") }
             Picker(selection: Binding(get: { ambient.sensitivity }, set: {
-                ambient.sensitivity = $0
-                guidedMode.isEnabled = ($0 == .helpful)   // Helpful = watch proactively
+                ambient.sensitivity = $0   // the arbiter reads this; guidedMode stays inert
             })) {
                 ForEach(AmbientSensitivity.allCases) { s in Text(s.labelKey).tag(s) }
             } label: { Label("ambient.sensitivity", systemImage: "dial.medium") }
