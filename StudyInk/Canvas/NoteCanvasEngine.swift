@@ -756,14 +756,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     /// blur. After a pinch settles, re-rasterize templates, cached renders,
     /// and the live canvas layer tree at the effective zoom (capped at 3x).
     private func updateRasterScale() {
-        // HARD CAP 3: raising this beyond 3 (attempted twice for sharper deep
-        // zoom) makes PencilKit's layer tree allocate enormous backing stores
-        // and it silently stops rendering ink entirely. 3 is the proven-safe
-        // ceiling for transform-zoom rendering; truly sharp 5x zoom needs the
-        // canvas's native zoom instead (bigger restructure).
-        let effectiveZoom = min(max(zoomScale, 1), 3)
         let baseScale = UIScreen.main.scale
-        let raster = effectiveZoom * baseScale
 
         // A full-page backing store costs w·h·scale²·4 bytes. The old code
         // re-rasterized EVERY page (this loop AND a renderImage pass) at zoom
@@ -785,24 +778,19 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
                 container.setNeedsDisplay()
             }
         }
-        // At inkScale = 1 the live canvas is NOT supersampled, so transform-zoom
-        // magnifies its 1× ink into blur — re-rasterize PencilKit's ink at the
-        // zoom resolution, BUDGET-BOUNDED (the unbounded bump was allocating
-        // ~125 MB and contributing to the hang). The old "one-frame reposition
-        // glitch" only happened with the TRANSFORMED supersampled canvas; at
-        // inkScale = 1 the canvas is untransformed, so it's safe. (Skipped when
-        // inkScale > 1, where the canvas is already native-sharp.)
-        if inkScale == 1 {
-            let canvasRaster = min(raster, budgetScale(canvas.bounds.size, 64))
-            canvas.contentScaleFactor = canvasRaster
-            func bumpScale(_ layer: CALayer) {
-                if abs(layer.contentsScale - canvasRaster) > 0.01 {
-                    layer.contentsScale = canvasRaster; layer.setNeedsDisplay()
-                }
-                layer.sublayers?.forEach(bumpScale)
-            }
-            bumpScale(canvas.layer)
-        }
+        // DO NOT bump the live canvas's contentsScale to chase sharper zoom.
+        // PROVEN on the iOS 26 SDK (PR #155 added it; PR #159's budget cap made
+        // the allocation succeed, which EXPOSED the failure; reverted here):
+        // forcing contentsScale on PencilKit's layer tree makes the COMMITTED ink
+        // vanish — only the live in-progress stroke renders while the pen is down,
+        // everything already drawn disappears. PencilKit owns its own backing
+        // store; mutating it out from under PencilKit breaks rendering. So the
+        // canvas keeps its default screen-scale rendering: ink is ALWAYS VISIBLE
+        // but transform-zoom magnifies it soft past ~1×. Truly sharp deep-zoom
+        // ink needs PencilKit-NATIVE zoom (re-tessellation), not a raster bump —
+        // see [[studyink-canvas-zoom-ink]]. (inkScale=1 path; supersampling at
+        // inkScale>1 reintroduced the offset-under-pen bug, also a dead end.)
+
         // The active page's BACKGROUND (paper/template/PDF) is drawn by the
         // container's own CGContext — no PencilKit layer tree — so it can render
         // sharper than the 3x ink ceiling without the ink-breakage risk. PDFs
