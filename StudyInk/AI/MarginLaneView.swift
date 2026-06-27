@@ -325,6 +325,7 @@ struct GradeGlyphView: View {
     var onTap: () -> Void
     var onDismiss: () -> Void
     @State private var breathe = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 6) {
@@ -351,7 +352,10 @@ struct GradeGlyphView: View {
             .accessibilityLabel(Text("ai.dismiss"))
         }
         .fixedSize()
-        .onAppear { withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) { breathe = true } }
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) { breathe = true }
+        }
     }
 }
 
@@ -429,6 +433,7 @@ struct MarginNoteView: View {
     var onShowWhy: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var breathe = false
 
     private var material: Material { colorScheme == .dark ? .regularMaterial : .ultraThinMaterial }
@@ -499,6 +504,7 @@ struct MarginNoteView: View {
         // Amber-breathe — the tutor's quiet glow.
         .shadow(color: AppTheme.current.aiAccent.opacity(breathe ? 0.20 : 0.10), radius: breathe ? 30 : 22, y: 8)
         .onAppear {
+            guard !reduceMotion else { return }
             withAnimation(.easeInOut(duration: 1.7).repeatForever(autoreverses: true)) { breathe = true }
         }
     }
@@ -517,16 +523,18 @@ struct MarginNoteView: View {
 /// language as the check-my-work flow, so any AI activity reads the same.
 struct AIThinkingBadge: View {
     @State private var breathe = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Circle()
             .fill(AppTheme.current.aiAccent)
             .frame(width: 34, height: 34)
             .overlay(Lucide("sparkles", size: 17).foregroundStyle(.white))
-            .scaleEffect(breathe ? 1.0 : 0.82)
+            .scaleEffect(breathe || reduceMotion ? 1.0 : 0.82)
             .shadow(color: AppTheme.current.aiAccent.opacity(breathe ? 0.7 : 0.25),
                     radius: breathe ? 18 : 7)
             .onAppear {
+                guard !reduceMotion else { return }
                 withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) { breathe = true }
             }
             .transition(.scale(scale: 0.6).combined(with: .opacity))

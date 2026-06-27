@@ -17,6 +17,7 @@ struct AIBubbleView: View {
     @FocusState private var followUpFocused: Bool
     @Environment(\.aiAccent) private var aiAccent
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Frosted card fill over the live canvas: lighter in light mode, denser in
     /// dark so text stays legible against the page.
@@ -253,8 +254,8 @@ struct AIBubbleView: View {
             .frame(height: 10)
             .frame(maxWidth: .infinity, alignment: .leading)
             .scaleEffect(x: widthFraction, anchor: .leading)
-            .opacity(shimmerPhase ? 0.5 : 1)
-            .animation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true), value: shimmerPhase)
+            .opacity(shimmerPhase && !reduceMotion ? 0.5 : 1)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.7).repeatForever(autoreverses: true), value: shimmerPhase)
     }
 
     private var thinkingDots: some View {
@@ -263,9 +264,9 @@ struct AIBubbleView: View {
                 Circle()
                     .fill(toneColor)
                     .frame(width: 5, height: 5)
-                    .opacity(shimmerPhase ? 0.3 : 1)
+                    .opacity(shimmerPhase && !reduceMotion ? 0.3 : 1)
                     .animation(
-                        .easeInOut(duration: 0.6)
+                        reduceMotion ? nil : .easeInOut(duration: 0.6)
                             .repeatForever(autoreverses: true)
                             .delay(Double(i) * 0.18),
                         value: shimmerPhase

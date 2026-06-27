@@ -210,6 +210,7 @@
 "settings.ai.status" = "מפתח API";
 "settings.ai.configured" = "מוגדר";
 "settings.ai.missingKey" = "חסר";
+"settings.ai.openSettings" = "הגדרת AI";
 "settings.ai.keyHelp" = "הדביקו את מפתח ה-API של Anthropic מ-console.anthropic.com. המפתח נשמר באופן מאובטח ב-Keychain של המכשיר.";
 "settings.ai.keyHelp.gemini" = "הדביקו מפתח API של Gemini — מפתחות חינמיים זמינים ב-aistudio.google.com. המפתח נשמר באופן מאובטח ב-Keychain של המכשיר.";
 "settings.ai.keyHelp.custom" = "כל API תואם OpenAI עובד: Groq (מפתחות חינמיים ב-console.groq.com)‏, OpenAI‏, Together או שרת מקומי. הגדירו את כתובת הבסיס והדביקו את המפתח.";

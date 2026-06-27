@@ -210,6 +210,7 @@
 "settings.ai.status" = "API Key";
 "settings.ai.configured" = "Configured";
 "settings.ai.missingKey" = "Missing";
+"settings.ai.openSettings" = "Set Up AI";
 "settings.ai.keyHelp" = "Paste your Anthropic API key from console.anthropic.com. It is stored securely in the device Keychain.";
 "settings.ai.keyHelp.gemini" = "Paste a Gemini API key — free-tier keys are available at aistudio.google.com. It is stored securely in the device Keychain.";
 "settings.ai.keyHelp.custom" = "Any OpenAI-compatible API works: Groq (free keys at console.groq.com), OpenAI, Together, or a local server. Set the base URL and paste its key.";
