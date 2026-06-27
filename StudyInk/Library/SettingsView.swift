@@ -34,6 +34,7 @@ struct SettingsView: View {
 
     @State private var showAIDebug = false
     @State private var showPerfMonitor = false
+    @State private var showNativeZoomLab = false
     @State private var models: [String] = []
     @State private var loadingModels = false
     @State private var customModel = ""
@@ -470,6 +471,21 @@ struct SettingsView: View {
                     }
                     .buttonStyle(.plain)
                     Divider()
+                    Button {
+                        showNativeZoomLab = true
+                    } label: {
+                        HStack {
+                            Label(title: { Text(verbatim: "Native zoom (preview)") },
+                                  icon: { Image(systemName: "arrow.up.left.and.arrow.down.right.magnifyingglass") })
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.footnote).foregroundStyle(.tertiary)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    Text(verbatim: "Prototype: write, then pinch to zoom. Tests whether PencilKit-native zoom keeps ink crisp (vs the current transform-zoom blur).")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Divider()
                     Toggle(isOn: $penTrackerDebug) {
                         Label(title: { Text(verbatim: "Pen tracker (debug)") },
                               icon: { Image(systemName: "pencil.tip.crop.circle") })
@@ -483,6 +499,9 @@ struct SettingsView: View {
             }
             .sheet(isPresented: $showPerfMonitor) {
                 NavigationStack { PerfMonitorView() }
+            }
+            .fullScreenCover(isPresented: $showNativeZoomLab) {
+                NativeZoomLabView()
             }
         }
     }
