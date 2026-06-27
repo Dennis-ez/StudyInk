@@ -172,6 +172,7 @@ struct StrokeTransformOverlay: View {
     @State private var dragStart: CGSize?
     @State private var scaleStart: CGFloat?
     @State private var antsPhase: CGFloat = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// The marching-ants outline tracing the lasso loop (falling back to the
     /// bounds), with the live move/rotate/scale baked in.
@@ -235,7 +236,8 @@ struct StrokeTransformOverlay: View {
         .coordinateSpace(name: "strokeTransform")
         .onAppear {
             // Marching ants: the dash sum is 10, so sliding the phase by -10
-            // loops seamlessly.
+            // loops seamlessly. Reduce Motion keeps the dashed outline static.
+            guard !reduceMotion else { return }
             withAnimation(.linear(duration: 0.5).repeatForever(autoreverses: false)) {
                 antsPhase = -10
             }

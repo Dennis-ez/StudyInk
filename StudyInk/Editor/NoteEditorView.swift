@@ -32,6 +32,7 @@ struct NoteEditorView: View {
     @State private var aiSketchText = ""
     @State private var showPageSettings = false
     @State private var showStickers = false
+    @State private var showAISettings = false
     @State private var showCamera = false
     @State private var showScanner = false
     @State private var photoPickerItem: PhotosPickerItem?
@@ -1099,10 +1100,19 @@ struct NoteEditorView: View {
             }
         }
         .alert(Text("ai.error"), isPresented: aiErrorBinding) {
+            // A missing key is a dead-end with only "Done" — give a one-tap path
+            // to set AI up instead of making the user leave the note to find it.
+            if !AIConfig.isConfigured {
+                Button("settings.ai.openSettings") {
+                    tutor.errorMessage = nil
+                    showAISettings = true
+                }
+            }
             Button("action.done", role: .cancel) { tutor.errorMessage = nil }
         } message: {
             Text(tutor.errorMessage ?? "")
         }
+        .sheet(isPresented: $showAISettings) { SettingsView() }
     }
 
     private var aiErrorBinding: Binding<Bool> {
