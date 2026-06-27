@@ -89,15 +89,23 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     /// displayIntoCanvas / canonicalFromCanvas). KILL SWITCH: set to 1 to fully
     /// revert to plain page-coordinate, transform-zoom behaviour.
     ///
-    /// FLIPPED 4 → 1 (2026-06-25): the 4× supersample counter-scales the live
-    /// PKCanvasView with a transform, and on the iOS 26 SDK PencilKit renders the
-    /// IN-PROGRESS stroke through that transform incorrectly — the live ink trailed
-    /// offset under the pen and only snapped into place on lift (the bug the user
-    /// filmed; the page itself wasn't moving — #135/#137 confirmed — the live
-    /// preview was). inkScale = 1 = no transform = native PencilKit, so the live
-    /// stroke lands exactly under the pen. Cost: deep zoom past 3× goes soft again
-    /// (transform-zoom raster cap) until the canvas gets true native zoom.
-    private let inkScale: CGFloat = 1
+    /// HISTORY (the supersample ⇄ live-offset tradeoff, settled by user choice):
+    /// • 4 → 1 (2026-06-25): inkScale=1 = no transform = the live stroke lands
+    ///   exactly under the pen, but ALL zoom (incl. fit-zoom on PDFs) renders ink
+    ///   soft, because at 1× the canvas only renders at screen scale and the
+    ///   transform-zoom magnifies it.
+    /// • 1 → 4 (2026-06-27): the user explicitly asked for the SHARP ink back
+    ///   ("we already had good sharp ink, bring that back"), and the native-zoom
+    ///   prototype (NativeZoomLab) confirmed PencilKit's own zoom does NOT
+    ///   re-tessellate crisply on this SDK — so supersampling is the only way to
+    ///   sharp ink. inkScale=4 renders ink at 4× resolution → crisp through zoom.
+    ///   KNOWN COST: the 4× canvas is counter-scaled by a transform, and iOS 26
+    ///   PencilKit can render the IN-PROGRESS stroke offset under the pen (snaps
+    ///   correct on lift), most visibly on PDF pages. Sharp-ink and zero-offset are
+    ///   mutually exclusive here until the canvas gets true native zoom; the user
+    ///   prioritised sharpness. (OOM-on-deep-zoom that plagued inkScale=4 before is
+    ///   now bounded by the budget caps in updateRasterScale.)
+    private let inkScale: CGFloat = 4
     /// Cached-render resolution in PIXELS per point, raised when zoomed in.
     /// Inactive pages render at screen scale — retina-sharp at rest, not a soft
     /// 1x bitmap. They are intentionally NOT bumped with zoom: re-rasterizing
