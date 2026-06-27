@@ -99,9 +99,11 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     /// (transform-zoom raster cap) until the canvas gets true native zoom.
     private let inkScale: CGFloat = 1
     /// Cached-render resolution in PIXELS per point, raised when zoomed in.
-    /// Starts at the screen scale so adjacent (inactive) pages are retina-sharp
-    /// at default zoom, not a soft 1x bitmap.
-    private var imageRenderScale: CGFloat = UIScreen.main.scale
+    /// Inactive pages render at screen scale — retina-sharp at rest, not a soft
+    /// 1x bitmap. They are intentionally NOT bumped with zoom: re-rasterizing
+    /// every page's full-page bitmap on pinch OOM-hung long notes. Only the
+    /// active page gets zoom-resolution rasterization (see updateRasterScale).
+    private let imageRenderScale: CGFloat = UIScreen.main.scale
     private var rasterWorkItem: DispatchWorkItem?
     private var shapeWorkItem: DispatchWorkItem?
     private var lastStrokeCount = 0
@@ -760,46 +762,57 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         // ceiling for transform-zoom rendering; truly sharp 5x zoom needs the
         // canvas's native zoom instead (bigger restructure).
         let effectiveZoom = min(max(zoomScale, 1), 3)
-        let raster = effectiveZoom * UIScreen.main.scale
-        for container in containers {
-            container.contentScaleFactor = raster
-            container.layer.contentsScale = raster
-            container.imageView.layer.contentsScale = raster
-            container.setNeedsDisplay()
+        let baseScale = UIScreen.main.scale
+        let raster = effectiveZoom * baseScale
+
+        // A full-page backing store costs w·h·scale²·4 bytes. The old code
+        // re-rasterized EVERY page (this loop AND a renderImage pass) at zoom
+        // resolution; on a long note (e.g. 13 pages) that allocated hundreds of
+        // MB on a single pinch and OOM-hung the app (logs: repeated "failed to
+        // allocate 240648256 bytes"). Fix: only the ACTIVE page is re-rasterized
+        // at zoom — inactive pages are peripheral when you've zoomed in, so they
+        // stay at base screen scale — and every scaled allocation is bounded by a
+        // memory budget so it can never blow up regardless of page size.
+        func budgetScale(_ size: CGSize, _ mb: CGFloat) -> CGFloat {
+            let w = max(size.width, 1), h = max(size.height, 1)
+            return (mb * 1_048_576 / (4 * w * h)).squareRoot()
+        }
+        for (index, container) in containers.enumerated() where index != activeIndex {
+            if abs(container.contentScaleFactor - baseScale) > 0.25 {
+                container.contentScaleFactor = baseScale
+                container.layer.contentsScale = baseScale
+                container.imageView.layer.contentsScale = baseScale
+                container.setNeedsDisplay()
+            }
         }
         // At inkScale = 1 the live canvas is NOT supersampled, so transform-zoom
-        // magnifies its 1× ink into blur — re-rasterize PencilKit's ink at the zoom
-        // resolution (capped at the raster wall). The old "one-frame reposition
+        // magnifies its 1× ink into blur — re-rasterize PencilKit's ink at the
+        // zoom resolution, BUDGET-BOUNDED (the unbounded bump was allocating
+        // ~125 MB and contributing to the hang). The old "one-frame reposition
         // glitch" only happened with the TRANSFORMED supersampled canvas; at
         // inkScale = 1 the canvas is untransformed, so it's safe. (Skipped when
         // inkScale > 1, where the canvas is already native-sharp.)
         if inkScale == 1 {
-            canvas.contentScaleFactor = raster
+            let canvasRaster = min(raster, budgetScale(canvas.bounds.size, 64))
+            canvas.contentScaleFactor = canvasRaster
             func bumpScale(_ layer: CALayer) {
-                if abs(layer.contentsScale - raster) > 0.01 { layer.contentsScale = raster; layer.setNeedsDisplay() }
+                if abs(layer.contentsScale - canvasRaster) > 0.01 {
+                    layer.contentsScale = canvasRaster; layer.setNeedsDisplay()
+                }
                 layer.sublayers?.forEach(bumpScale)
             }
             bumpScale(canvas.layer)
-        }
-        // Cached full-page bitmaps of inactive pages are NOT tiled — render at
-        // screen scale (retina-sharp at rest) and bump with zoom, but cap the
-        // zoom contribution at 2x to keep memory sane (zoomed past that you're
-        // looking at the live page anyway).
-        let imageTarget = min(effectiveZoom, 2) * UIScreen.main.scale
-        if abs(imageTarget - imageRenderScale) > 0.5 {
-            imageRenderScale = imageTarget
-            for index in containers.indices where index != activeIndex {
-                renderImage(for: index)
-            }
         }
         // The active page's BACKGROUND (paper/template/PDF) is drawn by the
         // container's own CGContext — no PencilKit layer tree — so it can render
         // sharper than the 3x ink ceiling without the ink-breakage risk. PDFs
         // are vector, so this keeps them crisp deep into zoom instead of going
-        // soft "like an image". Bounded to the single active page for memory.
+        // soft "like an image". Budget-bounded (a 4× full page was ~240 MB and
+        // failing to allocate).
         if containers.indices.contains(activeIndex) {
-            let bg = min(max(zoomScale, 1), 4) * UIScreen.main.scale
             let active = containers[activeIndex]
+            let bg = min(min(max(zoomScale, 1), 4) * baseScale,
+                         budgetScale(active.bounds.size, 96))
             if abs(active.contentScaleFactor - bg) > 0.25 {
                 active.contentScaleFactor = bg
                 active.layer.contentsScale = bg
