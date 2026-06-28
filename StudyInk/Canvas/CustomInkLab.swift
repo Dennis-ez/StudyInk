@@ -1,50 +1,62 @@
 import SwiftUI
 import UIKit
 
-/// PHASE A1 of the custom ink engine (the user chose path A — a Notability-style
-/// custom renderer — over living with the PencilKit sharp-vs-offset tradeoff).
+/// Custom ink engine lab — phases A1 (proven on device: sharp at zoom + pen-accurate)
+/// and A2 (this file): PERFORMANCE.
 ///
-/// This is an ISOLATED proof of concept. It touches nothing in the real app. It
-/// validates the one thesis the whole engine rests on, before we invest in the
-/// full build-out (tiling, eraser, selection, data model, editor integration):
+/// A2 thesis: drawing stays smooth no matter how many strokes are on the page,
+/// because committed strokes are cached to a bitmap (re-rendered only when a stroke
+/// commits or the zoom changes) and only the LIVE stroke is redrawn each frame.
+/// Without this, redrawing every stroke per frame crawls on a full page.
 ///
-///   A custom VECTOR ink renderer gives BOTH —
-///   • sharp ink at any zoom (we re-rasterize the vector strokes at the current
-///     zoom resolution, instead of scaling a fixed bitmap like PencilKit), AND
-///   • a pen-accurate live stroke (we draw through the exact touch points in our
-///     own coordinate space — no PencilKit transform black box to mis-render it).
+/// Isolated — touches nothing in the real app. Reachable from
+/// Settings → Developer → "Custom ink lab (preview)".
 ///
-/// HOW TO TEST: write a few small letters, pinch to zoom in, RELEASE, then look —
-/// the ink should be crisp (it re-renders on release), and while writing the line
-/// should sit exactly under the pen. If both hold, path A is proven.
-///
-/// NOT in A1 (deliberately): tiling for unbounded zoom/memory (here the re-render
-/// resolution is budget-capped), erasing, color/tool choice, undo, persistence.
+/// HOW TO TEST A2: tap "+300" a couple of times to load the page with strokes, then
+/// write — the live stroke should stay smooth (no lag) even with hundreds on screen.
+/// Pinch-zoom + release should still be crisp.
 struct CustomInkLabView: View {
     @Environment(\.dismiss) private var dismiss
+    @StateObject private var lab = InkLabController()
 
     var body: some View {
         ZStack(alignment: .top) {
-            CustomInkScroll().ignoresSafeArea()
-            HStack(spacing: 10) {
-                Text(verbatim: "Write, pinch to zoom, release — crisp? pen-accurate?")
-                    .font(.footnote)
-                    .padding(.horizontal, 12).padding(.vertical, 8)
-                    .background(.ultraThinMaterial, in: Capsule())
-                Spacer()
-                Button { dismiss() } label: {
-                    Text(verbatim: "Done").fontWeight(.semibold)
-                        .padding(.horizontal, 16).padding(.vertical, 8)
-                        .background(.ultraThinMaterial, in: Capsule())
+            CustomInkScroll(controller: lab).ignoresSafeArea()
+            HStack(spacing: 8) {
+                Button { lab.addRandom(300) } label: { chip("+300") }
+                Button { lab.clear() } label: { chip("Clear") }
+                if lab.strokeCount > 0 {
+                    Text(verbatim: "\(lab.strokeCount) strokes")
+                        .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                 }
+                Spacer()
+                Button { dismiss() } label: { chip("Done", bold: true) }
             }
             .padding(.horizontal, 16).padding(.top, 10)
         }
     }
+
+    private func chip(_ text: String, bold: Bool = false) -> some View {
+        Text(verbatim: text)
+            .font(.footnote.weight(bold ? .semibold : .regular))
+            .padding(.horizontal, 14).padding(.vertical, 8)
+            .background(.ultraThinMaterial, in: Capsule())
+    }
+}
+
+/// Bridges SwiftUI buttons to the UIKit ink view.
+final class InkLabController: ObservableObject {
+    weak var view: VectorInkView?
+    @Published var strokeCount = 0
+    func addRandom(_ n: Int) { view?.addRandomStrokes(n) }
+    func clear() { view?.clearAll() }
+    func syncCount() { strokeCount = view?.strokeCount ?? 0 }
 }
 
 struct CustomInkScroll: UIViewRepresentable {
-    func makeCoordinator() -> Coordinator { Coordinator() }
+    let controller: InkLabController
+
+    func makeCoordinator() -> Coordinator { Coordinator(controller) }
 
     func makeUIView(context: Context) -> UIScrollView {
         let page = CGSize(width: 820, height: 1100)
@@ -55,16 +67,16 @@ struct CustomInkScroll: UIViewRepresentable {
         scroll.backgroundColor = UIColor(white: 0.98, alpha: 1)
         scroll.delegate = context.coordinator
         scroll.contentInsetAdjustmentBehavior = .never
-        // Notes-app behaviour: ONE finger / pencil draws, TWO fingers pan & pinch
-        // zooms. Without this the scroll view's pan eats single-finger drags and
-        // the page "just slides" instead of drawing.
+        // Notes-app split: ONE finger/pencil draws, TWO fingers pan, pinch zooms.
         scroll.panGestureRecognizer.minimumNumberOfTouches = 2
         scroll.delaysContentTouches = false
 
         let ink = VectorInkView(frame: CGRect(origin: .zero, size: page))
         ink.backgroundColor = .white
+        ink.onChange = { [weak controller] in controller?.syncCount() }
         scroll.contentSize = page
         scroll.addSubview(ink)
+        controller.view = ink
         context.coordinator.inkView = ink
         return scroll
     }
@@ -73,34 +85,32 @@ struct CustomInkScroll: UIViewRepresentable {
 
     final class Coordinator: NSObject, UIScrollViewDelegate {
         weak var inkView: VectorInkView?
+        init(_ controller: InkLabController) {}
         func viewForZooming(in scrollView: UIScrollView) -> UIView? { inkView }
-        // PencilKit-on-an-external-transform blurs because the bitmap is scaled and
-        // never re-rendered. We OWN the renderer, so on zoom we just re-rasterize
-        // the vector strokes at the new resolution → crisp. (During the live pinch
-        // the layer scales—briefly soft—then snaps crisp here on release, exactly
-        // like Notability.)
         func scrollViewDidEndZooming(_ scrollView: UIScrollView, with view: UIView?, atScale scale: CGFloat) {
             inkView?.setRasterScale(for: scale)
         }
     }
 }
 
-/// A point sampled from the pen: where it was and how hard it pressed.
 private struct InkSample {
     let location: CGPoint
     let width: CGFloat
 }
 
-/// The custom vector ink surface. Strokes are stored as point/width arrays and
-/// RE-DRAWN with Core Graphics at the view's current contentScaleFactor, so they
-/// stay crisp at any zoom (unlike a fixed-resolution bitmap). The live stroke is
-/// drawn through the exact touch points, so it lands under the pen by construction.
+/// Custom vector ink surface. Committed strokes live in a cached bitmap at the
+/// current zoom resolution; only the live stroke is redrawn per frame, so drawing
+/// cost is independent of how many strokes the page holds.
 final class VectorInkView: UIView {
     private var strokes: [[InkSample]] = []
     private var current: [InkSample] = []
+    private var committed: UIImage?          // rasterised `strokes` at contentScaleFactor
 
     private let baseWidth: CGFloat = 2.6
     private let inkColor = UIColor(white: 0.08, alpha: 1)
+
+    var onChange: (() -> Void)?
+    var strokeCount: Int { strokes.count }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -110,18 +120,18 @@ final class VectorInkView: UIView {
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    /// Re-rasterize the vector strokes at the zoom resolution, BUDGET-BOUNDED so a
-    /// single page's backing store can't blow memory (real engine: tile instead).
+    // MARK: Zoom — re-rasterise the committed cache at the new resolution.
+
     func setRasterScale(for zoom: CGFloat) {
         let want = zoom * UIScreen.main.scale
         let w = max(bounds.width, 1), h = max(bounds.height, 1)
-        let budget: CGFloat = 110 * 1_048_576           // ~110 MB ceiling
+        let budget: CGFloat = 110 * 1_048_576           // ~110 MB (A3 replaces this with tiling)
         let maxScale = (budget / (4 * w * h)).squareRoot()
         let scale = min(want, maxScale)
-        if abs(scale - contentScaleFactor) > 0.05 {
-            contentScaleFactor = scale
-            setNeedsDisplay()
-        }
+        guard abs(scale - contentScaleFactor) > 0.05 else { return }
+        contentScaleFactor = scale
+        rebuildCommitted()
+        setNeedsDisplay()
     }
 
     // MARK: Pencil input — exact touch points in our own coordinate space.
@@ -133,12 +143,21 @@ final class VectorInkView: UIView {
     }
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let t = touches.first else { return }
-        // Coalesced touches = every input sample since the last frame → smooth lines.
+        let start = current.last?.location
         for ct in event?.coalescedTouches(for: t) ?? [t] { current.append(sample(ct)) }
-        setNeedsDisplay()
+        // Only invalidate the region the new segment touched → cheap live redraw.
+        if let a = start, let b = current.last?.location {
+            setNeedsDisplay(segmentRect(a, b))
+        } else {
+            setNeedsDisplay()
+        }
     }
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        if current.count > 1 { strokes.append(current) }
+        if current.count > 1 {
+            strokes.append(current)
+            appendToCommitted(current)      // bake just this stroke into the cache
+            onChange?()
+        }
         current = []
         setNeedsDisplay()
     }
@@ -148,31 +167,80 @@ final class VectorInkView: UIView {
     }
 
     private func sample(_ t: UITouch) -> InkSample {
-        // Apple Pencil reports force; finger (simulator) reports 0 → fall back to 1.
         let force = t.maximumPossibleForce > 0 ? t.force / t.maximumPossibleForce : 0
         let pressure = force > 0 ? force : 0.5
         return InkSample(location: t.location(in: self), width: baseWidth * (0.55 + pressure))
     }
 
-    // MARK: Render — vector → crisp at any contentScaleFactor.
-
-    override func draw(_ rect: CGRect) {
-        guard let ctx = UIGraphicsGetCurrentContext() else { return }
-        ctx.setFillColor(UIColor.white.cgColor)
-        ctx.fill(rect)
-        ctx.setStrokeColor(inkColor.cgColor)
-        ctx.setLineCap(.round)
-        ctx.setLineJoin(.round)
-        for s in strokes { drawStroke(s, in: ctx) }
-        drawStroke(current, in: ctx)
+    private func segmentRect(_ a: CGPoint, _ b: CGPoint) -> CGRect {
+        CGRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(a.x - b.x), height: abs(a.y - b.y))
+            .insetBy(dx: -baseWidth * 3, dy: -baseWidth * 3)
     }
 
-    /// Variable-width freehand: each segment is stroked at the local pen width,
-    /// round caps blending them, over a midpoint-smoothed path.
+    // MARK: Stress test
+
+    func addRandomStrokes(_ n: Int) {
+        for _ in 0..<n {
+            let start = CGPoint(x: .random(in: 0...bounds.width), y: .random(in: 0...bounds.height))
+            var s: [InkSample] = []
+            var p = start
+            for _ in 0..<Int.random(in: 6...18) {
+                p = CGPoint(x: p.x + .random(in: -14...14), y: p.y + .random(in: -14...14))
+                s.append(InkSample(location: p, width: baseWidth * .random(in: 0.6...1.4)))
+            }
+            strokes.append(s)
+        }
+        rebuildCommitted()
+        setNeedsDisplay()
+        onChange?()
+    }
+
+    func clearAll() {
+        strokes = []; current = []; committed = nil
+        setNeedsDisplay()
+        onChange?()
+    }
+
+    // MARK: Render
+
+    private func committedRenderer() -> UIGraphicsImageRenderer {
+        let fmt = UIGraphicsImageRendererFormat()
+        fmt.scale = contentScaleFactor
+        fmt.opaque = false
+        return UIGraphicsImageRenderer(bounds: bounds, format: fmt)
+    }
+
+    private func rebuildCommitted() {
+        guard bounds.width > 0, !strokes.isEmpty else { committed = nil; return }
+        committed = committedRenderer().image { c in
+            for s in strokes { drawStroke(s, in: c.cgContext) }
+        }
+    }
+
+    private func appendToCommitted(_ stroke: [InkSample]) {
+        let old = committed
+        committed = committedRenderer().image { c in
+            old?.draw(in: bounds)
+            drawStroke(stroke, in: c.cgContext)
+        }
+    }
+
+    override func draw(_ rect: CGRect) {
+        UIColor.white.setFill()
+        UIRectFill(rect)
+        committed?.draw(in: bounds)                       // cached committed ink (clipped to `rect` by CG)
+        if !current.isEmpty {
+            drawStroke(current, in: UIGraphicsGetCurrentContext()!)   // live stroke only
+        }
+    }
+
     private func drawStroke(_ pts: [InkSample], in ctx: CGContext) {
+        ctx.setStrokeColor(inkColor.cgColor)
+        ctx.setFillColor(inkColor.cgColor)
+        ctx.setLineCap(.round)
+        ctx.setLineJoin(.round)
         guard pts.count > 1 else {
-            if let p = pts.first {   // a dot
-                ctx.setFillColor(inkColor.cgColor)
+            if let p = pts.first {
                 ctx.fillEllipse(in: CGRect(x: p.location.x - p.width / 2, y: p.location.y - p.width / 2,
                                            width: p.width, height: p.width))
             }
@@ -183,7 +251,6 @@ final class VectorInkView: UIView {
             let mid = CGPoint(x: (a.location.x + b.location.x) / 2, y: (a.location.y + b.location.y) / 2)
             ctx.setLineWidth((a.width + b.width) / 2)
             ctx.move(to: a.location)
-            // Quadratic through the previous point smooths the corners.
             ctx.addQuadCurve(to: mid, control: a.location)
             ctx.addLine(to: b.location)
             ctx.strokePath()
