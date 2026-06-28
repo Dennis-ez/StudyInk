@@ -67,9 +67,6 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     private let pageGap: CGFloat = 0
 
     let canvas = InkCanvasView()
-    /// Holds the live canvas and carries the 1/inkScale counter-scale, so the
-    /// PKCanvasView itself stays at IDENTITY transform — see applyCanvasGeometry.
-    private let canvasHost = UIView()
     private var activeIndex = 0
     private var isProgrammaticChange = false
     /// True once the active page's real drawing has been loaded into the live
@@ -108,7 +105,18 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     ///   mutually exclusive here until the canvas gets true native zoom; the user
     ///   prioritised sharpness. (OOM-on-deep-zoom that plagued inkScale=4 before is
     ///   now bounded by the budget caps in updateRasterScale.)
-    private let inkScale: CGFloat = 4
+    /// USER-CHOSEN TRADEOFF (settings.canvas.smoothInk, default sharp = 4). On the
+    /// iOS 26 SDK these two are mutually exclusive and there is no universally right
+    /// answer, so the user picks:
+    ///   • 4 (sharp): ink rendered at 4× resolution → crisp at every zoom; the cost
+    ///     is the live in-progress stroke can sit slightly offset under the pen on
+    ///     imported-PDF pages (snaps correct on lift), because PencilKit mis-renders
+    ///     the active stroke through the canvas's counter-scale transform.
+    ///   • 1 (smooth): no transform → the live stroke lands exactly under the pen,
+    ///     but zoomed-in ink goes soft (rendered at screen scale, magnified).
+    /// Read once at engine construction; takes effect on the next note open.
+    private let inkScale: CGFloat =
+        UserDefaults.standard.bool(forKey: "settings.canvas.smoothInk") ? 1 : 4
     /// Cached-render resolution in PIXELS per point, raised when zoomed in.
     /// Inactive pages render at screen scale — retina-sharp at rest, not a soft
     /// 1x bitmap. They are intentionally NOT bumped with zoom: re-rasterizing
@@ -182,12 +190,6 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         // transparent, so dark page + the literal light ink show correctly.
         // Ink colors are pre-adapted by appearance via InkColorAdapter.
         canvas.overrideUserInterfaceStyle = .light
-        // The canvas lives inside a host view that carries the counter-scale, so
-        // the canvas's OWN transform stays identity (the fix for the live-stroke
-        // offset under the pen at inkScale > 1 — see applyCanvasGeometry).
-        canvasHost.backgroundColor = .clear
-        canvasHost.isOpaque = false
-        canvasHost.addSubview(canvas)
         controller.inkScale = inkScale
         controller.attach(canvas)
         controller.engine = self
@@ -463,7 +465,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         container.imageView.isHidden = false
         canvas.isUserInteractionEnabled = true
         applyCanvasGeometry(pageSize: pageSizes[index])
-        container.addSubview(canvasHost)   // host carries the scale; canvas stays identity
+        container.addSubview(canvas)
         isProgrammaticChange = true
         // Storage → display: black ink shows near-white on a dark canvas, scaled
         // up into the canvas's inkScale coordinate space.
@@ -849,24 +851,12 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     /// so it still occupies exactly the page in its container — but renders ink
     /// at inkScale resolution. Call wherever the canvas is (re)mounted on a page.
     private func applyCanvasGeometry(pageSize: CGSize) {
-        // The live canvas renders ink at inkScale× resolution: its bounds are
-        // inkScale× the page in its OWN coordinate space, and it keeps an IDENTITY
-        // transform. The counter-scale that fits it back onto the page lives on the
-        // HOST view instead. This is the fix for the offset-under-the-pen at
-        // inkScale > 1: iOS 26 PencilKit mis-renders the IN-PROGRESS stroke when the
-        // PKCanvasView itself has a non-identity transform, but renders it correctly
-        // at identity — and scaling the host scales the live AND committed ink
-        // together, so there's no relative drift. (inkScale == 1 → no scale at all.)
-        let scaled = CGSize(width: pageSize.width * inkScale, height: pageSize.height * inkScale)
         canvas.transform = .identity
-        canvas.bounds = CGRect(origin: .zero, size: scaled)
-        canvas.center = CGPoint(x: scaled.width / 2, y: scaled.height / 2)   // fill the host
-
-        canvasHost.transform = .identity
-        canvasHost.bounds = CGRect(origin: .zero, size: scaled)
-        canvasHost.center = CGPoint(x: pageSize.width / 2, y: pageSize.height / 2)   // page-centered in the container
+        canvas.bounds = CGRect(origin: .zero,
+                               size: CGSize(width: pageSize.width * inkScale, height: pageSize.height * inkScale))
+        canvas.center = CGPoint(x: pageSize.width / 2, y: pageSize.height / 2)
         if inkScale != 1 {
-            canvasHost.transform = CGAffineTransform(scaleX: 1 / inkScale, y: 1 / inkScale)
+            canvas.transform = CGAffineTransform(scaleX: 1 / inkScale, y: 1 / inkScale)
         }
     }
 
