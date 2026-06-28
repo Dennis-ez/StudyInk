@@ -147,6 +147,12 @@ final class VectorInkView: UIView {
     private let eraserRadius: CGFloat = 16
     private var eraseDirty = false
 
+    /// Super-sampling factor over the screen's native scale. The old PencilKit
+    /// "sharp" mode rendered ink at 4× (= 2× over a 2× retina screen); matching it
+    /// here renders the committed ink crisper than plain retina.
+    private let oversample: CGFloat = 2
+    private var baseScale: CGFloat { UIScreen.main.scale * oversample }
+
     var onChange: (() -> Void)?
     var strokeCount: Int { strokes.count }
 
@@ -154,11 +160,13 @@ final class VectorInkView: UIView {
         super.init(frame: frame)
         isMultipleTouchEnabled = false
         isOpaque = true
-        contentScaleFactor = UIScreen.main.scale
+        contentScaleFactor = baseScale     // super-sampled committed ink (sharper than retina)
         // Pending (not-yet-baked) strokes — filled outlines, beneath the wet stroke.
+        // contentsScale must be set explicitly — sublayers default to 1.0 (blurry).
         pendingLayer.fillColor = inkColor.cgColor
         pendingLayer.strokeColor = nil
         pendingLayer.frame = bounds
+        pendingLayer.contentsScale = baseScale
         layer.addSublayer(pendingLayer)
         liveLayer.fillColor = nil
         liveLayer.strokeColor = inkColor.cgColor
@@ -166,6 +174,7 @@ final class VectorInkView: UIView {
         liveLayer.lineCap = .round
         liveLayer.lineJoin = .round
         liveLayer.frame = bounds
+        liveLayer.contentsScale = baseScale
         layer.addSublayer(liveLayer)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -203,11 +212,11 @@ final class VectorInkView: UIView {
     }
 
     private func applyRasterScale(_ zoom: CGFloat) {
-        let want = zoom * UIScreen.main.scale
+        let want = zoom * baseScale                     // keep the super-sample as you zoom
         let w = max(bounds.width, 1), h = max(bounds.height, 1)
-        let budget: CGFloat = 110 * 1_048_576           // ~110 MB (A3 replaces this with tiling)
+        let budget: CGFloat = 220 * 1_048_576           // one active page (A3 tiling lifts this)
         let maxScale = (budget / (4 * w * h)).squareRoot()
-        let scale = min(want, maxScale)
+        let scale = max(baseScale, min(want, maxScale))
         guard abs(scale - contentScaleFactor) > 0.05 else { return }
         contentScaleFactor = scale
         rebuildCommitted()
