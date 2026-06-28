@@ -116,6 +116,7 @@ final class VectorInkView: UIView {
 
     /// The in-progress stroke. Vector → crisp; GPU-composited → cheap per frame.
     private let liveLayer = CAShapeLayer()
+    private var warmedUp = false
 
     var onChange: (() -> Void)?
     var strokeCount: Int { strokes.count }
@@ -138,6 +139,20 @@ final class VectorInkView: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         liveLayer.frame = bounds
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        guard window != nil, !warmedUp, bounds.width > 0 else { return }
+        warmedUp = true
+        // Warm the two pipelines that otherwise hitch on the FIRST stroke: allocate
+        // the wet-layer backing store (off-bounds, invisible) and spin up the image
+        // renderer so the first commit isn't delayed.
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        liveLayer.path = CGPath(rect: CGRect(x: -100, y: -100, width: 1, height: 1), transform: nil)
+        CATransaction.commit()
+        _ = committedRenderer().image { _ in }
     }
 
     // MARK: Zoom — re-rasterise the committed cache at the new resolution.
@@ -184,9 +199,20 @@ final class VectorInkView: UIView {
     /// Update the wet-ink layer to the current stroke, with no implicit animation
     /// so it tracks the pen instantly.
     private func updateLiveLayer() {
+        guard !current.isEmpty else {
+            CATransaction.begin(); CATransaction.setDisableActions(true)
+            liveLayer.path = nil
+            CATransaction.commit()
+            return
+        }
+        // Match the wet stroke's width to the committed stroke's AVERAGE width
+        // (committed uses per-point pressure widths), so the line doesn't jump
+        // thinner when you lift.
+        let avgWidth = current.reduce(0) { $0 + $1.width } / CGFloat(current.count)
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        liveLayer.path = current.isEmpty ? nil : livePath()
+        liveLayer.lineWidth = avgWidth
+        liveLayer.path = livePath()
         CATransaction.commit()
     }
 
