@@ -36,6 +36,7 @@ struct SettingsView: View {
     @State private var showAIDebug = false
     @State private var showPerfMonitor = false
     @State private var showNativeZoomLab = false
+    @State private var showCustomInkLab = false
     @State private var models: [String] = []
     @State private var loadingModels = false
     @State private var customModel = ""
@@ -509,6 +510,21 @@ struct SettingsView: View {
                     Text(verbatim: "Prototype: write, then pinch to zoom. Tests whether PencilKit-native zoom keeps ink crisp (vs the current transform-zoom blur).")
                         .font(.caption).foregroundStyle(.secondary)
                     Divider()
+                    Button {
+                        showCustomInkLab = true
+                    } label: {
+                        HStack {
+                            Label(title: { Text(verbatim: "Custom ink lab (preview)") },
+                                  icon: { Image(systemName: "scribble.variable") })
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.footnote).foregroundStyle(.tertiary)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    Text(verbatim: "Phase A1 of the custom ink engine: a vector renderer we own. Write, pinch, release — proves sharp ink at zoom AND a pen-accurate live stroke (no PencilKit tradeoff).")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Divider()
                     Toggle(isOn: $penTrackerDebug) {
                         Label(title: { Text(verbatim: "Pen tracker (debug)") },
                               icon: { Image(systemName: "pencil.tip.crop.circle") })
@@ -525,6 +541,9 @@ struct SettingsView: View {
             }
             .fullScreenCover(isPresented: $showNativeZoomLab) {
                 NativeZoomLabView()
+            }
+            .fullScreenCover(isPresented: $showCustomInkLab) {
+                CustomInkLabView()
             }
         }
     }
