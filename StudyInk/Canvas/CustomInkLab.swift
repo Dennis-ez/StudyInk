@@ -116,6 +116,12 @@ final class VectorInkView: UIView {
 
     /// The in-progress stroke. Vector → crisp; GPU-composited → cheap per frame.
     private let liveLayer = CAShapeLayer()
+    /// Strokes finished but not yet baked into the committed bitmap — shown as a
+    /// cheap vector layer and flushed into the bitmap in BATCHES, so drawing fast
+    /// doesn't re-render the whole ~100 MB high-res page on every single stroke.
+    private let pendingLayer = CAShapeLayer()
+    private var bakedCount = 0
+    private var flushWork: DispatchWorkItem?
     private var warmedUp = false
 
     var onChange: (() -> Void)?
@@ -126,6 +132,11 @@ final class VectorInkView: UIView {
         isMultipleTouchEnabled = false
         isOpaque = true
         contentScaleFactor = UIScreen.main.scale
+        // Pending (not-yet-baked) strokes — filled outlines, beneath the wet stroke.
+        pendingLayer.fillColor = inkColor.cgColor
+        pendingLayer.strokeColor = nil
+        pendingLayer.frame = bounds
+        layer.addSublayer(pendingLayer)
         liveLayer.fillColor = nil
         liveLayer.strokeColor = inkColor.cgColor
         liveLayer.lineWidth = baseWidth
@@ -139,6 +150,7 @@ final class VectorInkView: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         liveLayer.frame = bounds
+        pendingLayer.frame = bounds
     }
 
     override func didMoveToWindow() {
@@ -184,12 +196,12 @@ final class VectorInkView: UIView {
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         if current.count > 1 {
             strokes.append(current)
-            appendToCommitted(current)              // bake into the cache (high-res)
-            setNeedsDisplay(strokeBounds(current))  // show the baked version…
+            rebuildPending()        // show it immediately via the cheap vector layer
+            scheduleFlush()         // bake into the bitmap in a batch when drawing pauses
             onChange?()
         }
         current = []
-        liveLayer.path = nil                        // …and drop the wet stroke
+        liveLayer.path = nil        // drop the wet stroke (now held by the pending layer)
     }
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
         current = []
@@ -208,10 +220,9 @@ final class VectorInkView: UIView {
         // Match the wet stroke's width to the committed stroke's AVERAGE width
         // (committed uses per-point pressure widths), so the line doesn't jump
         // thinner when you lift.
-        let avgWidth = current.reduce(0) { $0 + $1.width } / CGFloat(current.count)
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        liveLayer.lineWidth = avgWidth
+        liveLayer.lineWidth = avgWidth(current)
         liveLayer.path = livePath()
         CATransaction.commit()
     }
@@ -220,13 +231,6 @@ final class VectorInkView: UIView {
         let force = t.maximumPossibleForce > 0 ? t.force / t.maximumPossibleForce : 0
         let pressure = force > 0 ? force : 0.5
         return InkSample(location: t.location(in: self), width: baseWidth * (0.55 + pressure))
-    }
-
-    private func strokeBounds(_ pts: [InkSample]) -> CGRect {
-        guard let first = pts.first else { return .zero }
-        var r = CGRect(origin: first.location, size: .zero)
-        for p in pts { r = r.union(CGRect(origin: p.location, size: .zero)) }
-        return r.insetBy(dx: -baseWidth * 3, dy: -baseWidth * 3)
     }
 
     // MARK: Stress test
@@ -248,8 +252,11 @@ final class VectorInkView: UIView {
     }
 
     func clearAll() {
-        strokes = []; current = []; committed = nil
-        liveLayer.path = nil
+        flushWork?.cancel(); flushWork = nil
+        strokes = []; current = []; committed = nil; bakedCount = 0
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        liveLayer.path = nil; pendingLayer.path = nil
+        CATransaction.commit()
         setNeedsDisplay()
         onChange?()
     }
@@ -264,18 +271,63 @@ final class VectorInkView: UIView {
     }
 
     private func rebuildCommitted() {
-        guard bounds.width > 0, !strokes.isEmpty else { committed = nil; return }
+        flushWork?.cancel(); flushWork = nil
+        guard bounds.width > 0, !strokes.isEmpty else {
+            committed = nil; bakedCount = 0
+            setPending(nil)
+            return
+        }
         committed = committedRenderer().image { c in
             for s in strokes { drawStroke(s, in: c.cgContext) }
         }
+        bakedCount = strokes.count
+        setPending(nil)
     }
 
-    private func appendToCommitted(_ stroke: [InkSample]) {
+    /// Draw the not-yet-baked strokes as filled outlines (each at its own width).
+    private func rebuildPending() {
+        guard bakedCount < strokes.count else { setPending(nil); return }
+        let combined = CGMutablePath()
+        for i in bakedCount..<strokes.count {
+            let s = strokes[i]
+            let outline = smoothedCenterline(s).copy(strokingWithWidth: avgWidth(s),
+                                                     lineCap: .round, lineJoin: .round, miterLimit: 10)
+            combined.addPath(outline)
+        }
+        setPending(combined.isEmpty ? nil : combined)
+    }
+
+    private func setPending(_ path: CGPath?) {
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        pendingLayer.path = path
+        CATransaction.commit()
+    }
+
+    private func scheduleFlush() {
+        flushWork?.cancel()
+        // Cap how many strokes pile up unbaked so the pending layer + its rebuild
+        // can't grow without bound during continuous drawing.
+        if strokes.count - bakedCount >= 40 { flushPending(); return }
+        let work = DispatchWorkItem { [weak self] in self?.flushPending() }
+        flushWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
+    }
+
+    /// Bake all pending strokes into the committed bitmap in ONE pass.
+    private func flushPending() {
+        flushWork = nil
+        guard bakedCount < strokes.count else { return }
+        let newOnes = strokes[bakedCount..<strokes.count]
         let old = committed
         committed = committedRenderer().image { c in
             old?.draw(in: bounds)
-            drawStroke(stroke, in: c.cgContext)
+            for s in newOnes { drawStroke(s, in: c.cgContext) }
         }
+        bakedCount = strokes.count
+        setNeedsDisplay()
+        // Keep pending up one more runloop so there's no 1-frame gap before the
+        // redrawn bitmap shows the baked strokes, then clear it.
+        DispatchQueue.main.async { [weak self] in self?.setPending(nil) }
     }
 
     override func draw(_ rect: CGRect) {
@@ -308,10 +360,15 @@ final class VectorInkView: UIView {
         }
     }
 
-    /// Single smoothed path for the wet-ink layer (constant width; it bakes to a
-    /// variable-width stroke on lift).
-    private func livePath() -> CGPath {
-        let pts = current
+    private func livePath() -> CGPath { smoothedCenterline(current) }
+
+    private func avgWidth(_ pts: [InkSample]) -> CGFloat {
+        guard !pts.isEmpty else { return baseWidth }
+        return pts.reduce(0) { $0 + $1.width } / CGFloat(pts.count)
+    }
+
+    /// Midpoint-smoothed centerline through the sample points (no width).
+    private func smoothedCenterline(_ pts: [InkSample]) -> CGPath {
         let path = CGMutablePath()
         guard pts.count > 1 else {
             if let p = pts.first {
