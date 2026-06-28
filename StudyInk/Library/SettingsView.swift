@@ -21,6 +21,7 @@ struct SettingsView: View {
     @AppStorage("settings.defaultTemplate") private var defaultTemplate = "wideRuled"
     @AppStorage("settings.defaultTemplateSpacing") private var defaultSpacing = 1.0
     @AppStorage("debug.penTracker") private var penTrackerDebug = false
+    @AppStorage("settings.canvas.smoothInk") private var smoothInk = false
     @Environment(\.dismiss) private var dismiss
 
     /// Which sidebar section is showing in the content pane.
@@ -287,7 +288,11 @@ struct SettingsView: View {
             // position" is omitted: no such binding exists in the app yet.
             VStack(alignment: .leading, spacing: DS.Space.sm) {
                 cardCaption("Canvas")
-                card { templateIntensityRow }
+                card {
+                    templateIntensityRow
+                    Divider()
+                    smoothInkRow
+                }
             }
         }
     }
@@ -340,6 +345,24 @@ struct SettingsView: View {
             // Slider painted in the active "you" accent per spec.
             Slider(value: $defaultSpacing, in: 0.6...1.8)
                 .tint(activeTheme.accent)
+        }
+    }
+
+    /// CANVAS — Sharp vs smooth ink. A genuine iOS-26 PencilKit tradeoff the user
+    /// chooses: sharp (default) renders ink at 4× so it stays crisp at any zoom,
+    /// but the live stroke can sit slightly offset under the pen on imported PDFs;
+    /// smooth keeps the pen perfectly accurate but softens ink when zoomed in.
+    private var smoothInkRow: some View {
+        VStack(alignment: .leading, spacing: DS.Space.xs) {
+            Toggle(isOn: $smoothInk) {
+                Text(verbatim: "Smooth, pen-accurate ink")
+                    .font(.subheadline)
+            }
+            .tint(activeTheme.accent)
+            Text(verbatim: smoothInk
+                 ? "Ink lands exactly under the pen (best on imported PDFs), but looks softer when you zoom in. Reopen a note to apply."
+                 : "Ink stays crisp at every zoom level. The cost: while writing on an imported PDF, the live stroke can sit slightly offset under the pen until you lift. Reopen a note to apply.")
+                .font(.caption).foregroundStyle(.secondary)
         }
     }
 
