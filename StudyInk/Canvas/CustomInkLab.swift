@@ -27,6 +27,8 @@ struct CustomInkLabView: View {
             HStack(spacing: 8) {
                 Button { lab.setTool(.pen) } label: { toolChip("Pen", on: lab.tool == .pen) }
                 Button { lab.setTool(.eraser) } label: { toolChip("Eraser", on: lab.tool == .eraser) }
+                Button { lab.undo() } label: { chip("Undo") }.disabled(!lab.canUndo).opacity(lab.canUndo ? 1 : 0.4)
+                Button { lab.redo() } label: { chip("Redo") }.disabled(!lab.canRedo).opacity(lab.canRedo ? 1 : 0.4)
                 Button { lab.addRandom(300) } label: { chip("+300") }
                 Button { lab.clear() } label: { chip("Clear") }
                 if lab.strokeCount > 0 {
@@ -61,10 +63,18 @@ final class InkLabController: ObservableObject {
     weak var view: VectorInkView?
     @Published var strokeCount = 0
     @Published var tool: InkTool = .pen
+    @Published var canUndo = false
+    @Published var canRedo = false
     func addRandom(_ n: Int) { view?.addRandomStrokes(n) }
     func clear() { view?.clearAll() }
     func setTool(_ t: InkTool) { tool = t; view?.tool = t }
-    func syncCount() { strokeCount = view?.strokeCount ?? 0 }
+    func undo() { view?.undo() }
+    func redo() { view?.redo() }
+    func syncState() {
+        strokeCount = view?.strokeCount ?? 0
+        canUndo = view?.canUndo ?? false
+        canRedo = view?.canRedo ?? false
+    }
 }
 
 struct CustomInkScroll: UIViewRepresentable {
@@ -87,7 +97,7 @@ struct CustomInkScroll: UIViewRepresentable {
 
         let ink = VectorInkView(frame: CGRect(origin: .zero, size: page))
         ink.backgroundColor = .white
-        ink.onChange = { [weak controller] in controller?.syncCount() }
+        ink.onChange = { [weak controller] in controller?.syncState() }
         scroll.contentSize = page
         scroll.addSubview(ink)
         controller.view = ink
@@ -145,7 +155,15 @@ final class VectorInkView: UIView {
 
     var tool: InkTool = .pen
     private let eraserRadius: CGFloat = 16
-    private var eraseDirty = false
+    private var rebuildDirty = false
+
+    // Undo/redo: snapshots of `strokes` (COW arrays — cheap until mutated).
+    private var undoStack: [[[InkSample]]] = []
+    private var redoStack: [[[InkSample]]] = []
+    private let maxUndo = 60
+    private var erasedThisGesture = false
+    var canUndo: Bool { !undoStack.isEmpty }
+    var canRedo: Bool { !redoStack.isEmpty }
 
     /// Super-sampling factor over the screen's native scale. The old PencilKit
     /// "sharp" mode rendered ink at 4× (= 2× over a 2× retina screen); matching it
@@ -183,15 +201,19 @@ final class VectorInkView: UIView {
         super.layoutSubviews()
         liveLayer.frame = bounds
         pendingLayer.frame = bounds
+        warmUp()    // retry if the first window-attach happened before layout (zero bounds)
     }
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
+        warmUp()
+    }
+
+    /// Warm the two pipelines that otherwise hitch on the FIRST stroke: allocate the
+    /// wet-layer backing store (off-bounds, invisible) and spin up the image renderer.
+    private func warmUp() {
         guard window != nil, !warmedUp, bounds.width > 0 else { return }
         warmedUp = true
-        // Warm the two pipelines that otherwise hitch on the FIRST stroke: allocate
-        // the wet-layer backing store (off-bounds, invisible) and spin up the image
-        // renderer so the first commit isn't delayed.
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         liveLayer.path = CGPath(rect: CGRect(x: -100, y: -100, width: 1, height: 1), transform: nil)
@@ -212,14 +234,18 @@ final class VectorInkView: UIView {
     }
 
     private func applyRasterScale(_ zoom: CGFloat) {
+        guard bounds.width >= 1, bounds.height >= 1 else { return }   // not laid out yet
         let want = zoom * baseScale                     // keep the super-sample as you zoom
-        let w = max(bounds.width, 1), h = max(bounds.height, 1)
-        let budget: CGFloat = 220 * 1_048_576           // one active page (A3 tiling lifts this)
-        let maxScale = (budget / (4 * w * h)).squareRoot()
+        // ~180 MB cap, sized for the ~2× transient during a bake (old + new image).
+        let budget: CGFloat = 180 * 1_048_576           // one active page (A3 tiling lifts this)
+        let maxScale = (budget / (4 * bounds.width * bounds.height)).squareRoot()
         let scale = max(baseScale, min(want, maxScale))
         guard abs(scale - contentScaleFactor) > 0.05 else { return }
         contentScaleFactor = scale
-        rebuildCommitted()
+        // Re-render at the new scale OFF the main thread (a full-page render at high
+        // zoom is heavy; doing it sync on zoom-end hitched). The bitmap just scales
+        // (briefly soft) until the rebuild lands.
+        scheduleFullRebuild()
         setNeedsDisplay()
     }
 
@@ -227,7 +253,7 @@ final class VectorInkView: UIView {
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let t = touches.first else { return }
-        if tool == .eraser { eraseAt(t.location(in: self)); return }
+        if tool == .eraser { erasedThisGesture = false; eraseAt(t.location(in: self)); return }
         current = [sample(t)]
         updateLiveLayer()
     }
@@ -243,6 +269,7 @@ final class VectorInkView: UIView {
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         if tool == .eraser { return }
         if current.count > 1 {
+            pushUndo()
             strokes.append(current)
             rebuildPending()        // show it immediately via the cheap vector layer
             scheduleFlush()         // bake into the bitmap in a batch when drawing pauses
@@ -260,6 +287,7 @@ final class VectorInkView: UIView {
 
     private func eraseAt(_ p: CGPoint) {
         let r = eraserRadius
+        let snapshot = strokes          // COW — pre-removal state, committed to undo lazily
         let before = strokes.count
         strokes.removeAll { stroke in
             guard strokeBounds(stroke).insetBy(dx: -r, dy: -r).contains(p) else { return false }
@@ -269,8 +297,14 @@ final class VectorInkView: UIView {
             return false
         }
         if strokes.count != before {
+            if !erasedThisGesture {     // one undo step per eraser gesture
+                erasedThisGesture = true
+                undoStack.append(snapshot)
+                if undoStack.count > maxUndo { undoStack.removeFirst() }
+                redoStack.removeAll()
+            }
             onChange?()
-            scheduleEraseRebuild()
+            scheduleFullRebuild()
         }
     }
 
@@ -281,18 +315,18 @@ final class VectorInkView: UIView {
         return r
     }
 
-    /// Removing strokes invalidates the baked bitmap, so re-render all remaining
-    /// strokes off-main. Coalesced: one rebuild at a time, with another queued if
-    /// more was erased meanwhile — so the page updates live as you drag the eraser,
-    /// without piling up renders.
-    private func scheduleEraseRebuild() {
-        eraseDirty = true
-        if !isBaking { runEraseRebuild() }
+    /// Re-render ALL strokes off-main (used after erase and undo/redo, where the
+    /// baked bitmap is wholesale invalid). Coalesced: one rebuild at a time, with
+    /// another queued if the model changed meanwhile — so erasing updates live as
+    /// you drag without piling up renders.
+    private func scheduleFullRebuild() {
+        rebuildDirty = true
+        if !isBaking { runFullRebuild() }
     }
 
-    private func runEraseRebuild() {
-        guard eraseDirty, bounds.width > 0 else { return }
-        eraseDirty = false
+    private func runFullRebuild() {
+        guard rebuildDirty, bounds.width > 0 else { return }
+        rebuildDirty = false
         isBaking = true
         flushWork?.cancel(); flushWork = nil
         bakeGeneration += 1
@@ -318,9 +352,38 @@ final class VectorInkView: UIView {
                     self.displayedBakedCount = self.strokes.count
                     self.setNeedsDisplay()
                 }
-                if self.eraseDirty { self.runEraseRebuild() }   // more was erased while baking
+                if self.rebuildDirty { self.runFullRebuild() }   // model changed while baking
             }
         }
+    }
+
+    // MARK: Undo / redo — snapshot the strokes before each mutation.
+
+    private func pushUndo() {
+        undoStack.append(strokes)
+        if undoStack.count > maxUndo { undoStack.removeFirst() }
+        redoStack.removeAll()
+    }
+
+    func undo() {
+        guard let prev = undoStack.popLast() else { return }
+        redoStack.append(strokes)
+        strokes = prev
+        afterHistoryChange()
+    }
+
+    func redo() {
+        guard let next = redoStack.popLast() else { return }
+        undoStack.append(strokes)
+        strokes = next
+        afterHistoryChange()
+    }
+
+    private func afterHistoryChange() {
+        current = []
+        liveLayer.path = nil
+        scheduleFullRebuild()
+        onChange?()
     }
 
     /// Update the wet-ink layer to the current stroke, with no implicit animation
@@ -351,6 +414,7 @@ final class VectorInkView: UIView {
     // MARK: Stress test
 
     func addRandomStrokes(_ n: Int) {
+        pushUndo()
         for _ in 0..<n {
             let start = CGPoint(x: .random(in: 0...bounds.width), y: .random(in: 0...bounds.height))
             var s: [InkSample] = []
@@ -367,7 +431,10 @@ final class VectorInkView: UIView {
     }
 
     func clearAll() {
+        if !strokes.isEmpty { pushUndo() }     // clearing is undoable
         flushWork?.cancel(); flushWork = nil
+        rasterWork?.cancel(); rasterWork = nil
+        rebuildDirty = false
         bakeGeneration += 1     // invalidate any in-flight off-main bake
         strokes = []; current = []; committed = nil; bakedCount = 0; displayedBakedCount = 0
         CATransaction.begin(); CATransaction.setDisableActions(true)
@@ -444,6 +511,9 @@ final class VectorInkView: UIView {
         // One bake at a time. If one is in flight, just return — its completion
         // reschedules a flush for any strokes that arrived meanwhile.
         guard !isBaking else { return }
+        // An erase/undo queued a full rebuild → the incremental bake below assumes
+        // the base strokes are unchanged, which they're not. Full-rebuild instead.
+        if rebuildDirty { runFullRebuild(); return }
         guard bakedCount < strokes.count, bounds.width > 0 else { return }
         isBaking = true
         let target = strokes.count
@@ -466,6 +536,9 @@ final class VectorInkView: UIView {
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.isBaking = false
+                // An erase/undo queued a full rebuild while we baked → our incremental
+                // result is stale (it kept the erased/undone strokes). Discard it.
+                if self.rebuildDirty { self.runFullRebuild(); return }
                 // Discard if a clear/zoom happened while we were baking.
                 guard generation == self.bakeGeneration,
                       abs(self.contentScaleFactor - scale) < 0.01 else {
@@ -473,7 +546,7 @@ final class VectorInkView: UIView {
                     return
                 }
                 self.committed = img
-                self.bakedCount = target
+                self.bakedCount = min(target, self.strokes.count)   // never exceed model
                 self.setNeedsDisplay()
                 // More strokes arrived during the bake → schedule the next batch.
                 if self.bakedCount < self.strokes.count { self.scheduleFlush() }
