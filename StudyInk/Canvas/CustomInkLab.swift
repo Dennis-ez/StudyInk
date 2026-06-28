@@ -55,6 +55,11 @@ struct CustomInkScroll: UIViewRepresentable {
         scroll.backgroundColor = UIColor(white: 0.98, alpha: 1)
         scroll.delegate = context.coordinator
         scroll.contentInsetAdjustmentBehavior = .never
+        // Notes-app behaviour: ONE finger / pencil draws, TWO fingers pan & pinch
+        // zooms. Without this the scroll view's pan eats single-finger drags and
+        // the page "just slides" instead of drawing.
+        scroll.panGestureRecognizer.minimumNumberOfTouches = 2
+        scroll.delaysContentTouches = false
 
         let ink = VectorInkView(frame: CGRect(origin: .zero, size: page))
         ink.backgroundColor = .white
