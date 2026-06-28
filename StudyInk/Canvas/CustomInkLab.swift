@@ -120,7 +120,8 @@ final class VectorInkView: UIView {
     /// cheap vector layer and flushed into the bitmap in BATCHES, so drawing fast
     /// doesn't re-render the whole ~100 MB high-res page on every single stroke.
     private let pendingLayer = CAShapeLayer()
-    private var bakedCount = 0
+    private var bakedCount = 0          // strokes baked into the committed IMAGE
+    private var displayedBakedCount = 0 // strokes the on-screen bitmap has actually drawn
     private var flushWork: DispatchWorkItem?
     private var warmedUp = false
 
@@ -253,7 +254,7 @@ final class VectorInkView: UIView {
 
     func clearAll() {
         flushWork?.cancel(); flushWork = nil
-        strokes = []; current = []; committed = nil; bakedCount = 0
+        strokes = []; current = []; committed = nil; bakedCount = 0; displayedBakedCount = 0
         CATransaction.begin(); CATransaction.setDisableActions(true)
         liveLayer.path = nil; pendingLayer.path = nil
         CATransaction.commit()
@@ -273,7 +274,7 @@ final class VectorInkView: UIView {
     private func rebuildCommitted() {
         flushWork?.cancel(); flushWork = nil
         guard bounds.width > 0, !strokes.isEmpty else {
-            committed = nil; bakedCount = 0
+            committed = nil; bakedCount = 0; displayedBakedCount = 0
             setPending(nil)
             return
         }
@@ -281,14 +282,18 @@ final class VectorInkView: UIView {
             for s in strokes { drawStroke(s, in: c.cgContext) }
         }
         bakedCount = strokes.count
-        setPending(nil)
+        // Pending is kept until a full draw advances displayedBakedCount, so the
+        // strokes never flash out between this rebuild and the async redraw.
     }
 
-    /// Draw the not-yet-baked strokes as filled outlines (each at its own width).
+    /// Draw the strokes the on-screen bitmap hasn't confirmed yet, as filled
+    /// outlines. Keyed off displayedBakedCount (not bakedCount) so a stroke stays
+    /// visible via this layer until draw() proves the bitmap has rendered it — no
+    /// flash-out in the gap between baking and the async redraw.
     private func rebuildPending() {
-        guard bakedCount < strokes.count else { setPending(nil); return }
+        guard displayedBakedCount < strokes.count else { setPending(nil); return }
         let combined = CGMutablePath()
-        for i in bakedCount..<strokes.count {
+        for i in displayedBakedCount..<strokes.count {
             let s = strokes[i]
             let outline = smoothedCenterline(s).copy(strokingWithWidth: avgWidth(s),
                                                      lineCap: .round, lineJoin: .round, miterLimit: 10)
@@ -313,7 +318,10 @@ final class VectorInkView: UIView {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
     }
 
-    /// Bake all pending strokes into the committed bitmap in ONE pass.
+    /// Bake all pending strokes into the committed bitmap in ONE pass. Pending is
+    /// NOT cleared here — draw() advances displayedBakedCount once the bitmap shows
+    /// the baked strokes, and only then is pending rebuilt to drop them. (Clearing
+    /// pending here raced the async redraw and made strokes flash out.)
     private func flushPending() {
         flushWork = nil
         guard bakedCount < strokes.count else { return }
@@ -325,15 +333,19 @@ final class VectorInkView: UIView {
         }
         bakedCount = strokes.count
         setNeedsDisplay()
-        // Keep pending up one more runloop so there's no 1-frame gap before the
-        // redrawn bitmap shows the baked strokes, then clear it.
-        DispatchQueue.main.async { [weak self] in self?.setPending(nil) }
     }
 
     override func draw(_ rect: CGRect) {
         UIColor.white.setFill()
         UIRectFill(rect)
-        committed?.draw(in: bounds)     // cached committed ink only; the wet stroke is liveLayer
+        committed?.draw(in: bounds)     // cached committed ink only; wet/pending are layers
+        // After a FULL redraw the bitmap is proven to show everything baked, so the
+        // pending layer can safely drop those strokes (no flash-out gap).
+        if displayedBakedCount != bakedCount,
+           rect.width >= bounds.width - 0.5, rect.height >= bounds.height - 0.5 {
+            displayedBakedCount = bakedCount
+            DispatchQueue.main.async { [weak self] in self?.rebuildPending() }
+        }
     }
 
     /// Variable-width committed stroke (used to bake into the cache).
