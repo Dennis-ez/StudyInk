@@ -332,7 +332,10 @@ final class VectorInkView: UIView {
     }
 
     private func runFullRebuild() {
-        guard rebuildDirty, bounds.width > 0 else { return }
+        // !isBaking is essential: never start a second full-page render while one is
+        // live. If called during a bake, the dirty flag stays set and the in-flight
+        // completion re-drives this — self-healing regardless of caller.
+        guard rebuildDirty, !isBaking, bounds.width > 0 else { return }
         rebuildDirty = false
         isBaking = true
         flushWork?.cancel(); flushWork = nil
@@ -432,8 +435,7 @@ final class VectorInkView: UIView {
             }
             strokes.append(s)
         }
-        rebuildCommitted()
-        setNeedsDisplay()
+        scheduleFullRebuild()   // off-main, respects the isBaking state machine
         onChange?()
     }
 
@@ -458,23 +460,6 @@ final class VectorInkView: UIView {
         fmt.scale = contentScaleFactor
         fmt.opaque = false
         return UIGraphicsImageRenderer(bounds: bounds, format: fmt)
-    }
-
-    private func rebuildCommitted() {
-        flushWork?.cancel(); flushWork = nil
-        guard bounds.width > 0, !strokes.isEmpty else {
-            committed = nil; bakedCount = 0; displayedBakedCount = 0
-            setPending(nil)
-            return
-        }
-        let color = inkColor
-        committed = committedRenderer().image { c in
-            for s in strokes { Self.drawStroke(s, color: color, in: c.cgContext) }
-        }
-        bakedCount = strokes.count
-        bakeGeneration += 1     // supersede any in-flight off-main bake
-        // Pending is kept until a full draw advances displayedBakedCount, so the
-        // strokes never flash out between this rebuild and the async redraw.
     }
 
     /// Draw the strokes the on-screen bitmap hasn't confirmed yet, as filled
