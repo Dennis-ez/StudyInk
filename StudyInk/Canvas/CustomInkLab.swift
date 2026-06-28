@@ -15,6 +15,8 @@ import UIKit
 /// HOW TO TEST A2: tap "+300" a couple of times to load the page with strokes, then
 /// write — the live stroke should stay smooth (no lag) even with hundreds on screen.
 /// Pinch-zoom + release should still be crisp.
+enum InkTool { case pen, eraser }
+
 struct CustomInkLabView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var lab = InkLabController()
@@ -23,10 +25,12 @@ struct CustomInkLabView: View {
         ZStack(alignment: .top) {
             CustomInkScroll(controller: lab).ignoresSafeArea()
             HStack(spacing: 8) {
+                Button { lab.setTool(.pen) } label: { toolChip("Pen", on: lab.tool == .pen) }
+                Button { lab.setTool(.eraser) } label: { toolChip("Eraser", on: lab.tool == .eraser) }
                 Button { lab.addRandom(300) } label: { chip("+300") }
                 Button { lab.clear() } label: { chip("Clear") }
                 if lab.strokeCount > 0 {
-                    Text(verbatim: "\(lab.strokeCount) strokes")
+                    Text(verbatim: "\(lab.strokeCount)")
                         .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -42,14 +46,24 @@ struct CustomInkLabView: View {
             .padding(.horizontal, 14).padding(.vertical, 8)
             .background(.ultraThinMaterial, in: Capsule())
     }
+
+    private func toolChip(_ text: String, on: Bool) -> some View {
+        Text(verbatim: text)
+            .font(.footnote.weight(on ? .semibold : .regular))
+            .foregroundStyle(on ? Color.white : Color.primary)
+            .padding(.horizontal, 14).padding(.vertical, 8)
+            .background(on ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.ultraThinMaterial), in: Capsule())
+    }
 }
 
 /// Bridges SwiftUI buttons to the UIKit ink view.
 final class InkLabController: ObservableObject {
     weak var view: VectorInkView?
     @Published var strokeCount = 0
+    @Published var tool: InkTool = .pen
     func addRandom(_ n: Int) { view?.addRandomStrokes(n) }
     func clear() { view?.clearAll() }
+    func setTool(_ t: InkTool) { tool = t; view?.tool = t }
     func syncCount() { strokeCount = view?.strokeCount ?? 0 }
 }
 
@@ -129,6 +143,10 @@ final class VectorInkView: UIView {
     private var isBaking = false
     private var bakeGeneration = 0      // invalidates in-flight off-main bakes on clear/zoom
 
+    var tool: InkTool = .pen
+    private let eraserRadius: CGFloat = 16
+    private var eraseDirty = false
+
     var onChange: (() -> Void)?
     var strokeCount: Int { strokes.count }
 
@@ -200,15 +218,21 @@ final class VectorInkView: UIView {
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let t = touches.first else { return }
+        if tool == .eraser { eraseAt(t.location(in: self)); return }
         current = [sample(t)]
         updateLiveLayer()
     }
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let t = touches.first else { return }
+        if tool == .eraser {
+            for ct in event?.coalescedTouches(for: t) ?? [t] { eraseAt(ct.location(in: self)) }
+            return
+        }
         for ct in event?.coalescedTouches(for: t) ?? [t] { current.append(sample(ct)) }
         updateLiveLayer()
     }
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if tool == .eraser { return }
         if current.count > 1 {
             strokes.append(current)
             rebuildPending()        // show it immediately via the cheap vector layer
@@ -221,6 +245,73 @@ final class VectorInkView: UIView {
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
         current = []
         liveLayer.path = nil
+    }
+
+    // MARK: Eraser — whole-stroke (trivial with vectors: drop the stroke).
+
+    private func eraseAt(_ p: CGPoint) {
+        let r = eraserRadius
+        let before = strokes.count
+        strokes.removeAll { stroke in
+            guard strokeBounds(stroke).insetBy(dx: -r, dy: -r).contains(p) else { return false }
+            for s in stroke where hypot(s.location.x - p.x, s.location.y - p.y) <= r + s.width / 2 {
+                return true
+            }
+            return false
+        }
+        if strokes.count != before {
+            onChange?()
+            scheduleEraseRebuild()
+        }
+    }
+
+    private func strokeBounds(_ pts: [InkSample]) -> CGRect {
+        guard let first = pts.first else { return .null }
+        var r = CGRect(origin: first.location, size: .zero)
+        for s in pts { r = r.union(CGRect(origin: s.location, size: .zero)) }
+        return r
+    }
+
+    /// Removing strokes invalidates the baked bitmap, so re-render all remaining
+    /// strokes off-main. Coalesced: one rebuild at a time, with another queued if
+    /// more was erased meanwhile — so the page updates live as you drag the eraser,
+    /// without piling up renders.
+    private func scheduleEraseRebuild() {
+        eraseDirty = true
+        if !isBaking { runEraseRebuild() }
+    }
+
+    private func runEraseRebuild() {
+        guard eraseDirty, bounds.width > 0 else { return }
+        eraseDirty = false
+        isBaking = true
+        flushWork?.cancel(); flushWork = nil
+        bakeGeneration += 1
+        let generation = bakeGeneration
+        let snapshot = strokes
+        let scale = contentScaleFactor
+        let bnds = bounds
+        let color = inkColor
+        setPending(nil)
+        liveLayer.path = nil
+        bakeQueue.async { [weak self] in
+            let fmt = UIGraphicsImageRendererFormat()
+            fmt.scale = scale; fmt.opaque = false
+            let img = snapshot.isEmpty ? nil : UIGraphicsImageRenderer(bounds: bnds, format: fmt).image { c in
+                for s in snapshot { VectorInkView.drawStroke(s, color: color, in: c.cgContext) }
+            }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.isBaking = false
+                if generation == self.bakeGeneration {
+                    self.committed = img
+                    self.bakedCount = self.strokes.count
+                    self.displayedBakedCount = self.strokes.count
+                    self.setNeedsDisplay()
+                }
+                if self.eraseDirty { self.runEraseRebuild() }   // more was erased while baking
+            }
+        }
     }
 
     /// Update the wet-ink layer to the current stroke, with no implicit animation
