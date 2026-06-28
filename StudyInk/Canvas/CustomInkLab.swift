@@ -124,6 +124,10 @@ final class VectorInkView: UIView {
     private var displayedBakedCount = 0 // strokes the on-screen bitmap has actually drawn
     private var flushWork: DispatchWorkItem?
     private var warmedUp = false
+    private var rasterWork: DispatchWorkItem?
+    private let bakeQueue = DispatchQueue(label: "studyink.ink.bake", qos: .userInitiated)
+    private var isBaking = false
+    private var bakeGeneration = 0      // invalidates in-flight off-main bakes on clear/zoom
 
     var onChange: (() -> Void)?
     var strokeCount: Int { strokes.count }
@@ -171,6 +175,16 @@ final class VectorInkView: UIView {
     // MARK: Zoom — re-rasterise the committed cache at the new resolution.
 
     func setRasterScale(for zoom: CGFloat) {
+        // Debounce: rapid zoom in/out fires this repeatedly, and each rebuild
+        // re-renders every stroke at the new scale. Only re-render once the zoom
+        // settles (the bitmap just scales — briefly soft — until then).
+        rasterWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.applyRasterScale(zoom) }
+        rasterWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
+    }
+
+    private func applyRasterScale(_ zoom: CGFloat) {
         let want = zoom * UIScreen.main.scale
         let w = max(bounds.width, 1), h = max(bounds.height, 1)
         let budget: CGFloat = 110 * 1_048_576           // ~110 MB (A3 replaces this with tiling)
@@ -254,6 +268,7 @@ final class VectorInkView: UIView {
 
     func clearAll() {
         flushWork?.cancel(); flushWork = nil
+        bakeGeneration += 1     // invalidate any in-flight off-main bake
         strokes = []; current = []; committed = nil; bakedCount = 0; displayedBakedCount = 0
         CATransaction.begin(); CATransaction.setDisableActions(true)
         liveLayer.path = nil; pendingLayer.path = nil
@@ -278,10 +293,12 @@ final class VectorInkView: UIView {
             setPending(nil)
             return
         }
+        let color = inkColor
         committed = committedRenderer().image { c in
-            for s in strokes { drawStroke(s, in: c.cgContext) }
+            for s in strokes { Self.drawStroke(s, color: color, in: c.cgContext) }
         }
         bakedCount = strokes.count
+        bakeGeneration += 1     // supersede any in-flight off-main bake
         // Pending is kept until a full draw advances displayedBakedCount, so the
         // strokes never flash out between this rebuild and the async redraw.
     }
@@ -324,15 +341,44 @@ final class VectorInkView: UIView {
     /// pending here raced the async redraw and made strokes flash out.)
     private func flushPending() {
         flushWork = nil
-        guard bakedCount < strokes.count else { return }
-        let newOnes = strokes[bakedCount..<strokes.count]
+        // One bake at a time. If one is in flight, just return — its completion
+        // reschedules a flush for any strokes that arrived meanwhile.
+        guard !isBaking else { return }
+        guard bakedCount < strokes.count, bounds.width > 0 else { return }
+        isBaking = true
+        let target = strokes.count
+        let newOnes = Array(strokes[bakedCount..<target])
         let old = committed
-        committed = committedRenderer().image { c in
-            old?.draw(in: bounds)
-            for s in newOnes { drawStroke(s, in: c.cgContext) }
+        let scale = contentScaleFactor
+        let bnds = bounds
+        let color = inkColor
+        let generation = bakeGeneration
+        // Bake OFF the main thread so continuous fast drawing never stalls on the
+        // full-page re-render; apply the result back on main.
+        bakeQueue.async { [weak self] in
+            let fmt = UIGraphicsImageRendererFormat()
+            fmt.scale = scale
+            fmt.opaque = false
+            let img = UIGraphicsImageRenderer(bounds: bnds, format: fmt).image { c in
+                old?.draw(in: bnds)
+                for s in newOnes { VectorInkView.drawStroke(s, color: color, in: c.cgContext) }
+            }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.isBaking = false
+                // Discard if a clear/zoom happened while we were baking.
+                guard generation == self.bakeGeneration,
+                      abs(self.contentScaleFactor - scale) < 0.01 else {
+                    if self.bakedCount < self.strokes.count { self.scheduleFlush() }
+                    return
+                }
+                self.committed = img
+                self.bakedCount = target
+                self.setNeedsDisplay()
+                // More strokes arrived during the bake → schedule the next batch.
+                if self.bakedCount < self.strokes.count { self.scheduleFlush() }
+            }
         }
-        bakedCount = strokes.count
-        setNeedsDisplay()
     }
 
     override func draw(_ rect: CGRect) {
@@ -348,10 +394,11 @@ final class VectorInkView: UIView {
         }
     }
 
-    /// Variable-width committed stroke (used to bake into the cache).
-    private func drawStroke(_ pts: [InkSample], in ctx: CGContext) {
-        ctx.setStrokeColor(inkColor.cgColor)
-        ctx.setFillColor(inkColor.cgColor)
+    /// Variable-width committed stroke (used to bake into the cache). Static so it
+    /// is safe to call from the off-main bake queue (reads no instance state).
+    private static func drawStroke(_ pts: [InkSample], color: UIColor, in ctx: CGContext) {
+        ctx.setStrokeColor(color.cgColor)
+        ctx.setFillColor(color.cgColor)
         ctx.setLineCap(.round)
         ctx.setLineJoin(.round)
         guard pts.count > 1 else {
