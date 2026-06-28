@@ -98,9 +98,14 @@ private struct InkSample {
     let width: CGFloat
 }
 
-/// Custom vector ink surface. Committed strokes live in a cached bitmap at the
-/// current zoom resolution; only the live stroke is redrawn per frame, so drawing
-/// cost is independent of how many strokes the page holds.
+/// Custom vector ink surface.
+///
+/// Committed strokes live in a cached bitmap (re-rasterised only on commit / zoom).
+/// The LIVE stroke is drawn on a separate CAShapeLayer ("wet ink") — a GPU-
+/// composited vector layer that's cheap to update every frame and, crucially,
+/// NEVER touches the big committed bitmap. That's the fix for the slow live drawing
+/// when zoomed in: before, every frame re-blitted the ~100 MB high-res committed
+/// image; now the committed image is only drawn on commit and zoom.
 final class VectorInkView: UIView {
     private var strokes: [[InkSample]] = []
     private var current: [InkSample] = []
@@ -108,6 +113,9 @@ final class VectorInkView: UIView {
 
     private let baseWidth: CGFloat = 2.6
     private let inkColor = UIColor(white: 0.08, alpha: 1)
+
+    /// The in-progress stroke. Vector → crisp; GPU-composited → cheap per frame.
+    private let liveLayer = CAShapeLayer()
 
     var onChange: (() -> Void)?
     var strokeCount: Int { strokes.count }
@@ -117,8 +125,20 @@ final class VectorInkView: UIView {
         isMultipleTouchEnabled = false
         isOpaque = true
         contentScaleFactor = UIScreen.main.scale
+        liveLayer.fillColor = nil
+        liveLayer.strokeColor = inkColor.cgColor
+        liveLayer.lineWidth = baseWidth
+        liveLayer.lineCap = .round
+        liveLayer.lineJoin = .round
+        liveLayer.frame = bounds
+        layer.addSublayer(liveLayer)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        liveLayer.frame = bounds
+    }
 
     // MARK: Zoom — re-rasterise the committed cache at the new resolution.
 
@@ -139,31 +159,35 @@ final class VectorInkView: UIView {
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let t = touches.first else { return }
         current = [sample(t)]
-        setNeedsDisplay()
+        updateLiveLayer()
     }
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let t = touches.first else { return }
-        let start = current.last?.location
         for ct in event?.coalescedTouches(for: t) ?? [t] { current.append(sample(ct)) }
-        // Only invalidate the region the new segment touched → cheap live redraw.
-        if let a = start, let b = current.last?.location {
-            setNeedsDisplay(segmentRect(a, b))
-        } else {
-            setNeedsDisplay()
-        }
+        updateLiveLayer()
     }
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         if current.count > 1 {
             strokes.append(current)
-            appendToCommitted(current)      // bake just this stroke into the cache
+            appendToCommitted(current)              // bake into the cache (high-res)
+            setNeedsDisplay(strokeBounds(current))  // show the baked version…
             onChange?()
         }
         current = []
-        setNeedsDisplay()
+        liveLayer.path = nil                        // …and drop the wet stroke
     }
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
         current = []
-        setNeedsDisplay()
+        liveLayer.path = nil
+    }
+
+    /// Update the wet-ink layer to the current stroke, with no implicit animation
+    /// so it tracks the pen instantly.
+    private func updateLiveLayer() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        liveLayer.path = current.isEmpty ? nil : livePath()
+        CATransaction.commit()
     }
 
     private func sample(_ t: UITouch) -> InkSample {
@@ -172,9 +196,11 @@ final class VectorInkView: UIView {
         return InkSample(location: t.location(in: self), width: baseWidth * (0.55 + pressure))
     }
 
-    private func segmentRect(_ a: CGPoint, _ b: CGPoint) -> CGRect {
-        CGRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(a.x - b.x), height: abs(a.y - b.y))
-            .insetBy(dx: -baseWidth * 3, dy: -baseWidth * 3)
+    private func strokeBounds(_ pts: [InkSample]) -> CGRect {
+        guard let first = pts.first else { return .zero }
+        var r = CGRect(origin: first.location, size: .zero)
+        for p in pts { r = r.union(CGRect(origin: p.location, size: .zero)) }
+        return r.insetBy(dx: -baseWidth * 3, dy: -baseWidth * 3)
     }
 
     // MARK: Stress test
@@ -197,6 +223,7 @@ final class VectorInkView: UIView {
 
     func clearAll() {
         strokes = []; current = []; committed = nil
+        liveLayer.path = nil
         setNeedsDisplay()
         onChange?()
     }
@@ -228,12 +255,10 @@ final class VectorInkView: UIView {
     override func draw(_ rect: CGRect) {
         UIColor.white.setFill()
         UIRectFill(rect)
-        committed?.draw(in: bounds)                       // cached committed ink (clipped to `rect` by CG)
-        if !current.isEmpty {
-            drawStroke(current, in: UIGraphicsGetCurrentContext()!)   // live stroke only
-        }
+        committed?.draw(in: bounds)     // cached committed ink only; the wet stroke is liveLayer
     }
 
+    /// Variable-width committed stroke (used to bake into the cache).
     private func drawStroke(_ pts: [InkSample], in ctx: CGContext) {
         ctx.setStrokeColor(inkColor.cgColor)
         ctx.setFillColor(inkColor.cgColor)
@@ -255,5 +280,27 @@ final class VectorInkView: UIView {
             ctx.addLine(to: b.location)
             ctx.strokePath()
         }
+    }
+
+    /// Single smoothed path for the wet-ink layer (constant width; it bakes to a
+    /// variable-width stroke on lift).
+    private func livePath() -> CGPath {
+        let pts = current
+        let path = CGMutablePath()
+        guard pts.count > 1 else {
+            if let p = pts.first {
+                path.addEllipse(in: CGRect(x: p.location.x - baseWidth / 2, y: p.location.y - baseWidth / 2,
+                                           width: baseWidth, height: baseWidth))
+            }
+            return path
+        }
+        path.move(to: pts[0].location)
+        for i in 1..<pts.count {
+            let a = pts[i - 1].location, b = pts[i].location
+            let mid = CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
+            path.addQuadCurve(to: mid, control: a)
+            path.addLine(to: b)
+        }
+        return path
     }
 }
