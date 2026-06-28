@@ -27,6 +27,11 @@ struct CustomInkLabView: View {
             HStack(spacing: 8) {
                 Button { lab.setTool(.pen) } label: { toolChip("Pen", on: lab.tool == .pen) }
                 Button { lab.setTool(.eraser) } label: { toolChip("Eraser", on: lab.tool == .eraser) }
+                ForEach([("S", CGFloat(1.6)), ("M", CGFloat(2.6)), ("L", CGFloat(4.5))], id: \.0) { label, w in
+                    Button { lab.setWidth(w) } label: {
+                        toolChip(label, on: lab.tool == .pen && abs(lab.penWidth - w) < 0.01)
+                    }
+                }
                 Button { lab.undo() } label: { chip("Undo") }.disabled(!lab.canUndo).opacity(lab.canUndo ? 1 : 0.4)
                 Button { lab.redo() } label: { chip("Redo") }.disabled(!lab.canRedo).opacity(lab.canRedo ? 1 : 0.4)
                 Button { lab.addRandom(300) } label: { chip("+300") }
@@ -65,9 +70,11 @@ final class InkLabController: ObservableObject {
     @Published var tool: InkTool = .pen
     @Published var canUndo = false
     @Published var canRedo = false
+    @Published var penWidth: CGFloat = 2.6
     func addRandom(_ n: Int) { view?.addRandomStrokes(n) }
     func clear() { view?.clearAll() }
     func setTool(_ t: InkTool) { tool = t; view?.tool = t }
+    func setWidth(_ w: CGFloat) { penWidth = w; view?.penWidth = w; if tool != .pen { setTool(.pen) } }
     func undo() { view?.undo() }
     func redo() { view?.redo() }
     func syncState() {
@@ -135,7 +142,7 @@ final class VectorInkView: UIView {
     private var current: [InkSample] = []
     private var committed: UIImage?          // rasterised `strokes` at contentScaleFactor
 
-    private let baseWidth: CGFloat = 2.6
+    var penWidth: CGFloat = 2.6     // S/M/L selectable; per-sample width = penWidth × pressure
     private let inkColor = UIColor(white: 0.08, alpha: 1)
 
     /// The in-progress stroke. Vector → crisp; GPU-composited → cheap per frame.
@@ -188,7 +195,7 @@ final class VectorInkView: UIView {
         layer.addSublayer(pendingLayer)
         liveLayer.fillColor = nil
         liveLayer.strokeColor = inkColor.cgColor
-        liveLayer.lineWidth = baseWidth
+        liveLayer.lineWidth = penWidth
         liveLayer.lineCap = .round
         liveLayer.lineJoin = .round
         liveLayer.frame = bounds
@@ -408,7 +415,7 @@ final class VectorInkView: UIView {
     private func sample(_ t: UITouch) -> InkSample {
         let force = t.maximumPossibleForce > 0 ? t.force / t.maximumPossibleForce : 0
         let pressure = force > 0 ? force : 0.5
-        return InkSample(location: t.location(in: self), width: baseWidth * (0.55 + pressure))
+        return InkSample(location: t.location(in: self), width: penWidth * (0.55 + pressure))
     }
 
     // MARK: Stress test
@@ -421,7 +428,7 @@ final class VectorInkView: UIView {
             var p = start
             for _ in 0..<Int.random(in: 6...18) {
                 p = CGPoint(x: p.x + .random(in: -14...14), y: p.y + .random(in: -14...14))
-                s.append(InkSample(location: p, width: baseWidth * .random(in: 0.6...1.4)))
+                s.append(InkSample(location: p, width: penWidth * .random(in: 0.6...1.4)))
             }
             strokes.append(s)
         }
@@ -595,7 +602,7 @@ final class VectorInkView: UIView {
     private func livePath() -> CGPath { smoothedCenterline(current) }
 
     private func avgWidth(_ pts: [InkSample]) -> CGFloat {
-        guard !pts.isEmpty else { return baseWidth }
+        guard !pts.isEmpty else { return penWidth }
         return pts.reduce(0) { $0 + $1.width } / CGFloat(pts.count)
     }
 
@@ -604,8 +611,8 @@ final class VectorInkView: UIView {
         let path = CGMutablePath()
         guard pts.count > 1 else {
             if let p = pts.first {
-                path.addEllipse(in: CGRect(x: p.location.x - baseWidth / 2, y: p.location.y - baseWidth / 2,
-                                           width: baseWidth, height: baseWidth))
+                path.addEllipse(in: CGRect(x: p.location.x - penWidth / 2, y: p.location.y - penWidth / 2,
+                                           width: penWidth, height: penWidth))
             }
             return path
         }
