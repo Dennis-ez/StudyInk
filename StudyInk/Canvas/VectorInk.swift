@@ -72,17 +72,17 @@ enum VectorInk {
     /// path (location + width) and taking the ink colour as-is. Pass an already
     /// appearance-adapted drawing if you want dark-mode colours baked in.
     static func strokes(from drawing: PKDrawing) -> [Stroke] {
-        drawing.strokes.map { stroke in
+        drawing.strokes.compactMap { stroke -> Stroke? in
             let t = stroke.transform
-            var samples: [InkSample] = []
-            for p in stroke.path.interpolatedPoints(by: .distance(1.5)) {
-                samples.append(InkSample(location: p.location.applying(t),
-                                         width: max(p.size.width, p.size.height)))
+            func sample(_ p: PKStrokePoint) -> InkSample {
+                // Clamp width so a thin/zero-size stroke can't render invisibly.
+                InkSample(location: p.location.applying(t), width: max(p.size.width, p.size.height, 1))
             }
-            // Degenerate (dot) strokes have a single control point.
-            if samples.isEmpty, let p = stroke.path.first {
-                samples = [InkSample(location: p.location.applying(t), width: max(p.size.width, p.size.height))]
-            }
+            var samples = stroke.path.interpolatedPoints(by: .distance(1.5)).map(sample)
+            // Short strokes can interpolate to < 2 points → fall back to the raw
+            // control points so no stroke is ever dropped.
+            if samples.count < 2 { samples = stroke.path.map(sample) }
+            guard !samples.isEmpty else { return nil }
             return Stroke(color: stroke.ink.color, samples: samples)
         }
     }
