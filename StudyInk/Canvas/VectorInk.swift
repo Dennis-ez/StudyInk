@@ -120,12 +120,20 @@ enum VectorInk {
     /// Convert a `PKDrawing` to vector strokes by sampling each stroke's interpolated
     /// path (location + width) and taking the ink colour as-is. Pass an already
     /// appearance-adapted drawing if you want dark-mode colours baked in.
+    /// PencilKit's pressure pens TAPER (thin at the ends, pressure-varied), so a
+    /// CONSTANT-width stroke at the same nominal size reads much heavier — the app
+    /// itself scales constant-width monoline ink by 0.38 for exactly this reason
+    /// (see DrawingTool.inkTool). We render constant width, so apply the same kind of
+    /// compensation or converted ink comes out ~2× too thick. Tunable.
+    static let penWeight: CGFloat = 0.55
+
     static func strokes(from drawing: PKDrawing) -> [Stroke] {
         drawing.strokes.compactMap { stroke -> Stroke? in
             let t = stroke.transform
             func sample(_ p: PKStrokePoint) -> InkSample {
-                // Clamp width so a thin/zero-size stroke can't render invisibly.
-                InkSample(location: p.location.applying(t), width: max(p.size.width, p.size.height, 1))
+                let footprint = (p.size.width + p.size.height) / 2
+                // Floor so a thin/zero-size stroke can't render invisibly.
+                return InkSample(location: p.location.applying(t), width: max(footprint * penWeight, 0.4))
             }
             var samples = stroke.path.interpolatedPoints(by: .distance(1.5)).map(sample)
             // Short strokes can interpolate to < 2 points → fall back to the raw
