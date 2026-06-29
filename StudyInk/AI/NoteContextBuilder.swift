@@ -1,5 +1,4 @@
 import UIKit
-import PencilKit
 
 /// Assembles the full multimodal context the AI tutor sees on every request:
 /// all pages as images, OCR text, typed text, note metadata, and the

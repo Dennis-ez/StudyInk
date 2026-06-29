@@ -1,5 +1,4 @@
 import SwiftUI
-import PencilKit
 
 /// Thumbnail strip for page navigation. Long-press a thumbnail for add / duplicate /
 /// reorder / delete; tap to jump. Docks to the bottom (horizontal) or side (vertical).

@@ -1,5 +1,4 @@
 import SwiftUI
-import PencilKit
 
 /// Orchestrates the AI tutor for one open note: sends requests with full note
 /// context, parses bubbles/annotations/chips, and manages bubble lifecycle

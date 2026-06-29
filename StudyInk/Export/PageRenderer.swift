@@ -16,6 +16,7 @@ enum PageRenderer {
         let template: PageTemplate
         let templateSpacing: CGFloat
         let customTemplatePDF: Data?
+        let vectorInkData: Data?
         let drawingData: Data?
         let mediaItems: [MediaItemModel]
         let textBoxes: [TextBoxModel]
@@ -26,6 +27,7 @@ enum PageRenderer {
             template = page.template
             templateSpacing = page.effectiveTemplateSpacing
             customTemplatePDF = page.customTemplatePDF
+            vectorInkData = page.vectorInkData
             drawingData = page.drawingData
             mediaItems = page.mediaItems
             textBoxes = page.textBoxes
@@ -109,6 +111,7 @@ enum PageRenderer {
         if snapshot.customTemplatePDF != nil { return true }
         if !snapshot.mediaItems.isEmpty { return true }
         if snapshot.textBoxes.contains(where: { !$0.text.isEmpty }) { return true }
+        if let data = snapshot.vectorInkData, let s = VectorInk.decode(data), !s.isEmpty { return true }
         if let data = snapshot.drawingData,
            let drawing = try? PKDrawing(data: data),
            !drawing.strokes.isEmpty { return true }
@@ -167,9 +170,20 @@ enum PageRenderer {
         if let inkLayer {
             // Pre-rasterized by the caller — no main hop here.
             inkLayer.draw(in: pageRect)
+        } else if let data = snapshot.vectorInkData, let canonical = VectorInk.decode(data), !canonical.isEmpty {
+            // Native vector ink (the master format). Strokes are CANONICAL, so adapt
+            // colour → display per stroke (black ink → near-white on a dark page) and
+            // stroke directly — safe on ANY thread, so the whole page composites off-main.
+            for s in canonical {
+                let color = InkColorAdapter.displayColor(s.color, darkMode: darkMode)
+                let pts = inkBoost > 1.001
+                    ? s.samples.map { InkSample(location: $0.location, width: $0.width * inkBoost) }
+                    : s.samples
+                VectorInk.drawStroke(pts, color: color, in: cg)
+            }
         } else if let data = snapshot.drawingData, let stored = try? PKDrawing(data: data), !stored.strokes.isEmpty {
-            // The engine strokes the vectors itself — safe on ANY thread (unlike
-            // PKDrawing.image()), so the whole page composites off-main.
+            // Legacy fallback (notes saved before the vector migration): convert the
+            // stored PKDrawing — the engine strokes the vectors itself, safe on any thread.
             let adapted = InkColorAdapter.displayDrawing(stored, darkMode: darkMode)
             for s in VectorInk.strokes(from: adapted) {
                 let pts = inkBoost > 1.001
