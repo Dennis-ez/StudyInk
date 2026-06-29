@@ -21,6 +21,46 @@ enum VectorInk {
         let samples: [InkSample]
     }
 
+    // MARK: Persistence — compact, versioned, Codable
+
+    /// On-disk form: colour as RGBA, samples flattened to [x,y,w,…] for compactness.
+    private struct PersistedDoc: Codable {
+        var version = 1
+        var strokes: [PersistedStroke]
+    }
+    private struct PersistedStroke: Codable {
+        let c: [CGFloat]      // r,g,b,a
+        let p: [CGFloat]      // x,y,w, x,y,w, …
+    }
+
+    static func encode(_ strokes: [Stroke]) -> Data? {
+        let doc = PersistedDoc(strokes: strokes.map { s in
+            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 1
+            s.color.getRed(&r, green: &g, blue: &b, alpha: &a)
+            var flat: [CGFloat] = []
+            flat.reserveCapacity(s.samples.count * 3)
+            for k in s.samples { flat.append(k.location.x); flat.append(k.location.y); flat.append(k.width) }
+            return PersistedStroke(c: [r, g, b, a], p: flat)
+        })
+        return try? JSONEncoder().encode(doc)
+    }
+
+    static func decode(_ data: Data) -> [Stroke]? {
+        guard let doc = try? JSONDecoder().decode(PersistedDoc.self, from: data) else { return nil }
+        return doc.strokes.map { ps in
+            let c = ps.c.count >= 4 ? ps.c : [0, 0, 0, 1]
+            let color = UIColor(red: c[0], green: c[1], blue: c[2], alpha: c[3])
+            var samples: [InkSample] = []
+            samples.reserveCapacity(ps.p.count / 3)
+            var i = 0
+            while i + 2 < ps.p.count {
+                samples.append(InkSample(location: CGPoint(x: ps.p[i], y: ps.p[i + 1]), width: ps.p[i + 2]))
+                i += 3
+            }
+            return Stroke(color: color, samples: samples)
+        }
+    }
+
     // MARK: Geometry (identical to the lab's wet/committed rendering — WYSIWYG)
 
     /// ONE width for the whole stroke (matches the lab's wet preview).
