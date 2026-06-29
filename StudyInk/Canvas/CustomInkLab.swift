@@ -244,8 +244,8 @@ final class VectorInkView: UIView {
     private func rebuildBridge() {
         let combined = CGMutablePath()
         for s in bridgeStrokes {
-            combined.addPath(smoothedCenterline(s).copy(strokingWithWidth: avgWidth(s),
-                                                        lineCap: .round, lineJoin: .round, miterLimit: 10))
+            combined.addPath(Self.inkPath(s).copy(strokingWithWidth: Self.avgWidth(s),
+                                                  lineCap: .round, lineJoin: .round, miterLimit: 10))
         }
         CATransaction.begin(); CATransaction.setDisableActions(true)
         bridgeLayer.path = combined.isEmpty ? nil : combined
@@ -347,8 +347,8 @@ final class VectorInkView: UIView {
         }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        liveLayer.lineWidth = avgWidth(current)
-        liveLayer.path = smoothedCenterline(current)
+        liveLayer.lineWidth = Self.avgWidth(current)
+        liveLayer.path = Self.inkPath(current)
         CATransaction.commit()
     }
 
@@ -456,42 +456,21 @@ final class VectorInkView: UIView {
         return r.insetBy(dx: -w, dy: -w)   // pad for the pen width so cull/invalidate cover the ink
     }
 
-    private func avgWidth(_ pts: [InkSample]) -> CGFloat {
-        guard !pts.isEmpty else { return penWidth }
+    /// ONE width for the whole stroke. The wet preview, the bridge, and the committed
+    /// render all use this, so what you draw is exactly what lands (no per-segment
+    /// width change the instant you lift).
+    private static func avgWidth(_ pts: [InkSample]) -> CGFloat {
+        guard !pts.isEmpty else { return 2.6 }
         return pts.reduce(0) { $0 + $1.width } / CGFloat(pts.count)
     }
 
-    /// Variable-width committed stroke. Static → safe to call off the main thread.
-    private static func drawStroke(_ pts: [InkSample], color: UIColor, in ctx: CGContext) {
-        ctx.setStrokeColor(color.cgColor)
-        ctx.setFillColor(color.cgColor)
-        ctx.setLineCap(.round)
-        ctx.setLineJoin(.round)
-        guard pts.count > 1 else {
-            if let p = pts.first {
-                ctx.fillEllipse(in: CGRect(x: p.location.x - p.width / 2, y: p.location.y - p.width / 2,
-                                           width: p.width, height: p.width))
-            }
-            return
-        }
-        for i in 1..<pts.count {
-            let a = pts[i - 1], b = pts[i]
-            let mid = CGPoint(x: (a.location.x + b.location.x) / 2, y: (a.location.y + b.location.y) / 2)
-            ctx.setLineWidth((a.width + b.width) / 2)
-            ctx.move(to: a.location)
-            ctx.addQuadCurve(to: mid, control: a.location)
-            ctx.addLine(to: b.location)
-            ctx.strokePath()
-        }
-    }
-
-    /// Midpoint-smoothed centerline (for the wet layer).
-    private func smoothedCenterline(_ pts: [InkSample]) -> CGPath {
+    /// Midpoint-smoothed centerline. Static → also safe from the off-main tile render.
+    private static func inkPath(_ pts: [InkSample]) -> CGPath {
         let path = CGMutablePath()
         guard pts.count > 1 else {
             if let p = pts.first {
-                path.addEllipse(in: CGRect(x: p.location.x - penWidth / 2, y: p.location.y - penWidth / 2,
-                                           width: penWidth, height: penWidth))
+                path.addEllipse(in: CGRect(x: p.location.x - p.width / 2, y: p.location.y - p.width / 2,
+                                           width: p.width, height: p.width))
             }
             return path
         }
@@ -503,5 +482,23 @@ final class VectorInkView: UIView {
             path.addLine(to: b)
         }
         return path
+    }
+
+    /// Committed render: stroke the SAME centerline at the SAME width as the preview.
+    private static func drawStroke(_ pts: [InkSample], color: UIColor, in ctx: CGContext) {
+        guard pts.count > 1 else {
+            if let p = pts.first {
+                ctx.setFillColor(color.cgColor)
+                ctx.fillEllipse(in: CGRect(x: p.location.x - p.width / 2, y: p.location.y - p.width / 2,
+                                           width: p.width, height: p.width))
+            }
+            return
+        }
+        ctx.setStrokeColor(color.cgColor)
+        ctx.setLineCap(.round)
+        ctx.setLineJoin(.round)
+        ctx.setLineWidth(avgWidth(pts))
+        ctx.addPath(inkPath(pts))
+        ctx.strokePath()
     }
 }
