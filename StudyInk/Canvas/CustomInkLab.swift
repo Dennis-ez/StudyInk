@@ -134,10 +134,7 @@ struct CustomInkScroll: UIViewRepresentable {
     }
 }
 
-private struct InkSample {
-    let location: CGPoint
-    let width: CGFloat
-}
+// InkSample is shared (defined in VectorInk.swift).
 
 /// A finished stroke: its colour, its samples, and a cached bounds (so erase/cull
 /// never recompute bounds, and the tile renderer can draw each stroke in its colour).
