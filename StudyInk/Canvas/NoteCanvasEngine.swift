@@ -1747,6 +1747,12 @@ final class PageContainerView: UIView {
 
     override func draw(_ rect: CGRect) {
         guard let snapshot, let cg = UIGraphicsGetCurrentContext() else { return }
+        // The cached full-page image (shown on inactive pages and during a scroll freeze)
+        // already includes the background + imported PDF. Don't re-rasterize the PDF on
+        // the MAIN thread underneath it — that main-thread PDF raster, per page revealed,
+        // is what tanked sliding through PDF notes. Only draw the background when this
+        // page is the live one (image hidden, transparent ink canvas on top).
+        if !imageView.isHidden, imageView.image != nil { return }
         let dark = traitCollection.userInterfaceStyle == .dark
         PageRenderer.drawBackground(snapshot, in: cg, darkMode: dark)
         // Hairline seam where stitched ruled pages meet (pages are gapless). A PDF
