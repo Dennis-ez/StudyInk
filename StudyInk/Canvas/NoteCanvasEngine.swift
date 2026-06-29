@@ -7,6 +7,8 @@ import PencilKit
 /// menu rides a UIEditMenuInteraction that ignores canPerformAction, so we strip
 /// the interaction outright (and keep re-stripping, since PencilKit re-adds it).
 final class InkCanvasView: PKCanvasView {
+    /// The real ink surface — AI ink insertion routes here (PencilKit is inert).
+    weak var vectorCanvas: VectorInkView?
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
         false
     }
@@ -200,7 +202,24 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         // The real ink surface: transparent over the page container, page-coordinate
         // (no inkScale — the tiled layer re-renders sharp at any zoom).
         vectorCanvas.backgroundColor = .clear
+        canvas.vectorCanvas = vectorCanvas   // AI ink routes through the inert canvas → here
         vectorCanvas.onChange = { [weak self] in self?.vectorCanvasChanged() }
+        // The editor's TransformLassoOverlay owns selection — the engine just captures
+        // the loop and reports it (in canvas/inkScale space, matching the projection the
+        // existing lasso pipeline reads).
+        vectorCanvas.externalLasso = true
+        vectorCanvas.onLassoBeganExternal = { [weak self] in self?.controller.onLassoBegan?() }
+        vectorCanvas.onLassoChangedExternal = { [weak self] pts in
+            guard let self else { return }
+            self.controller.lassoPoints = pts.map { CGPoint(x: $0.x * self.inkScale, y: $0.y * self.inkScale) }
+        }
+        vectorCanvas.onLassoEndedExternal = { [weak self] pts in
+            guard let self else { return }
+            self.syncCanvasProjection()   // canvas.drawing must mirror current strokes for selection
+            let scaled = pts.map { CGPoint(x: $0.x * self.inkScale, y: $0.y * self.inkScale) }
+            self.controller.lassoPoints = scaled
+            self.controller.onLassoComplete?(scaled)
+        }
         controller.attachVector(vectorCanvas)
         controller.engine = self
 
@@ -484,6 +503,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         // Restore this page's undo history (loadStrokes cleared it) so swiping back
         // to a page you edited keeps its undo/redo.
         if let h = pageUndoHistory[index] { vectorCanvas.restoreHistory(undo: h.undo, redo: h.redo) }
+        syncCanvasProjection()   // seed the PK projection that the lasso pipeline reads
         isProgrammaticChange = false
         // If the provider is wired up, this page is fully loaded (an empty page
         // is legitimately empty). If not, ensureContent() seeds it once the
@@ -917,33 +937,35 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
 
     func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
         guard !isProgrammaticChange else { return }
-        let drawing = canvasView.drawing
+        // The PK canvas is inert input-wise; the only NON-programmatic changes to its
+        // drawing now are lasso-overlay commits (move/resize/rotate/duplicate/insert-
+        // space) the editor computes on the projection. Mirror the result back onto the
+        // real vector canvas and persist.
+        syncVectorFromCanvas()
         let index = activeIndex
-        DispatchQueue.main.async { [controller] in
-            controller.refreshUndoState()
-            if let stroke = drawing.strokes.last {
-                controller.onStroke?(index, stroke)
-            }
-        }
+        let strokes = vectorCanvas.currentStrokes()
         saveWorkItem?.cancel()
-        let work = DispatchWorkItem { [weak self] in
-            self?.persist(drawing, at: index)
+        let work = DispatchWorkItem { [controller] in
+            controller.onDrawingChanged?(index, VectorInk.pkDrawing(from: strokes))
         }
         saveWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
+        DispatchQueue.main.async { [controller] in controller.refreshUndoState() }
+    }
 
-        scheduleShapeRecognition(canvasView)
+    /// Keep the inert PK canvas's drawing as a DISPLAY+inkScale projection of the live
+    /// vector strokes, so the editor's existing lasso pipeline (StrokeSelector +
+    /// TransformLassoOverlay, all canvas-space) works unchanged.
+    private func syncCanvasProjection() {
+        isProgrammaticChange = true
+        canvas.drawing = displayIntoCanvas(VectorInk.pkDrawing(from: vectorCanvas.currentStrokes()))
+        isProgrammaticChange = false
+    }
 
-        // Momentary eraser: once the erase gesture has fully ended, hop back
-        // to the tool that was active before the Pencil double-tap.
-        if controller.toolState.kind == .eraserPixel || controller.toolState.kind == .eraserObject {
-            let state = canvasView.drawingGestureRecognizer.state
-            if state != .began && state != .changed {
-                DispatchQueue.main.async { [controller] in
-                    controller.eraseGestureFinished()
-                }
-            }
-        }
+    /// Mirror the PK projection (after a lasso lift/commit) back onto the vector canvas,
+    /// preserving its undo history.
+    private func syncVectorFromCanvas() {
+        vectorCanvas.setStrokesPreservingHistory(VectorInk.strokes(from: canonicalFromCanvas(canvas.drawing)))
     }
 
     /// Auto-shapes: shortly after a stroke ends (and no new stroke begins),
@@ -1314,6 +1336,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         isProgrammaticChange = true
         canvas.drawing = lifted
         isProgrammaticChange = false
+        syncVectorFromCanvas()   // hide the lifted strokes on the real vector canvas
     }
 
     /// Commit the lasso transform onto the original (un-lifted) strokes.
@@ -1336,6 +1359,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         canvas.drawing = original
         isProgrammaticChange = false
         lastStrokeCount = original.strokes.count
+        syncVectorFromCanvas()   // restore the lifted strokes on the real vector canvas
     }
 
     /// Delete the selection — the strokes are already lifted out, so just make

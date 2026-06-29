@@ -371,6 +371,14 @@ final class VectorInkView: UIView {
     /// render under the vector ink. nil = plain paper.
     var paperTemplate: PageTemplate? = .wideRuled { didSet { tiled.setNeedsDisplay() } }
 
+    /// Editor lasso: the editor's own `TransformLassoOverlay` owns selection/transform
+    /// (drag-move / pinch-resize / twist-rotate, no handle nodes), so in editor mode the
+    /// lasso tool just CAPTURES the loop and reports it instead of doing internal selection.
+    var externalLasso = false
+    var onLassoBeganExternal: (() -> Void)?
+    var onLassoChangedExternal: (([CGPoint]) -> Void)?
+    var onLassoEndedExternal: (([CGPoint]) -> Void)?
+
     /// Editor mounts the engine as a TRANSPARENT ink layer over the page container
     /// (paper/PDF rendered by the container). Lab keeps `true` (draws its own paper).
     var drawsPaper = true {
@@ -557,6 +565,14 @@ final class VectorInkView: UIView {
         }
         if tool == .lasso {
             let p = t.location(in: self)
+            if externalLasso {
+                // Editor mode: just CAPTURE the loop; the editor's TransformLassoOverlay
+                // owns selection/transform (drag-move / pinch-resize / twist-rotate).
+                onLassoBeganExternal?()
+                lassoPoints = [p]
+                onLassoChangedExternal?(lassoPoints)
+                return
+            }
             if !selectionStrokes.isEmpty, let g = selectionGesture(at: p) {
                 selectionGesture = g          // grab a handle (scale/rotate) or the box (move)
             } else {
@@ -579,6 +595,11 @@ final class VectorInkView: UIView {
         }
         if tool == .lasso {
             let p = t.location(in: self)
+            if externalLasso {
+                for ct in event?.coalescedTouches(for: t) ?? [t] { lassoPoints.append(ct.location(in: self)) }
+                onLassoChangedExternal?(lassoPoints)
+                return
+            }
             if let g = selectionGesture {
                 selectionTransform = transform(for: g, finger: p)
                 applySelectionTransform()
@@ -594,6 +615,12 @@ final class VectorInkView: UIView {
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         if tool == .eraser { return }
         if tool == .lasso {
+            if externalLasso {
+                let pts = lassoPoints
+                lassoPoints = []
+                onLassoEndedExternal?(pts)
+                return
+            }
             if selectionGesture != nil {
                 selectionGesture = nil        // selection stays floating at its new transform
             } else if lassoPoints.count > 2 {
@@ -1052,6 +1079,17 @@ final class VectorInkView: UIView {
     func restoreHistory(undo: [[VectorInk.Stroke]], redo: [[VectorInk.Stroke]]) {
         undoStack = undo
         redoStack = redo
+    }
+
+    /// Replace the model WITHOUT touching undo history or firing onChange — the editor
+    /// mirrors lasso lift/commit results (computed on the PK projection) back here.
+    func setStrokesPreservingHistory(_ newStrokes: [VectorInk.Stroke]) {
+        discardSelection()
+        strokes = newStrokes
+        current = []
+        liveLayer.path = nil
+        clearBridge()
+        invalidate()
     }
 
     /// Append strokes (e.g. AI ink insertion): undoable, re-rendered, and `onChange`

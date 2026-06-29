@@ -282,6 +282,18 @@ extension AITutorController {
     /// Appends AI strokes to the canvas as a single undoable (and redoable) edit,
     /// so the undo/redo buttons remove/restore the AI's writing like any stroke.
     func appendInkUndoably(_ strokes: [PKStroke], to canvas: PKCanvasView) {
+        // The live canvas is the vector engine. Convert the page-space AI strokes to
+        // CANONICAL vector colour (the generated colour is display-mapped; the engine
+        // re-adapts at render) and insert — this is undoable and auto-persists the PK
+        // projection (so OCR / export / AI-vision still see the ink).
+        if let vector = (canvas as? InkCanvasView)?.vectorCanvas {
+            let dark = vector.traitCollection.userInterfaceStyle == .dark
+            let vec = VectorInk.strokes(from: PKDrawing(strokes: strokes)).map { s in
+                VectorInk.Stroke(color: InkColorAdapter.storageColor(s.color, darkMode: dark), samples: s.samples)
+            }
+            vector.insert(vec)
+            return
+        }
         let before = canvas.drawing
         registerInkUndo(restoring: before, on: canvas)
         // The live canvas may be supersampled for native-sharp zoom (it carries a
