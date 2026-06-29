@@ -109,6 +109,9 @@ final class Page: NSManagedObject {
     @NSManaged var id: UUID?
     @NSManaged var index: Int32
     @NSManaged var drawingData: Data?
+    /// Native vector ink — the master format. Optional (CloudKit-safe); nil on notes
+    /// saved before the vector migration, which fall back to `drawingData`.
+    @NSManaged var vectorInkData: Data?
     @NSManaged var templateID: String?
     @NSManaged var templateSpacing: Double
     @NSManaged var pageSizeID: String?
@@ -130,6 +133,22 @@ final class Page: NSManagedObject {
         }
         set {
             drawingData = newValue.dataRepresentation()
+            note?.touch()
+        }
+    }
+
+    /// The page's ink as native vector strokes — the master format going forward.
+    /// The setter DUAL-WRITES: the vector encoding (vectorInkData) AND the legacy
+    /// PKDrawing projection (drawingData), which still feeds OCR / export / AI-vision
+    /// and is the read fallback for notes saved before the migration.
+    var vectorStrokes: [VectorInk.Stroke] {
+        get {
+            if let data = vectorInkData, let s = VectorInk.decode(data) { return s }
+            return VectorInk.strokes(from: drawing)   // legacy: convert the PKDrawing
+        }
+        set {
+            vectorInkData = VectorInk.encode(newValue)
+            drawingData = VectorInk.pkDrawing(from: newValue).dataRepresentation()
             note?.touch()
         }
     }
@@ -161,6 +180,7 @@ final class Page: NSManagedObject {
     /// Deep copy used by page duplication.
     func copyContents(from other: Page) {
         drawingData = other.drawingData
+        vectorInkData = other.vectorInkData
         templateID = other.templateID
         templateSpacing = other.templateSpacing
         pageSizeID = other.pageSizeID

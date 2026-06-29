@@ -105,7 +105,9 @@ final class CanvasController: NSObject, ObservableObject {
 
     // MARK: Callbacks into SwiftUI
 
-    var onDrawingChanged: ((Int, PKDrawing) -> Void)?
+    /// Persist a page's ink. Carries native vector strokes (the master format); the
+    /// editor dual-writes vectorInkData + the legacy PKDrawing projection.
+    var onDrawingChanged: ((Int, [VectorInk.Stroke]) -> Void)?
     var onStroke: ((Int, PKStroke) -> Void)?
     /// Fired when the Apple Pencil is held still on the canvas for ~1s (ask gesture).
     var onPencilHold: (() -> Void)?
@@ -137,6 +139,9 @@ final class CanvasController: NSObject, ObservableObject {
     var onCanvasFingerTap: ((CGPoint) -> Void)?
     /// The engine pulls page content through these (set by the editor).
     var drawingProvider: ((Int) -> PKDrawing)?
+    /// Raw stored ink bytes for a page (read on the main thread; decoded/converted
+    /// OFF-main by the engine). Prefer `vector`; fall back to the legacy `pk` PKDrawing.
+    var inkDataProvider: ((Int) -> (vector: Data?, pk: Data?))?
     var snapshotProvider: ((Int) -> PageRenderer.Snapshot?)?
 
     /// Lasso clipboard: strokes copied/cut from a selection (live-canvas, i.e.

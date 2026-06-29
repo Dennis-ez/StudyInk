@@ -83,6 +83,7 @@ final class PersistenceController {
             attr("id", .uuid),
             attr("index", .integer32, default: 0),
             attr("drawingData", .binaryData, external: true),
+            attr("vectorInkData", .binaryData, external: true),
             attr("templateID", .string, default: "blank"),
             attr("templateSpacing", .double, default: 1.0),
             attr("pageSizeID", .string, default: "letter"),

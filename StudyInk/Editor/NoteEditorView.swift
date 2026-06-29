@@ -884,6 +884,14 @@ struct NoteEditorView: View {
                     return pages.indices.contains(index) ? pages[index].drawing : PKDrawing()
                 }
             }
+            canvasController.inkDataProvider = { [weak note] index in
+                MainActor.assumeIsolated {
+                    guard let note else { return (nil, nil) }
+                    let pages = note.sortedPages
+                    guard pages.indices.contains(index) else { return (nil, nil) }
+                    return (pages[index].vectorInkData, pages[index].drawingData)
+                }
+            }
             canvasController.snapshotProvider = { [weak note] index in
                 MainActor.assumeIsolated {
                     guard let note else { return nil }
@@ -2025,14 +2033,14 @@ extension NoteEditorView {
     }
 
     private func wireCanvasSave() {
-        canvasController.onDrawingChanged = { [weak note] index, drawing in
+        canvasController.onDrawingChanged = { [weak note] index, strokes in
             guard let note else { return }
             let pages = note.sortedPages
             guard pages.indices.contains(index) else { return }
-            pages[index].drawing = drawing
+            pages[index].vectorStrokes = strokes   // dual-writes vectorInkData + drawingData
             // Ink on the last page grows the document — there's always a fresh
             // page waiting below. (Empty pages stay out of the exported PDF.)
-            if index == pages.count - 1, !drawing.strokes.isEmpty {
+            if index == pages.count - 1, !strokes.isEmpty {
                 _ = note.addPage()
             }
             // NOTE: the note's search index is NOT rebuilt here. Rebuilding it on

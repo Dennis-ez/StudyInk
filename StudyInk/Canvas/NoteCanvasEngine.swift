@@ -510,18 +510,23 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
             isProgrammaticChange = false
             bridgeActiveReveal(index: index)
         } else {
-            // Convert PKDrawing → vectors OFF the main thread. On a DENSE page this takes
-            // hundreds of ms–seconds; on main it froze the UI (the multi-second hitches
-            // and the laggy first stroke). The cached page image bridges the gap; reveal
-            // the live canvas once the conversion lands.
-            let data = (controller.drawingProvider?(index) ?? PKDrawing()).dataRepresentation()
+            // Decode the page's ink OFF the main thread. Prefer the native vector blob
+            // (fast decode); fall back to converting the legacy PKDrawing for pre-migration
+            // notes (hundreds of ms–seconds on a dense page — must stay off-main, it froze
+            // the UI). The cached page image bridges the gap; reveal once it lands.
+            let raw = controller.inkDataProvider?(index)
             isProgrammaticChange = true
             vectorCanvas.loadStrokes([])
             isProgrammaticChange = false
             container.imageView.isHidden = false
             Task.detached(priority: .userInitiated) {
-                let pk = (try? PKDrawing(data: data)) ?? PKDrawing()
-                let converted = VectorInk.strokes(from: pk)
+                let converted: [VectorInk.Stroke]
+                if let vd = raw?.vector, let s = VectorInk.decode(vd) {
+                    converted = s
+                } else {
+                    let pk = (try? PKDrawing(data: raw?.pk ?? Data())) ?? PKDrawing()
+                    converted = VectorInk.strokes(from: pk)
+                }
                 await MainActor.run { [weak self] in
                     guard let self, self.activeIndex == index else { return }
                     self.lastStrokes[index] = converted
@@ -612,7 +617,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         controller.refreshUndoState()
         saveWorkItem?.cancel()
         let work = DispatchWorkItem { [controller, weak self] in
-            controller.onDrawingChanged?(index, VectorInk.pkDrawing(from: after))
+            controller.onDrawingChanged?(index, after)
             // Refresh the active page's cached image (off-main) so a later scroll-freeze
             // shows current ink without rendering mid-scroll.
             self?.renderImage(for: index)
@@ -712,7 +717,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         vectorCanvas.setStrokesPreservingHistory(after)
         let index = activeIndex
         saveWorkItem?.cancel()
-        let work = DispatchWorkItem { [controller] in controller.onDrawingChanged?(index, VectorInk.pkDrawing(from: after)) }
+        let work = DispatchWorkItem { [controller] in controller.onDrawingChanged?(index, after) }
         saveWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
         controller.refreshUndoState()
@@ -720,7 +725,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
 
     private func applyNoteHistory(index: Int, strokes: [VectorInk.Stroke]) {
         lastStrokes[index] = strokes
-        controller.onDrawingChanged?(index, VectorInk.pkDrawing(from: strokes))   // persist
+        controller.onDrawingChanged?(index, strokes)   // persist
         if index == activeIndex {
             vectorCanvas.setStrokesPreservingHistory(strokes)
         } else {
@@ -731,7 +736,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     }
 
     private func persistVector(at index: Int) {
-        controller.onDrawingChanged?(index, VectorInk.pkDrawing(from: vectorCanvas.currentStrokes()))
+        controller.onDrawingChanged?(index, vectorCanvas.currentStrokes())
     }
 
     /// Display → storage, then hand the canonical drawing to the editor to
@@ -740,7 +745,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     private func persist(_ displayDrawing: PKDrawing, at index: Int) {
         // displayDrawing is the live canvas's drawing (inkScale space) → scale
         // back to canonical page coordinates AND un-adapt appearance.
-        controller.onDrawingChanged?(index, canonicalFromCanvas(displayDrawing))
+        controller.onDrawingChanged?(index, VectorInk.strokes(from: canonicalFromCanvas(displayDrawing)))
     }
 
     /// The app appearance flipped while editing. Save under the OLD appearance,
@@ -1159,7 +1164,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         lastStrokes[index] = strokes
         saveWorkItem?.cancel()
         let work = DispatchWorkItem { [controller] in
-            controller.onDrawingChanged?(index, VectorInk.pkDrawing(from: strokes))
+            controller.onDrawingChanged?(index, strokes)
         }
         saveWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
