@@ -3,6 +3,16 @@ import PencilKit
 import PhotosUI
 import UniformTypeIdentifiers
 
+/// Wraps a SINGLE page-anchored overlay so it re-renders when the document geometry
+/// changes (scroll/zoom) WITHOUT re-evaluating the whole editor body. The overlay reads
+/// `transform` inside the closure, so each gate refresh recomputes it from the current
+/// geometry. Apply any `.zIndex` to the gate itself (it's a layout-neutral passthrough).
+private struct GeometryGate<Content: View>: View {
+    @ObservedObject var geometry: CanvasGeometry
+    @ViewBuilder var content: () -> Content
+    var body: some View { content() }
+}
+
 /// The main editing surface: template background + media + ink + text boxes,
 /// the floating toolbar, page navigation, and (phase 5+) AI overlays.
 struct NoteEditorView: View {
@@ -202,30 +212,39 @@ struct NoteEditorView: View {
 
             // Current page's editable overlays (other pages render their media
             // and text inside the engine's cached page images).
-            MediaLayer(items: $mediaItems, transform: transform, selectedItemID: $selectedMediaID, snap: snapMetrics,
-                       onAutoScroll: { canvasController.autoScroll(by: $0) })
-            TextBoxLayer(boxes: $textBoxes, transform: transform, editingBoxID: $editingBoxID, snap: snapMetrics)
+            GeometryGate(geometry: canvasController.geometry) {
+                MediaLayer(items: $mediaItems, transform: transform, selectedItemID: $selectedMediaID, snap: snapMetrics,
+                           onAutoScroll: { canvasController.autoScroll(by: $0) })
+            }
+            GeometryGate(geometry: canvasController.geometry) {
+                TextBoxLayer(boxes: $textBoxes, transform: transform, editingBoxID: $editingBoxID, snap: snapMetrics)
+            }
 
             // Above the margin glyphs — a chat bubble must never sit under a ✓/~/?.
-            aiOverlays
-                .zIndex(1)
+            GeometryGate(geometry: canvasController.geometry) {
+                aiOverlays
+            }
+            .zIndex(1)
 
             // Coloured highlights over the ink each expanded guided step is about
             // — same colour as that step's badge, so the student sees the link.
-            ForEach(guidedMode.stepHighlights) { h in
-                let r = transform.toScreen(h.rect).insetBy(dx: -4, dy: -2)
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .fill(h.color.opacity(0.20))
-                    .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous).strokeBorder(h.color.opacity(0.7), lineWidth: 1.5))
-                    .frame(width: max(r.width, 8), height: max(r.height, 8))
-                    .position(x: r.midX, y: r.midY)
-                    .allowsHitTesting(false)
-                    .transition(.opacity)
+            GeometryGate(geometry: canvasController.geometry) {
+                ForEach(guidedMode.stepHighlights) { h in
+                    let r = transform.toScreen(h.rect).insetBy(dx: -4, dy: -2)
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .fill(h.color.opacity(0.20))
+                        .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous).strokeBorder(h.color.opacity(0.7), lineWidth: 1.5))
+                        .frame(width: max(r.width, 8), height: max(r.height, 8))
+                        .position(x: r.midX, y: r.midY)
+                        .allowsHitTesting(false)
+                        .transition(.opacity)
+                }
             }
             .zIndex(2)
 
             // The Ambient Tutor's margin lane: glyphs anchored to the lines of
             // work, and the note that unfolds from a tapped glyph.
+            GeometryGate(geometry: canvasController.geometry) {
             MarginLaneView(
                 ambient: ambient,
                 pageIndex: pageIndex,
@@ -293,6 +312,7 @@ struct NoteEditorView: View {
                     Task { await ambient.checkWork(note: note, pageIndex: pageIndex, darkMode: colorScheme == .dark) }
                 }
             )
+            }
 
             // Ambient tutor result banner ("looks all good" / error). Thinking
             // itself is the breathing corner badge below.
@@ -303,11 +323,13 @@ struct NoteEditorView: View {
             // thinking" (replaces the old 'Checking your work…' pill).
             // Ghost Witness: faint dashed guide lines fitted over the sketch.
             if let g = ghostWitness.geometry, g.pageIndex == pageIndex {
-                GhostWitnessOverlay(
-                    geometry: g,
-                    transform: canvasController.canvasTransform(forPage: pageIndex),
-                    onDismiss: { ghostWitness.dismiss() }
-                )
+                GeometryGate(geometry: canvasController.geometry) {
+                    GhostWitnessOverlay(
+                        geometry: g,
+                        transform: canvasController.canvasTransform(forPage: pageIndex),
+                        onDismiss: { ghostWitness.dismiss() }
+                    )
+                }
                 .zIndex(35)
             }
             if let notice = ghostWitness.notice ?? warpTunnel.notice {
@@ -345,6 +367,7 @@ struct NoteEditorView: View {
 
             // Note title + creation time in the desk gutter above the first
             // page (scrolls/zooms with the page) — never over ink.
+            GeometryGate(geometry: canvasController.geometry) {
             if !distractionFree, let pageOrigin = canvasController.pageScreenOrigins.first {
                 Button(action: startRename) {
                     VStack(alignment: .leading, spacing: 1) {
@@ -363,6 +386,7 @@ struct NoteEditorView: View {
                 .offset(x: pageOrigin.x + 4, y: pageOrigin.y - 52)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
+            }
 
             // Audio playback tap-to-seek: tap any written mark to jump the recording
             // to the moment it was written.
@@ -380,18 +404,22 @@ struct NoteEditorView: View {
             // Lasso CAPTURE overlay — draw-only now (the loop is captured by the
             // engine's pencil gesture, so a finger still scrolls the page). It
             // reads the live loop points and just renders the marching ants.
-            TransformLassoOverlay(
-                isActive: $transformLassoActive,
-                rectangular: canvasController.lassoRectangular,
-                transform: canvasController.transform(forPage: pageIndex),
-                points: canvasController.lassoPoints,
-                onCancel: { canvasController.select(.ballpoint) }
-            )
+            GeometryGate(geometry: canvasController.geometry) {
+                TransformLassoOverlay(
+                    isActive: $transformLassoActive,
+                    rectangular: canvasController.lassoRectangular,
+                    transform: canvasController.transform(forPage: pageIndex),
+                    points: canvasController.lassoPoints,
+                    onCancel: { canvasController.select(.ballpoint) }
+                )
+            }
 
             // Tap-to-define a concept (Lagrange, L'Hôpital, …).
             if let hit = conceptHit {
-                ConceptDefinitionCard(hit: hit, transform: transform) {
-                    withAnimation { conceptHit = nil }
+                GeometryGate(geometry: canvasController.geometry) {
+                    ConceptDefinitionCard(hit: hit, transform: transform) {
+                        withAnimation { conceptHit = nil }
+                    }
                 }
                 .zIndex(45)
             }
@@ -536,8 +564,10 @@ struct NoteEditorView: View {
             }
 
             // Circle & Ask lasso capture layer.
-            AskLassoOverlay(isActive: $askLassoActive, transform: transform) { region in
-                circleAskRegion = region
+            GeometryGate(geometry: canvasController.geometry) {
+                AskLassoOverlay(isActive: $askLassoActive, transform: transform) { region in
+                    circleAskRegion = region
+                }
             }
 
             // Node editing for freshly created shapes.
@@ -641,6 +671,7 @@ struct NoteEditorView: View {
             // Ink-free lassoed region → copy / duplicate / delete pill (the lasso
             // caught no editable strokes, so we treat the area as an image).
             if let region = regionSelection {
+                GeometryGate(geometry: canvasController.geometry) {
                 let r = transform.toScreen(region.pageRect)
                 ZStack {
                     // Same marching ants as the ink lasso (animated, same colour),
@@ -673,6 +704,7 @@ struct NoteEditorView: View {
                     .position(x: r.midX, y: max(44, r.minY - 28))
                 }
                 .transition(.opacity)
+                }
                 .zIndex(41)
             }
 

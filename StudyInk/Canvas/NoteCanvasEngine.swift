@@ -968,14 +968,11 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
 
     func viewForZooming(in scrollView: UIScrollView) -> UIView? { documentView }
 
-    private var lastGeoPublish: CFTimeInterval = 0
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
-        // Publishing geometry re-evaluates the whole editor body (SwiftUI overlays track
-        // the pages). Cap it to ~33ms so the heavy relayout doesn't run 60×/sec and
-        // starve the scroll; the exact final position is published on settle.
-        let now = CACurrentMediaTime()
-        guard now - lastGeoPublish >= 0.033 else { return }
-        lastGeoPublish = now
+        // Geometry lives in its own observable (CanvasGeometry) now, so publishing every
+        // frame re-renders ONLY the page-anchored overlays (via GeometryGate), not the
+        // whole editor body — overlays track the scroll 1:1 with no relayout cost, so the
+        // old throttle (which only added overlay lag) is gone.
         publishGeometry(sync: true)
     }
 

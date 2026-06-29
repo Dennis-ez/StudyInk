@@ -1,6 +1,21 @@
 import SwiftUI
 import PencilKit
 
+/// The document's per-frame geometry — page screen origins + zoom — as a STANDALONE
+/// observable. The engine updates it every scroll/zoom frame; the editor's overlays
+/// observe it through a small `GeometryGate` so those frame-rate updates re-render only
+/// the overlays, NOT the whole editor body (which observes CanvasController instead).
+final class CanvasGeometry: ObservableObject {
+    @Published var zoomScale: CGFloat = 1
+    @Published var pageScreenOrigins: [CGPoint] = []
+
+    /// Maps page-space points of `pageIndex` into editor screen space.
+    func transform(forPage pageIndex: Int) -> CanvasTransform {
+        let origin = pageScreenOrigins.indices.contains(pageIndex) ? pageScreenOrigins[pageIndex] : .zero
+        return CanvasTransform(zoomScale: zoomScale, contentOffset: CGPoint(x: -origin.x, y: -origin.y))
+    }
+}
+
 /// Owns the live canvas state so SwiftUI views (toolbar, editor, overlays) can
 /// drive tools, zoom, paging, and undo/redo without fighting the UIKit engine.
 /// The document engine (NoteCanvasEngine) reports scroll/zoom/page geometry
@@ -39,10 +54,21 @@ final class CanvasController: NSObject, ObservableObject {
 
     // MARK: Geometry published by the engine
 
-    @Published var zoomScale: CGFloat = 1
+    /// Per-FRAME geometry (page origins + zoom) lives in its OWN observable so the
+    /// editor body doesn't re-evaluate 60×/sec while scrolling — only the overlays,
+    /// which observe `geometry`, do (see GeometryGate). Reads/writes below forward to
+    /// it, so callers (the engine) are unchanged.
+    let geometry = CanvasGeometry()
+    var zoomScale: CGFloat {
+        get { geometry.zoomScale }
+        set { geometry.zoomScale = newValue }
+    }
     /// Screen-space origin of every page (editor coordinates), updated as the
     /// document scrolls/zooms. Overlays anchor to their page through these.
-    @Published var pageScreenOrigins: [CGPoint] = []
+    var pageScreenOrigins: [CGPoint] {
+        get { geometry.pageScreenOrigins }
+        set { geometry.pageScreenOrigins = newValue }
+    }
     /// The page under the viewport center; the live canvas follows it.
     @Published var currentPageIndex = 0
     /// The page under the viewport center, updated LIVE while scrolling (the page
@@ -163,8 +189,7 @@ final class CanvasController: NSObject, ObservableObject {
 
     /// Maps page-space points of `pageIndex` into editor screen space.
     func transform(forPage pageIndex: Int) -> CanvasTransform {
-        let origin = pageScreenOrigins.indices.contains(pageIndex) ? pageScreenOrigins[pageIndex] : .zero
-        return CanvasTransform(zoomScale: zoomScale, contentOffset: CGPoint(x: -origin.x, y: -origin.y))
+        geometry.transform(forPage: pageIndex)
     }
 
     /// Maps the live canvas's inkScale× coordinates into editor screen space —
@@ -172,7 +197,7 @@ final class CanvasController: NSObject, ObservableObject {
     /// rather than page-space data. Same screen result, but the values it
     /// round-trips are canvas coordinates, so they line up with canvas.drawing.
     func canvasTransform(forPage pageIndex: Int) -> CanvasTransform {
-        let t = transform(forPage: pageIndex)
+        let t = geometry.transform(forPage: pageIndex)
         return CanvasTransform(zoomScale: t.zoomScale / inkScale, contentOffset: t.contentOffset)
     }
 
