@@ -64,12 +64,11 @@ enum PageRenderer {
     static func inkLayer(for snapshot: Snapshot, darkMode: Bool, scale: CGFloat) -> UIImage? {
         guard let data = snapshot.drawingData, let stored = try? PKDrawing(data: data), !stored.strokes.isEmpty
         else { return nil }
+        // Custom engine on: return nil so the caller's OFF-MAIN render strokes the
+        // vectors itself (see draw()). The first attempt's perf trap was doing that
+        // bulk CoreGraphics work HERE on the main actor — now it stays off-main.
+        if UserDefaults.standard.bool(forKey: "settings.canvas.customInk") { return nil }
         let adapted = InkColorAdapter.displayDrawing(stored, darkMode: darkMode)
-        // NOTE: Phase 1 (rendering page images via on-the-fly PK→vector conversion)
-        // was reverted — bulk CoreGraphics stroking on the main thread per page was
-        // too slow and doesn't use the engine's tiling. The engine integrates as the
-        // LIVE active-page renderer instead (Phase 2). VectorInk + the converter stay
-        // for that. Page images keep rendering via PencilKit.
         let drawing = boldened(adapted, factor: inkBoost(forScale: scale))
         return inkImage(drawing, from: CGRect(origin: .zero, size: snapshot.pageSize))
     }
@@ -178,8 +177,20 @@ enum PageRenderer {
             inkLayer.draw(in: pageRect)
         } else if let data = snapshot.drawingData, let stored = try? PKDrawing(data: data), !stored.strokes.isEmpty {
             let adapted = InkColorAdapter.displayDrawing(stored, darkMode: darkMode)
-            let drawing = boldened(adapted, factor: inkBoost)
-            inkImage(drawing, from: pageRect)?.draw(in: pageRect)
+            if UserDefaults.standard.bool(forKey: "settings.canvas.customInk") {
+                // Custom engine: stroke the vectors ourselves. Unlike PKDrawing.image()
+                // this is safe on ANY thread, so the whole page composites off-main
+                // with no main hop (the perf trap that sank the first attempt).
+                for s in VectorInk.strokes(from: adapted) {
+                    let pts = inkBoost > 1.001
+                        ? s.samples.map { InkSample(location: $0.location, width: $0.width * inkBoost) }
+                        : s.samples
+                    VectorInk.drawStroke(pts, color: s.color, in: cg)
+                }
+            } else {
+                let drawing = boldened(adapted, factor: inkBoost)
+                inkImage(drawing, from: pageRect)?.draw(in: pageRect)
+            }
         }
 
         // Typed text boxes.
