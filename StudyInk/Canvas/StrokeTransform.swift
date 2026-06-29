@@ -1,5 +1,4 @@
 import SwiftUI
-import PencilKit
 
 /// A lasso-captured set of strokes mid-transform.
 struct StrokeSelection {
@@ -15,36 +14,6 @@ struct StrokeSelection {
 }
 
 enum StrokeSelector {
-    /// Strokes with at least one path point inside the lasso polygon (page space).
-    static func indices(in drawing: PKDrawing, polygon: [CGPoint]) -> [Int] {
-        guard polygon.count > 3 else { return [] }
-        return drawing.strokes.enumerated().compactMap { index, stroke in
-            let path = stroke.path
-            let step = max(1, path.count / 24)
-            for i in stride(from: 0, to: path.count, by: step) {
-                let point = path[i].location.applying(stroke.transform)
-                if contains(polygon: polygon, point: point) { return index }
-            }
-            return nil
-        }
-    }
-
-    static func selection(from drawing: PKDrawing, polygon: [CGPoint], pageIndex: Int, darkMode: Bool) -> StrokeSelection? {
-        let indices = self.indices(in: drawing, polygon: polygon)
-        guard !indices.isEmpty else { return nil }
-        let strokes = indices.map { drawing.strokes[$0] }
-        let bounds = strokes.dropFirst().reduce(strokes[0].renderBounds) { $0.union($1.renderBounds) }
-        guard bounds.width > 0, bounds.height > 0 else { return nil }
-        // The canvas strokes are already DISPLAY-mapped (near-white on a dark page).
-        // Render them in a FIXED LIGHT trait so iOS 26 doesn't re-adapt them — a
-        // .dark trait inverted the near-white ink to black (invisible / "turns
-        // black" in dark mode). Matches PageRenderer.inkImage.
-        var image = UIImage()
-        UITraitCollection(userInterfaceStyle: .light).performAsCurrent {
-            image = PKDrawing(strokes: strokes).image(from: bounds, scale: 2)
-        }
-        return StrokeSelection(pageIndex: pageIndex, strokeIndices: indices, bounds: bounds, image: image, polygon: polygon)
-    }
 
     // MARK: Vector-native selection (no PencilKit round-trip)
 
@@ -90,21 +59,6 @@ enum StrokeSelector {
         return inside
     }
 
-    /// Bakes a scale + rotation (both about the selection's center) AND a
-    /// page-space translation into the strokes — one seamless move/resize/rotate.
-    static func applyTransform(rotation degrees: Double, scale: CGFloat, translation: CGSize, selection: StrokeSelection, to drawing: PKDrawing) -> PKDrawing {
-        let center = CGPoint(x: selection.bounds.midX, y: selection.bounds.midY)
-        let combined = CGAffineTransform(translationX: center.x, y: center.y)
-            .rotated(by: degrees * .pi / 180)
-            .scaledBy(x: scale, y: scale)
-            .translatedBy(x: -center.x, y: -center.y)
-            .concatenating(CGAffineTransform(translationX: translation.width, y: translation.height))
-        var result = drawing
-        for index in selection.strokeIndices where result.strokes.indices.contains(index) {
-            result.strokes[index].transform = result.strokes[index].transform.concatenating(combined)
-        }
-        return result
-    }
 }
 
 /// Lasso capture: draw a loop (or, in rectangular mode, drag a marquee) and get
