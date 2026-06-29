@@ -277,12 +277,13 @@ final class CanvasController: NSObject, ObservableObject {
         engine?.setLassoGestureActive(toolState.kind == .lasso)
     }
 
-    func undo() { vectorCanvas?.undo(); refreshUndoState() }
-    func redo() { vectorCanvas?.redo(); refreshUndoState() }
+    func undo() { engine?.noteUndoAction(); refreshUndoState() }
+    func redo() { engine?.noteRedoAction(); refreshUndoState() }
 
     func refreshUndoState() {
-        let undo = vectorCanvas?.canUndo ?? false
-        let redo = vectorCanvas?.canRedo ?? false
+        // Shared note-level history lives in the engine (one stack across all pages).
+        let undo = engine?.canNoteUndo ?? false
+        let redo = engine?.canNoteRedo ?? false
         if canUndo != undo { canUndo = undo }
         if canRedo != redo { canRedo = redo }
     }

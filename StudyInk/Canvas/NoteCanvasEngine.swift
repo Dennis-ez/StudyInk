@@ -71,9 +71,13 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     let canvas = InkCanvasView()   // inert — PencilKit is being removed
     /// The live custom vector ink canvas (the real ink surface).
     let vectorCanvas = VectorInkView()
-    /// Per-page undo/redo stacks (the single live view is reused across pages, so we
-    /// save/restore each page's history across switches — undo survives a page swipe).
-    private var pageUndoHistory: [Int: (undo: [[VectorInk.Stroke]], redo: [[VectorInk.Stroke]])] = [:]
+    /// NOTE-LEVEL (shared) undo/redo — ONE history across ALL pages. Each entry is a
+    /// page's strokes BEFORE an edit; undo reverts it (switching to that page).
+    private var noteUndo: [(index: Int, strokes: [VectorInk.Stroke])] = []
+    private var noteRedo: [(index: Int, strokes: [VectorInk.Stroke])] = []
+    /// Last committed strokes per page — the "before" source for undo AND a mount cache
+    /// (skips re-converting the PKDrawing when re-opening a page → smoother swiping).
+    private var lastStrokes: [Int: [VectorInk.Stroke]] = [:]
     private var activeIndex = 0
     private var isProgrammaticChange = false
     /// True once the active page's real drawing has been loaded into the live
@@ -343,7 +347,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         if !containers.isEmpty, samePageAtActiveIndex { flushPendingSave() }
         saveWorkItem?.cancel()
         saveWorkItem = nil
-        pageUndoHistory.removeAll()   // page list changed → index-keyed history is stale
+        noteUndo.removeAll(); noteRedo.removeAll(); lastStrokes.removeAll()   // page list changed → indices stale
         layoutSignature = signature
         pageSizes = sizes
 
@@ -498,12 +502,17 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         isProgrammaticChange = true
         // Load the page's CANONICAL strokes; the engine adapts colour to the current
         // appearance at render time (no inkScale, no pre-adaptation needed).
-        let canonical = controller.drawingProvider?(index) ?? PKDrawing()
-        vectorCanvas.loadStrokes(VectorInk.strokes(from: canonical))
-        // Restore this page's undo history (loadStrokes cleared it) so swiping back
-        // to a page you edited keeps its undo/redo.
-        if let h = pageUndoHistory[index] { vectorCanvas.restoreHistory(undo: h.undo, redo: h.redo) }
-        syncCanvasProjection()   // seed the PK projection that the lasso pipeline reads
+        // Use the cached vector strokes if present (avoids re-converting the PKDrawing
+        // on every swipe — the per-mount conversion was the scroll-jank culprit); else
+        // convert once and cache. The PK projection is seeded lazily on lasso, not here.
+        let strokes: [VectorInk.Stroke]
+        if let cached = lastStrokes[index] {
+            strokes = cached
+        } else {
+            strokes = VectorInk.strokes(from: controller.drawingProvider?(index) ?? PKDrawing())
+            lastStrokes[index] = strokes
+        }
+        vectorCanvas.loadStrokes(strokes)
         isProgrammaticChange = false
         // If the provider is wired up, this page is fully loaded (an empty page
         // is legitimately empty). If not, ensureContent() seeds it once the
@@ -543,7 +552,6 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         guard index != activeIndex, containers.indices.contains(index) else { return }
         abortStrokeEditIfNeeded()
         flushPendingSave()
-        pageUndoHistory[activeIndex] = vectorCanvas.exportHistory()   // remember this page's undo
         let oldIndex = activeIndex
         if containers.indices.contains(oldIndex) {
             // Show the old page's cached render IMMEDIATELY as the canvas leaves
@@ -575,14 +583,48 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     private func vectorCanvasChanged() {
         guard !isProgrammaticChange else { return }
         let index = activeIndex
+        let after = vectorCanvas.currentStrokes()
+        // Shared note-level undo: record this page's BEFORE-state.
+        noteUndo.append((index, lastStrokes[index] ?? []))
+        if noteUndo.count > 250 { noteUndo.removeFirst() }
+        noteRedo.removeAll()
+        lastStrokes[index] = after
         controller.refreshUndoState()
-        let strokes = vectorCanvas.currentStrokes()
         saveWorkItem?.cancel()
         let work = DispatchWorkItem { [controller] in
-            controller.onDrawingChanged?(index, VectorInk.pkDrawing(from: strokes))
+            controller.onDrawingChanged?(index, VectorInk.pkDrawing(from: after))
         }
         saveWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
+    }
+
+    // MARK: Shared (note-level) undo/redo — one history across all pages
+
+    var canNoteUndo: Bool { !noteUndo.isEmpty }
+    var canNoteRedo: Bool { !noteRedo.isEmpty }
+
+    func noteUndoAction() {
+        guard let (index, before) = noteUndo.popLast() else { return }
+        let after = (index == activeIndex) ? vectorCanvas.currentStrokes() : (lastStrokes[index] ?? [])
+        noteRedo.append((index, after))
+        applyNoteHistory(index: index, strokes: before)
+    }
+    func noteRedoAction() {
+        guard let (index, after) = noteRedo.popLast() else { return }
+        let before = (index == activeIndex) ? vectorCanvas.currentStrokes() : (lastStrokes[index] ?? [])
+        noteUndo.append((index, before))
+        applyNoteHistory(index: index, strokes: after)
+    }
+    private func applyNoteHistory(index: Int, strokes: [VectorInk.Stroke]) {
+        lastStrokes[index] = strokes
+        controller.onDrawingChanged?(index, VectorInk.pkDrawing(from: strokes))   // persist
+        if index == activeIndex {
+            vectorCanvas.setStrokesPreservingHistory(strokes)
+        } else {
+            scrollToPage(index, animated: true)   // mount loads the reverted (cached) data
+        }
+        if containers.indices.contains(index) { renderImage(for: index) }
+        controller.refreshUndoState()
     }
 
     private func persistVector(at index: Int) {
@@ -944,6 +986,11 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         syncVectorFromCanvas()
         let index = activeIndex
         let strokes = vectorCanvas.currentStrokes()
+        // Make the lasso edit part of the shared undo history.
+        noteUndo.append((index, lastStrokes[index] ?? []))
+        if noteUndo.count > 250 { noteUndo.removeFirst() }
+        noteRedo.removeAll()
+        lastStrokes[index] = strokes
         saveWorkItem?.cancel()
         let work = DispatchWorkItem { [controller] in
             controller.onDrawingChanged?(index, VectorInk.pkDrawing(from: strokes))
