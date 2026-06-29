@@ -13,7 +13,7 @@ import UIKit
 ///   • the live stroke is a separate "wet" CAShapeLayer — instant, never blocked.
 ///
 /// Isolated — touches nothing in the real app. Settings → Developer → "Custom ink lab".
-enum InkTool { case pen, eraser, shape }
+enum InkTool { case pen, eraser, shape, lasso }
 
 struct CustomInkLabView: View {
     @Environment(\.dismiss) private var dismiss
@@ -26,6 +26,7 @@ struct CustomInkLabView: View {
                 Button { lab.setTool(.pen) } label: { toolChip("Pen", on: lab.tool == .pen) }
                 Button { lab.setTool(.eraser) } label: { toolChip("Eraser", on: lab.tool == .eraser) }
                 Button { lab.setTool(.shape) } label: { toolChip("Shape", on: lab.tool == .shape) }
+                Button { lab.setTool(.lasso) } label: { toolChip("Lasso", on: lab.tool == .lasso) }
                 ForEach([("S", CGFloat(1.6)), ("M", CGFloat(2.6)), ("L", CGFloat(4.5))], id: \.0) { label, w in
                     Button { lab.setWidth(w) } label: {
                         toolChip(label, on: lab.tool == .pen && abs(lab.penWidth - w) < 0.01)
@@ -147,6 +148,18 @@ struct CustomInkScroll: UIViewRepresentable {
 // InkSample + Stroke are shared (defined in VectorInk.swift).
 private typealias Stroke = VectorInk.Stroke
 
+/// Floating layer for a lifted lasso selection: draws the selected strokes (in the
+/// layer's LOCAL coords, sized to the selection bbox so the backing store stays small)
+/// and is moved via its transform — so dragging a selection never re-renders any tile.
+final class FloatingInkLayer: CALayer {
+    var strokes: [VectorInk.Stroke] = []
+    override func draw(in ctx: CGContext) {
+        for s in strokes { VectorInk.drawStroke(s.samples, color: s.color, in: ctx) }
+    }
+    // No implicit position/transform animations — the selection must track the finger.
+    override func action(forKey event: String) -> CAAction? { NSNull() }
+}
+
 /// A tiled layer that re-renders invalidated tiles instantly (no fade-in).
 final class TiledInkLayer: CATiledLayer {
     override class func fadeDuration() -> CFTimeInterval { 0 }
@@ -176,7 +189,19 @@ final class VectorInkView: UIView {
     private var bridgeWork: DispatchWorkItem?
     private var warmedUp = false
 
-    var tool: InkTool = .pen
+    // Lasso selection. lassoLayer draws the dashed outline (in-progress loop + the
+    // selection box); selectionLayer floats the lifted strokes (moved via transform).
+    private let lassoLayer = CAShapeLayer()
+    private let selectionLayer = FloatingInkLayer()
+    private var lassoPoints: [CGPoint] = []
+    private var selectionStrokes: [Stroke] = []     // lifted from the model (canonical colour)
+    private var selectionBBox: CGRect = .null        // union bbox in content coords (zero offset)
+    private var selectionOffset: CGPoint = .zero      // live move translation
+    private var moveStart: CGPoint?
+
+    var tool: InkTool = .pen {
+        didSet { if oldValue == .lasso, tool != .lasso { commitSelection() } }
+    }
     private let eraserRadius: CGFloat = 16
     private var erasedThisGesture = false
 
@@ -220,6 +245,19 @@ final class VectorInkView: UIView {
         liveLayer.frame = bounds
         liveLayer.contentsScale = baseScale
         layer.addSublayer(liveLayer)
+
+        // Floating selection ink (below the dashed outline). Bbox-sized on lift.
+        selectionLayer.contentsScale = baseScale
+        selectionLayer.isHidden = true
+        layer.addSublayer(selectionLayer)
+        // Dashed lasso loop / selection box on top of everything.
+        lassoLayer.fillColor = UIColor.systemBlue.withAlphaComponent(0.06).cgColor
+        lassoLayer.strokeColor = UIColor.systemBlue.cgColor
+        lassoLayer.lineWidth = 1.5
+        lassoLayer.lineDashPattern = [6, 4]
+        lassoLayer.frame = bounds
+        lassoLayer.contentsScale = baseScale
+        layer.addSublayer(lassoLayer)
         publishModel()
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -228,6 +266,7 @@ final class VectorInkView: UIView {
         super.layoutSubviews()
         liveLayer.frame = bounds
         bridgeLayer.frame = bounds
+        lassoLayer.frame = bounds
         contentBounds = bounds        // captured for the off-main tile draw
         warmUp()
     }
@@ -404,6 +443,17 @@ final class VectorInkView: UIView {
             if !dirty.isNull { invalidate(dirty); onChange?() }
             return
         }
+        if tool == .lasso {
+            let p = t.location(in: self)
+            if !selectionStrokes.isEmpty, selectionHitBox.contains(p) {
+                moveStart = p                 // grab the existing selection to drag it
+            } else {
+                commitSelection()             // bake any existing selection, then start a new loop
+                lassoPoints = [p]
+                updateLassoLayer()
+            }
+            return
+        }
         current = [sample(t)]
         updateLiveLayer()
     }
@@ -415,11 +465,32 @@ final class VectorInkView: UIView {
             if !dirty.isNull { invalidate(dirty); onChange?() }
             return
         }
+        if tool == .lasso {
+            let p = t.location(in: self)
+            if let start = moveStart {
+                selectionOffset = CGPoint(x: p.x - start.x, y: p.y - start.y)
+                applySelectionTransform()
+            } else if !lassoPoints.isEmpty {
+                for ct in event?.coalescedTouches(for: t) ?? [t] { lassoPoints.append(ct.location(in: self)) }
+                updateLassoLayer()
+            }
+            return
+        }
         for ct in event?.coalescedTouches(for: t) ?? [t] { current.append(sample(ct)) }
         updateLiveLayer()
     }
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         if tool == .eraser { return }
+        if tool == .lasso {
+            if moveStart != nil {
+                moveStart = nil               // selection stays floating at its new offset
+            } else if lassoPoints.count > 2 {
+                finishLasso()
+            } else {
+                lassoPoints = []; lassoLayer.path = nil   // a tap: any selection was already committed in began
+            }
+            return
+        }
         if current.count > 1 {
             // Shape tool: snap a rough drawing to clean geometry. ShapeRecognizer is
             // engine-agnostic (takes [CGPoint]) → the recognised shape becomes a clean
@@ -464,6 +535,143 @@ final class VectorInkView: UIView {
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
         current = []
         liveLayer.path = nil
+        if tool == .lasso { moveStart = nil; lassoPoints = []; if selectionStrokes.isEmpty { lassoLayer.path = nil } }
+    }
+
+    // MARK: Lasso selection
+
+    /// The selection's grab box in content coords (bbox at the current move offset).
+    private var selectionHitBox: CGRect {
+        selectionBBox.offsetBy(dx: selectionOffset.x, dy: selectionOffset.y).insetBy(dx: -10, dy: -10)
+    }
+
+    private func updateLassoLayer() {
+        let path = CGMutablePath()
+        if let f = lassoPoints.first {
+            path.move(to: f)
+            for p in lassoPoints.dropFirst() { path.addLine(to: p) }
+            path.closeSubpath()
+        }
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        lassoLayer.transform = CATransform3DIdentity
+        lassoLayer.path = path
+        CATransaction.commit()
+    }
+
+    /// Close the loop, lift the strokes whose majority of samples fall inside it onto
+    /// the floating layer, and box them — the tiles re-render without them.
+    private func finishLasso() {
+        let poly = lassoPoints
+        lassoPoints = []
+        guard poly.count > 2 else { lassoLayer.path = nil; return }
+        var selected: [Stroke] = [], remaining: [Stroke] = []
+        for s in strokes {
+            if Self.strokeMostlyInside(s, polygon: poly) { selected.append(s) } else { remaining.append(s) }
+        }
+        guard !selected.isEmpty else { lassoLayer.path = nil; return }
+
+        pushUndo()                                   // captures the ORIGINAL positions (move bakes without re-pushing)
+        strokes = remaining
+        selectionStrokes = selected
+        selectionBBox = selected.reduce(CGRect.null) { $0.union($1.bbox) }
+        selectionOffset = .zero
+
+        // Float the selection on a bbox-sized layer (small backing), strokes in LOCAL
+        // coords (offset by -origin), display-coloured for the current appearance.
+        let frame = selectionBBox.insetBy(dx: -2, dy: -2)
+        let origin = frame.origin
+        selectionLayer.frame = frame
+        selectionLayer.strokes = selected.map { s in
+            Stroke(color: Self.displayColor(s.color, dark: displayDark),
+                   samples: s.samples.map { InkSample(location: CGPoint(x: $0.location.x - origin.x, y: $0.location.y - origin.y), width: $0.width) })
+        }
+        selectionLayer.isHidden = false
+        selectionLayer.setNeedsDisplay()
+        // Dashed box around the selection (in content coords; follows the move transform).
+        lassoLayer.path = CGPath(roundedRect: selectionBBox.insetBy(dx: -6, dy: -6), cornerWidth: 8, cornerHeight: 8, transform: nil)
+        applySelectionTransform()
+        invalidate()                                  // tiles drop the lifted strokes
+        onChange?()
+    }
+
+    private func applySelectionTransform() {
+        let tr = CATransform3DMakeTranslation(selectionOffset.x, selectionOffset.y, 0)
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        selectionLayer.transform = tr
+        lassoLayer.transform = tr
+        CATransaction.commit()
+    }
+
+    /// Bake the floating selection back into the model at its moved position. The
+    /// floating layer stays visible (at its offset) for a beat so the moved ink doesn't
+    /// flash out in the gap before CATiledLayer re-renders (no completion callback).
+    private func commitSelection() {
+        guard !selectionStrokes.isEmpty else { return }
+        let dx = selectionOffset.x, dy = selectionOffset.y
+        for s in selectionStrokes {
+            strokes.append(Stroke(color: s.color,
+                                  samples: s.samples.map { InkSample(location: CGPoint(x: $0.location.x + dx, y: $0.location.y + dy), width: $0.width) }))
+        }
+        // Clear the model-side selection now, but keep the floating LAYER showing.
+        selectionStrokes = []
+        lassoPoints = []
+        moveStart = nil
+        selectionBBox = .null
+        lassoLayer.path = nil
+        invalidate()
+        onChange?()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            guard let self, self.selectionStrokes.isEmpty else { return }   // a new selection took over
+            self.selectionOffset = .zero
+            self.selectionLayer.strokes = []
+            self.selectionLayer.isHidden = true
+            CATransaction.begin(); CATransaction.setDisableActions(true)
+            self.selectionLayer.transform = CATransform3DIdentity
+            self.lassoLayer.transform = CATransform3DIdentity
+            CATransaction.commit()
+        }
+    }
+
+    /// Drop the floating selection WITHOUT baking (used by undo/redo/clear, which
+    /// restore the model directly).
+    private func discardSelection() {
+        guard !selectionStrokes.isEmpty || !lassoPoints.isEmpty else { return }
+        clearSelectionState()
+    }
+
+    private func clearSelectionState() {
+        selectionStrokes = []
+        lassoPoints = []
+        moveStart = nil
+        selectionOffset = .zero
+        selectionBBox = .null
+        selectionLayer.strokes = []
+        selectionLayer.isHidden = true
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        selectionLayer.transform = CATransform3DIdentity
+        lassoLayer.transform = CATransform3DIdentity
+        lassoLayer.path = nil
+        CATransaction.commit()
+    }
+
+    private static func strokeMostlyInside(_ s: Stroke, polygon: [CGPoint]) -> Bool {
+        guard !s.samples.isEmpty else { return false }
+        var inside = 0
+        for sm in s.samples where pointInPolygon(sm.location, polygon) { inside += 1 }
+        return Double(inside) / Double(s.samples.count) >= 0.5
+    }
+
+    private static func pointInPolygon(_ p: CGPoint, _ poly: [CGPoint]) -> Bool {
+        guard poly.count > 2 else { return false }
+        var inside = false
+        var j = poly.count - 1
+        for i in 0..<poly.count {
+            let a = poly[i], b = poly[j]
+            if (a.y > p.y) != (b.y > p.y),
+               p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x { inside.toggle() }
+            j = i
+        }
+        return inside
     }
 
     private func sample(_ t: UITouch) -> InkSample {
@@ -527,12 +735,14 @@ final class VectorInkView: UIView {
     }
 
     func undo() {
+        discardSelection()      // a floating selection's original is what the snapshot holds
         guard let prev = undoStack.popLast() else { return }
         redoStack.append(strokes)
         strokes = prev
         afterHistoryChange()
     }
     func redo() {
+        discardSelection()
         guard let next = redoStack.popLast() else { return }
         undoStack.append(strokes)
         strokes = next
@@ -565,6 +775,7 @@ final class VectorInkView: UIView {
     }
 
     func clearAll() {
+        discardSelection()
         if !strokes.isEmpty { pushUndo() }   // clearing is undoable
         strokes = []
         current = []
