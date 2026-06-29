@@ -470,12 +470,10 @@ final class VectorInkView: UIView {
     /// Map a stored (canonical) colour to its on-screen colour for the current
     /// appearance — black ink shows light on a dark page; colours brighten a touch.
     private static func displayColor(_ c: UIColor, dark: Bool) -> UIColor {
-        guard dark else { return c }
-        var w: CGFloat = 0, a: CGFloat = 0
-        if c.getWhite(&w, alpha: &a) { return UIColor(white: 1 - w, alpha: a) }   // black↔white
-        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0
-        c.getHue(&h, saturation: &s, brightness: &b, alpha: &a)
-        return UIColor(hue: h, saturation: s * 0.85, brightness: min(1, b + 0.22), alpha: a)
+        // Single source of truth with the rest of the app (inactive pages, AI, export).
+        // The old local copy used getWhite(), which returns true for ANY colour (as
+        // luminance), so red ink came out grey on a dark page.
+        InkColorAdapter.displayColor(c, darkMode: dark)
     }
 
     private func refreshPenDisplay() {

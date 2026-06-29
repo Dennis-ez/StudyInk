@@ -221,8 +221,10 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
             guard let self else { return }
             self.syncCanvasProjection()   // canvas.drawing must mirror current strokes for selection
             let scaled = pts.map { CGPoint(x: $0.x * self.inkScale, y: $0.y * self.inkScale) }
-            self.controller.lassoPoints = scaled
             self.controller.onLassoComplete?(scaled)
+            // Clear the LIVE loop so its marching-ants outline doesn't linger at the
+            // original spot once the selection overlay takes over.
+            self.controller.lassoPoints = []
         }
         controller.attachVector(vectorCanvas)
         controller.engine = self
@@ -1012,7 +1014,11 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     /// Mirror the PK projection (after a lasso lift/commit) back onto the vector canvas,
     /// preserving its undo history.
     private func syncVectorFromCanvas() {
-        vectorCanvas.setStrokesPreservingHistory(VectorInk.strokes(from: canonicalFromCanvas(canvas.drawing)))
+        let strokes = VectorInk.strokes(from: canonicalFromCanvas(canvas.drawing))
+        vectorCanvas.setStrokesPreservingHistory(strokes)
+        // Keep the mount cache in sync so a re-mount mid-lasso (e.g. a small scroll)
+        // doesn't reload the ORIGINAL strokes and duplicate the lifted selection.
+        lastStrokes[activeIndex] = strokes
     }
 
     /// Auto-shapes: shortly after a stroke ends (and no new stroke begins),
