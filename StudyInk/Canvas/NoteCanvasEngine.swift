@@ -591,8 +591,11 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         lastStrokes[index] = after
         controller.refreshUndoState()
         saveWorkItem?.cancel()
-        let work = DispatchWorkItem { [controller] in
+        let work = DispatchWorkItem { [controller, weak self] in
             controller.onDrawingChanged?(index, VectorInk.pkDrawing(from: after))
+            // Refresh the active page's cached image (off-main) so a later scroll-freeze
+            // shows current ink without rendering mid-scroll.
+            self?.renderImage(for: index)
         }
         saveWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
@@ -869,9 +872,10 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
               !vectorCanvas.isHidden, vectorCanvas.alpha > 0,
               containers.indices.contains(activeIndex) else { return }
         scrollImageActive = true
-        let container = containers[activeIndex]
-        renderImage(for: activeIndex, priority: .userInitiated)   // refresh with the latest ink (off-main)
-        container.imageView.isHidden = false
+        // Show the page's already-cached image (kept fresh after each edit — see
+        // vectorCanvasChanged). NO render here: rendering on every drag-start made
+        // repeated slides fight the main thread (the scroll hitches + spikes).
+        containers[activeIndex].imageView.isHidden = false
         vectorCanvas.isHidden = true
     }
     private func unfreezeInkAfterScroll() {
