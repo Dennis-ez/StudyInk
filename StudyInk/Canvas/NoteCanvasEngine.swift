@@ -133,13 +133,11 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     /// 1x bitmap. They are intentionally NOT bumped with zoom: re-rasterizing
     /// every page's full-page bitmap on pinch OOM-hung long notes. Only the
     /// active page gets zoom-resolution rasterization (see updateRasterScale).
-    // Off-screen / scrolling page images are rendered by our CPU vector renderer, whose
-    // cost scales with pixel count. These images are only shown while a page is INACTIVE
-    // or mid-scroll — the live page you draw on is the crisp tiled vector canvas — so
-    // render them at ~1.5× instead of full retina: far cheaper to stroke (helps dense
-    // notes), and they sharpen the instant you settle on a page (the live canvas takes
-    // over). Capped at 2 for low-DPI safety.
-    private let imageRenderScale: CGFloat = min(UIScreen.main.scale, 1.5)
+    // Off-screen / scrolling page images. Rendered by our CPU vector renderer (cost
+    // scales with pixels), but 1.5× looked pixelated when zoomed/scrolled, so keep full
+    // retina (capped at 2 for memory). Sharpness preserved; perf comes from not freezing
+    // during zoom (the live tiled canvas re-renders crisp) + the off-main conversion.
+    private let imageRenderScale: CGFloat = min(UIScreen.main.scale, 2)
     private var rasterWorkItem: DispatchWorkItem?
     private var shapeWorkItem: DispatchWorkItem?
     private var lastStrokeCount = 0
@@ -559,6 +557,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
             guard let self, self.activeIndex == index, self.revealToken == token else { return }
             self.vectorCanvas.alpha = 1
             container?.imageView.isHidden = true
+            container?.setNeedsDisplay()   // draw the page background now the image is gone (was skipped while covered)
             if PerfMonitor.shared.activity == "page-mount" { PerfMonitor.shared.setActivity("idle") }
         }
     }
@@ -903,7 +902,10 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         guard scrollImageActive else { return }
         scrollImageActive = false
         vectorCanvas.isHidden = false
-        if containers.indices.contains(activeIndex) { containers[activeIndex].imageView.isHidden = true }
+        if containers.indices.contains(activeIndex) {
+            containers[activeIndex].imageView.isHidden = true
+            containers[activeIndex].setNeedsDisplay()   // redraw the background under the now-revealed live canvas
+        }
     }
 
     private func settleActivePage() {
@@ -974,7 +976,8 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) { settleActivePage() }
 
     func scrollViewWillBeginZooming(_ scrollView: UIScrollView, with view: UIView?) {
-        freezeInkForScroll()
+        // Do NOT freeze during zoom: a frozen image magnifies into pixelation. The live
+        // tiled canvas re-renders crisp at the new scale instead.
         PerfMonitor.shared.setActivity("zoom")
     }
 
