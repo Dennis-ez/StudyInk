@@ -30,6 +30,14 @@ struct CustomInkLabView: View {
                         toolChip(label, on: lab.tool == .pen && abs(lab.penWidth - w) < 0.01)
                     }
                 }
+                ForEach(Array(lab.palette.enumerated()), id: \.offset) { i, c in
+                    Button { lab.setColor(i) } label: {
+                        Circle().fill(Color(c)).frame(width: 24, height: 24)
+                            .overlay(Circle().strokeBorder(
+                                lab.tool == .pen && lab.colorIndex == i ? Color.primary : Color.black.opacity(0.15),
+                                lineWidth: lab.tool == .pen && lab.colorIndex == i ? 2.5 : 1))
+                    }
+                }
                 Button { lab.undo() } label: { chip("Undo") }.disabled(!lab.canUndo).opacity(lab.canUndo ? 1 : 0.4)
                 Button { lab.redo() } label: { chip("Redo") }.disabled(!lab.canRedo).opacity(lab.canRedo ? 1 : 0.4)
                 Button { lab.addRandom(300) } label: { chip("+300") }
@@ -69,10 +77,13 @@ final class InkLabController: ObservableObject {
     @Published var canUndo = false
     @Published var canRedo = false
     @Published var penWidth: CGFloat = 2.6
+    @Published var colorIndex = 0
+    let palette: [UIColor] = [UIColor(white: 0.08, alpha: 1), .systemBlue, .systemRed, .systemGreen]
     func addRandom(_ n: Int) { view?.addRandomStrokes(n) }
     func clear() { view?.clearAll() }
     func setTool(_ t: InkTool) { tool = t; view?.tool = t }
     func setWidth(_ w: CGFloat) { penWidth = w; view?.penWidth = w; if tool != .pen { setTool(.pen) } }
+    func setColor(_ i: Int) { colorIndex = i; view?.setColor(palette[i]); if tool != .pen { setTool(.pen) } }
     func undo() { view?.undo() }
     func redo() { view?.redo() }
     func syncState() {
@@ -125,6 +136,22 @@ private struct InkSample {
     let width: CGFloat
 }
 
+/// A finished stroke: its colour, its samples, and a cached bounds (so erase/cull
+/// never recompute bounds, and the tile renderer can draw each stroke in its colour).
+private struct Stroke {
+    let color: UIColor
+    let samples: [InkSample]
+    let bbox: CGRect
+    init(color: UIColor, samples: [InkSample]) {
+        self.color = color
+        self.samples = samples
+        var r = samples.first.map { CGRect(origin: $0.location, size: .zero) } ?? .null
+        for s in samples { r = r.union(CGRect(origin: s.location, size: .zero)) }
+        let w = samples.map(\.width).max() ?? 3
+        self.bbox = r.isNull ? .null : r.insetBy(dx: -w, dy: -w)
+    }
+}
+
 /// A tiled layer that re-renders invalidated tiles instantly (no fade-in).
 final class TiledInkLayer: CATiledLayer {
     override class func fadeDuration() -> CFTimeInterval { 0 }
@@ -134,18 +161,15 @@ final class VectorInkView: UIView {
     override class var layerClass: AnyClass { TiledInkLayer.self }
     private var tiled: TiledInkLayer { layer as! TiledInkLayer }
 
-    // Model lives on the main thread; an immutable snapshot (+ per-stroke bounds)
-    // is what the off-main tile renderer reads, under a lock. `bboxes` is kept in
-    // sync with `strokes` so erase/cull never recompute bounds (the erase perf fix).
-    private var strokes: [[InkSample]] = []
-    private var bboxes: [CGRect] = []
+    // Model lives on the main thread; an immutable snapshot is what the off-main
+    // tile renderer reads, under a lock. Each Stroke carries its own colour + bounds.
+    private var strokes: [Stroke] = []
     private var current: [InkSample] = []
     private let modelLock = NSLock()
-    private var renderStrokes: [[InkSample]] = []
-    private var renderBoxes: [CGRect] = []
+    private var renderStrokes: [Stroke] = []
 
     var penWidth: CGFloat = 2.6
-    private let inkColor = UIColor(white: 0.08, alpha: 1)
+    var inkColor = UIColor(white: 0.08, alpha: 1)   // current pen colour (selectable)
 
     /// The in-progress "wet" stroke — instant, GPU-composited, never blocks.
     private let liveLayer = CAShapeLayer()
@@ -162,8 +186,8 @@ final class VectorInkView: UIView {
     private var erasedThisGesture = false
 
     // Undo/redo: snapshots of `strokes` (COW — cheap until mutated).
-    private var undoStack: [[[InkSample]]] = []
-    private var redoStack: [[[InkSample]]] = []
+    private var undoStack: [[Stroke]] = []
+    private var redoStack: [[Stroke]] = []
     private let maxUndo = 60
     var canUndo: Bool { !undoStack.isEmpty }
     var canRedo: Bool { !redoStack.isEmpty }
@@ -232,12 +256,9 @@ final class VectorInkView: UIView {
 
     private func publishModel() {
         modelLock.lock()
-        renderStrokes = strokes      // bboxes kept in sync with strokes (no recompute)
-        renderBoxes = bboxes
+        renderStrokes = strokes
         modelLock.unlock()
     }
-
-    private func rebuildBBoxes() { bboxes = strokes.map { strokeBounds($0) } }
 
     // MARK: Bridge layer (wet→tile handoff)
 
@@ -276,14 +297,12 @@ final class VectorInkView: UIView {
     override func draw(_ rect: CGRect) {
         modelLock.lock()
         let snap = renderStrokes
-        let boxes = renderBoxes
         modelLock.unlock()
         guard let ctx = UIGraphicsGetCurrentContext() else { return }
         ctx.setFillColor(UIColor.white.cgColor)
         ctx.fill(rect)
-        let color = inkColor
-        for i in snap.indices where boxes[i].intersects(rect) {
-            Self.drawStroke(snap[i], color: color, in: ctx)
+        for s in snap where s.bbox.intersects(rect) {
+            Self.drawStroke(s.samples, color: s.color, in: ctx)
         }
     }
 
@@ -315,12 +334,11 @@ final class VectorInkView: UIView {
         if tool == .eraser { return }
         if current.count > 1 {
             pushUndo()
-            let box = strokeBounds(current)
-            strokes.append(current)
-            bboxes.append(box)
+            let stroke = Stroke(color: inkColor, samples: current)
+            strokes.append(stroke)
             bridgeStrokes.append(current)   // hold it on the bridge until the tile renders
             rebuildBridge()
-            invalidate(box)
+            invalidate(stroke.bbox)
             scheduleBridgeClear()
             onChange?()
         }
@@ -359,21 +377,19 @@ final class VectorInkView: UIView {
         let r = eraserRadius
         // Broad-phase on the CACHED bbox (no per-point bounds recompute), then a
         // point scan only for strokes whose box is under the eraser.
-        func hits(_ i: Int) -> Bool {
-            bboxes[i].insetBy(dx: -r, dy: -r).contains(p)
-                && strokes[i].contains { hypot($0.location.x - p.x, $0.location.y - p.y) <= r + $0.width / 2 }
+        func hits(_ s: Stroke) -> Bool {
+            s.bbox.insetBy(dx: -r, dy: -r).contains(p)
+                && s.samples.contains { hypot($0.location.x - p.x, $0.location.y - p.y) <= r + $0.width / 2 }
         }
-        guard strokes.indices.contains(where: hits) else { return .null }   // nothing under the eraser
+        guard strokes.contains(where: hits) else { return .null }   // nothing under the eraser
 
         let snapshot = strokes
         var removed = CGRect.null
-        var keepStrokes: [[InkSample]] = []
-        var keepBoxes: [CGRect] = []
-        keepStrokes.reserveCapacity(strokes.count)
-        keepBoxes.reserveCapacity(strokes.count)
-        for i in strokes.indices {
-            if hits(i) { removed = removed.union(bboxes[i]) }
-            else { keepStrokes.append(strokes[i]); keepBoxes.append(bboxes[i]) }
+        var keep: [Stroke] = []
+        keep.reserveCapacity(strokes.count)
+        for s in strokes {
+            if hits(s) { removed = removed.union(s.bbox) }
+            else { keep.append(s) }
         }
         if !erasedThisGesture {     // one undo step per gesture
             erasedThisGesture = true
@@ -382,8 +398,7 @@ final class VectorInkView: UIView {
             redoStack.removeAll()
             clearBridge()           // a bridged stroke may be among those erased
         }
-        strokes = keepStrokes
-        bboxes = keepBoxes
+        strokes = keep
         return removed.isNull ? .null : removed.insetBy(dx: -r, dy: -r)
     }
 
@@ -411,7 +426,6 @@ final class VectorInkView: UIView {
         current = []
         liveLayer.path = nil
         clearBridge()
-        rebuildBBoxes()
         invalidate()
         onChange?()
     }
@@ -428,8 +442,7 @@ final class VectorInkView: UIView {
                 p = CGPoint(x: p.x + .random(in: -14...14), y: p.y + .random(in: -14...14))
                 s.append(InkSample(location: p, width: penWidth * .random(in: 0.6...1.4)))
             }
-            strokes.append(s)
-            bboxes.append(strokeBounds(s))
+            strokes.append(Stroke(color: inkColor, samples: s))
         }
         invalidate()
         onChange?()
@@ -438,7 +451,6 @@ final class VectorInkView: UIView {
     func clearAll() {
         if !strokes.isEmpty { pushUndo() }   // clearing is undoable
         strokes = []
-        bboxes = []
         current = []
         liveLayer.path = nil
         clearBridge()
@@ -446,15 +458,15 @@ final class VectorInkView: UIView {
         onChange?()
     }
 
-    // MARK: Geometry helpers
-
-    private func strokeBounds(_ pts: [InkSample]) -> CGRect {
-        guard let first = pts.first else { return .null }
-        var r = CGRect(origin: first.location, size: .zero)
-        for s in pts { r = r.union(CGRect(origin: s.location, size: .zero)) }
-        let w = (pts.map(\.width).max() ?? penWidth)
-        return r.insetBy(dx: -w, dy: -w)   // pad for the pen width so cull/invalidate cover the ink
+    /// Pen colour for NEW strokes. Existing strokes keep their own (per-stroke) colour
+    /// in the tiles; the wet preview + bridge switch to the new colour.
+    func setColor(_ c: UIColor) {
+        inkColor = c
+        liveLayer.strokeColor = c.cgColor
+        bridgeLayer.fillColor = c.cgColor
     }
+
+    // MARK: Geometry helpers
 
     /// ONE width for the whole stroke. The wet preview, the bridge, and the committed
     /// render all use this, so what you draw is exactly what lands (no per-segment
