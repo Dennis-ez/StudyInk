@@ -30,7 +30,7 @@ final class CanvasController: NSObject, ObservableObject {
     @Published private(set) var canRedo = false
     /// Snap hand-drawn shapes (line/circle/rectangle/…) shortly after pen-up.
     @Published var autoShapes: Bool = (UserDefaults.standard.object(forKey: "settings.autoShapes") as? Bool) ?? true {
-        didSet { UserDefaults.standard.set(autoShapes, forKey: "settings.autoShapes") }
+        didSet { UserDefaults.standard.set(autoShapes, forKey: "settings.autoShapes"); applyTool() }
     }
     /// Magnetically align shapes and element borders with the template lines/grid.
     @Published var snapToGrid: Bool = (UserDefaults.standard.object(forKey: "settings.snapToGrid") as? Bool) ?? true {
@@ -264,6 +264,9 @@ final class CanvasController: NSObject, ObservableObject {
             v.setColor(cfg.color)
             // Hand → let a finger pan the document instead of drawing.
             v.isUserInteractionEnabled = cfg.draws
+            // Auto-shapes: snap a deliberately-drawn shape clean on lift, but only
+            // with an inking tool (never the eraser/lasso/hand).
+            v.autoShapes = autoShapes && toolState.kind.isInking
         }
         // PKCanvasView is inert (being removed) but kept in sync to avoid surprises.
         canvasView?.tool = toolState.pkTool(darkMode: isDarkMode, widthScale: inkScale)

@@ -46,6 +46,11 @@ enum ShapeRecognizer {
         recognize(points: sample(stroke), minDiagonal: minDiagonal)
     }
 
+    /// Vector-native recognition: read the stroke's sample locations directly.
+    static func recognize(_ stroke: VectorInk.Stroke, minDiagonal: CGFloat = 40) -> Shape? {
+        recognize(points: stroke.samples.map(\.location), minDiagonal: minDiagonal)
+    }
+
     /// Core recognizer over raw points — also used for in-flight (pencil still
     /// touching) detection where no PKStroke exists yet. `minDiagonal` is the
     /// smallest stroke (in the caller's coordinate space) worth snapping: set it
@@ -155,6 +160,25 @@ enum ShapeRecognizer {
     /// Variant for in-flight detection (no committed stroke to copy from).
     static func idealStroke(for shape: Shape, ink: PKInk, width: CGFloat) -> PKStroke {
         idealStroke(for: shape, ink: ink, pointSize: CGSize(width: max(width, 1), height: max(width, 1)))
+    }
+
+    /// Vector-native ideal stroke: rebuild the clean geometry as a VectorInk stroke of
+    /// the given colour + width (same dense-point path the PK variant produces).
+    static func idealVectorStroke(for shape: Shape, color: UIColor, width: CGFloat) -> VectorInk.Stroke {
+        var path: [CGPoint] = []
+        switch shape {
+        case .line(let from, let to):
+            path = densify([from, to], closed: false)
+        case .polygon(let corners):
+            path = densify(corners, closed: true)
+        case .ellipse(let center, let rx, let ry):
+            path = (0...72).map { step in
+                let angle = CGFloat(step) / 72 * 2 * .pi
+                return CGPoint(x: center.x + rx * cos(angle), y: center.y + ry * sin(angle))
+            }
+        }
+        let w = max(width, 1)
+        return VectorInk.Stroke(color: color, samples: path.map { InkSample(location: $0, width: w) })
     }
 
     private static func idealStroke(for shape: Shape, ink: PKInk, pointSize: CGSize) -> PKStroke {

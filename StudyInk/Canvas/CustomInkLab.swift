@@ -302,6 +302,10 @@ final class VectorInkView: UIView {
     var onChange: (() -> Void)?
     var strokeCount: Int { strokes.count }
 
+    /// When true, a deliberately-drawn shape (line/circle/box, larger than handwriting)
+    /// is snapped to clean geometry on lift while inking — the editor's "auto-shapes".
+    var autoShapes = false
+
     /// Editor-config: when FALSE the view never autosaves to `inklab.vink` and never
     /// loads it — the host (real editor) owns persistence via `loadStrokes`/`onChange`.
     var persistsToDisk = true
@@ -657,6 +661,11 @@ final class VectorInkView: UIView {
             // engine-agnostic (takes [CGPoint]) → the recognised shape becomes a clean
             // vector stroke, rendered crisply by the tiles like any other stroke.
             if tool == .shape, let shape = ShapeRecognizer.recognize(points: current.map(\.location)) {
+                commit(samples: Self.shapeSamples(shape, width: Self.avgWidth(current)))
+            } else if tool == .pen, autoShapes,
+                      // Higher floor than the dedicated shape tool so handwriting-sized
+                      // strokes are never snapped — only deliberate, larger shapes.
+                      let shape = ShapeRecognizer.recognize(points: current.map(\.location), minDiagonal: 70) {
                 commit(samples: Self.shapeSamples(shape, width: Self.avgWidth(current)))
             } else {
                 commit(samples: current)
