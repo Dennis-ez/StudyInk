@@ -133,7 +133,13 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     /// 1x bitmap. They are intentionally NOT bumped with zoom: re-rasterizing
     /// every page's full-page bitmap on pinch OOM-hung long notes. Only the
     /// active page gets zoom-resolution rasterization (see updateRasterScale).
-    private let imageRenderScale: CGFloat = UIScreen.main.scale
+    // Off-screen / scrolling page images are rendered by our CPU vector renderer, whose
+    // cost scales with pixel count. These images are only shown while a page is INACTIVE
+    // or mid-scroll — the live page you draw on is the crisp tiled vector canvas — so
+    // render them at ~1.5× instead of full retina: far cheaper to stroke (helps dense
+    // notes), and they sharpen the instant you settle on a page (the live canvas takes
+    // over). Capped at 2 for low-DPI safety.
+    private let imageRenderScale: CGFloat = min(UIScreen.main.scale, 1.5)
     private var rasterWorkItem: DispatchWorkItem?
     private var shapeWorkItem: DispatchWorkItem?
     private var lastStrokeCount = 0
@@ -489,6 +495,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         unfreezeInkAfterScroll()   // restore the live canvas before reparenting it
         PerfMonitor.shared.setActivity("page-mount")
         activeIndex = index
+        activeImageDirty = false   // the bridge renders this page's image fresh
         let container = containers[index]
         // Hide the live canvas (still holding the PREVIOUS page's ink) and reveal
         // the destination page's cached render BEFORE reparenting it — otherwise
@@ -590,6 +597,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     /// written to Core Data (for OCR / export / AI-vision) is canonical too.
     private func vectorCanvasChanged() {
         guard !isProgrammaticChange else { return }
+        activeImageDirty = true   // cached image now stale until the post-edit render lands
         let index = activeIndex
         let after = vectorCanvas.currentStrokes()
         // Shared note-level undo: record this page's BEFORE-state.
@@ -785,6 +793,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
             await MainActor.run { [weak self] in
                 guard container.pageIndex == index else { return }
                 container.imageView.image = image
+                if index == self?.activeIndex { self?.activeImageDirty = false }   // cached image now current
                 if revealWhenReady, self?.activeIndex != index {
                     container.imageView.isHidden = false
                 }
@@ -874,8 +883,12 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     /// pages use — no per-drag bitmap allocation), then swap the live canvas back in on
     /// settle (it re-renders crisp at the final scale).
     private var scrollImageActive = false
+    /// The active page's cached image is stale (edited since its last render). While
+    /// stale we must NOT freeze to it (the just-drawn ink would vanish during the scroll);
+    /// keep the live canvas until the post-edit refresh lands.
+    private var activeImageDirty = false
     private func freezeInkForScroll() {
-        guard !scrollImageActive,
+        guard !scrollImageActive, !activeImageDirty,
               vectorCanvas.isUserInteractionEnabled,   // not mid lasso-selection
               !vectorCanvas.isHidden, vectorCanvas.alpha > 0,
               containers.indices.contains(activeIndex) else { return }
