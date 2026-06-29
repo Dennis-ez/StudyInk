@@ -260,14 +260,14 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         undoTap.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.direct.rawValue)]
         undoTap.cancelsTouchesInView = false
         undoTap.delegate = self
-        canvas.addGestureRecognizer(undoTap)
+        addGestureRecognizer(undoTap)   // on the scroll view (canvas is inert), no stray strokes
 
         let redoTap = UITapGestureRecognizer(target: self, action: #selector(multiFingerRedo(_:)))
         redoTap.numberOfTouchesRequired = 3
         redoTap.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.direct.rawValue)]
         redoTap.cancelsTouchesInView = false
         redoTap.delegate = self
-        canvas.addGestureRecognizer(redoTap)
+        addGestureRecognizer(redoTap)
         undoTap.require(toFail: redoTap)
 
         // Eraser cursor: ride along with the system drawing gesture so the
