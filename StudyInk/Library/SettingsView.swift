@@ -22,6 +22,7 @@ struct SettingsView: View {
     @AppStorage("settings.defaultTemplateSpacing") private var defaultSpacing = 1.0
     @AppStorage("debug.penTracker") private var penTrackerDebug = false
     @AppStorage("settings.canvas.smoothInk") private var smoothInk = false
+    @AppStorage("settings.canvas.customInk") private var customInk = false
     @Environment(\.dismiss) private var dismiss
 
     /// Which sidebar section is showing in the content pane.
@@ -523,6 +524,13 @@ struct SettingsView: View {
                     }
                     .buttonStyle(.plain)
                     Text(verbatim: "Phase A1 of the custom ink engine: a vector renderer we own. Write, pinch, release — proves sharp ink at zoom AND a pen-accurate live stroke (no PencilKit tradeoff).")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Divider()
+                    Toggle(isOn: $customInk) {
+                        Label(title: { Text(verbatim: "Custom ink renderer (experimental)") },
+                              icon: { Image(systemName: "scribble") })
+                    }
+                    Text(verbatim: "Phase 1: render page ink with the custom vector engine instead of PencilKit (sharper at zoom). Live editing stays PencilKit for now. Reopen a note to apply; toggle off to revert.")
                         .font(.caption).foregroundStyle(.secondary)
                     Divider()
                     Toggle(isOn: $penTrackerDebug) {
