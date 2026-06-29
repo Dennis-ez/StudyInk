@@ -1037,6 +1037,21 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         // the live canvas's tiles to the settled zoom so zoomed-in ink is crisp (capped
         // at 3× for memory; tiles keep it bounded). Reset toward base when back near 1×.
         vectorCanvas.setRenderScale(vectorCanvas.baseRenderScale * min(max(zoomScale, 1), 3))
+
+        // Active page's TEMPLATE / PDF background: re-rasterize at the settled zoom so the
+        // ruled lines / grid / imported PDF stay crisp when zoomed (Notability-style),
+        // instead of magnifying a base-scale backing into blur. Only the ACTIVE page, and
+        // budget-capped so a big page can't OOM.
+        if containers.indices.contains(activeIndex) {
+            let active = containers[activeIndex]
+            let size = pageSizes.indices.contains(activeIndex) ? pageSizes[activeIndex] : active.bounds.size
+            let target = min(baseScale * min(max(zoomScale, 1), 3), budgetScale(size, 140))
+            if abs(active.contentScaleFactor - target) > 0.1 {
+                active.contentScaleFactor = target
+                active.layer.contentsScale = target
+                active.setNeedsDisplay()
+            }
+        }
         // DO NOT bump the live canvas's contentsScale to chase sharper zoom.
         // PROVEN on the iOS 26 SDK (PR #155 added it; PR #159's budget cap made
         // the allocation succeed, which EXPOSED the failure; reverted here):
