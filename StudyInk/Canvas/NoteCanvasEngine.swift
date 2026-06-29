@@ -554,9 +554,16 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self, weak container] in
             guard let self, self.activeIndex == index, self.revealToken == token else { return }
             self.vectorCanvas.alpha = 1
-            container?.imageView.isHidden = true
-            container?.setNeedsDisplay()   // draw the page background now the image is gone (was skipped while covered)
             if PerfMonitor.shared.activity == "page-mount" { PerfMonitor.shared.setActivity("idle") }
+            // Keep the cached image UNDER the (transparent) live canvas a beat longer so
+            // it backs any tiles still rendering — otherwise hiding it before the tiles
+            // are ready flashes blank (worst on the last page / dense pages). Then hide it
+            // and draw the real background underneath.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self, weak container] in
+                guard let self, self.activeIndex == index, self.revealToken == token else { return }
+                container?.imageView.isHidden = true
+                container?.setNeedsDisplay()
+            }
         }
     }
 
