@@ -56,21 +56,13 @@ enum PageRenderer {
     /// The ink shrink-boost factor for a given render scale (see `render`).
     static func inkBoost(forScale scale: CGFloat) -> CGFloat { min(4, max(1, 0.5 / scale)) }
 
-    /// Rasterize JUST the ink layer. `PKDrawing.image()` must run on the main
-    /// thread (off it the iOS 26 SDK returns a blank image), so call this on the
-    /// main actor and hand the result to `render(_:darkMode:scale:inkLayer:)`,
-    /// which then composites the whole page OFF the main thread with no main hop.
+    /// Legacy pre-rasterization hook. The custom engine now ALWAYS strokes the
+    /// ink itself, off-main, inside `draw()` (no PencilKit `PKDrawing.image()` —
+    /// which had to run on the main thread). Kept returning nil so existing callers
+    /// (which pass the result into `render(_:inkLayer:)`) take the off-main path.
     @MainActor
     static func inkLayer(for snapshot: Snapshot, darkMode: Bool, scale: CGFloat) -> UIImage? {
-        guard let data = snapshot.drawingData, let stored = try? PKDrawing(data: data), !stored.strokes.isEmpty
-        else { return nil }
-        // Custom engine on: return nil so the caller's OFF-MAIN render strokes the
-        // vectors itself (see draw()). The first attempt's perf trap was doing that
-        // bulk CoreGraphics work HERE on the main actor — now it stays off-main.
-        if UserDefaults.standard.bool(forKey: "settings.canvas.customInk") { return nil }
-        let adapted = InkColorAdapter.displayDrawing(stored, darkMode: darkMode)
-        let drawing = boldened(adapted, factor: inkBoost(forScale: scale))
-        return inkImage(drawing, from: CGRect(origin: .zero, size: snapshot.pageSize))
+        nil
     }
 
     /// Composite a page with a PRE-rasterized ink layer — safe to call OFF the
@@ -173,23 +165,17 @@ enum PageRenderer {
         // LIGHT trait context — exactly like the live canvas, which is pinned
         // to .light — so the near-white strokes render literally.
         if let inkLayer {
-            // Pre-rasterized on the main actor by the caller — no main hop here.
+            // Pre-rasterized by the caller — no main hop here.
             inkLayer.draw(in: pageRect)
         } else if let data = snapshot.drawingData, let stored = try? PKDrawing(data: data), !stored.strokes.isEmpty {
+            // The engine strokes the vectors itself — safe on ANY thread (unlike
+            // PKDrawing.image()), so the whole page composites off-main.
             let adapted = InkColorAdapter.displayDrawing(stored, darkMode: darkMode)
-            if UserDefaults.standard.bool(forKey: "settings.canvas.customInk") {
-                // Custom engine: stroke the vectors ourselves. Unlike PKDrawing.image()
-                // this is safe on ANY thread, so the whole page composites off-main
-                // with no main hop (the perf trap that sank the first attempt).
-                for s in VectorInk.strokes(from: adapted) {
-                    let pts = inkBoost > 1.001
-                        ? s.samples.map { InkSample(location: $0.location, width: $0.width * inkBoost) }
-                        : s.samples
-                    VectorInk.drawStroke(pts, color: s.color, in: cg)
-                }
-            } else {
-                let drawing = boldened(adapted, factor: inkBoost)
-                inkImage(drawing, from: pageRect)?.draw(in: pageRect)
+            for s in VectorInk.strokes(from: adapted) {
+                let pts = inkBoost > 1.001
+                    ? s.samples.map { InkSample(location: $0.location, width: $0.width * inkBoost) }
+                    : s.samples
+                VectorInk.drawStroke(pts, color: s.color, in: cg)
             }
         }
 
@@ -214,44 +200,4 @@ enum PageRenderer {
         }
     }
 
-    /// Rasterizes a drawing to an image. `PKDrawing.image()` must run on the
-    /// main thread — off it (we render thumbnails/page images from background
-    /// tasks) the iOS 26 SDK hands back a BLANK image, so the ink vanishes.
-    /// Hop to main when needed; force a LIGHT trait so iOS 26 doesn't re-adapt
-    /// the (already display-mapped) stroke colours against the ambient appearance.
-    private static func inkImage(_ drawing: PKDrawing, from rect: CGRect) -> UIImage? {
-        let make: () -> UIImage = {
-            var image: UIImage?
-            UITraitCollection(userInterfaceStyle: .light).performAsCurrent {
-                image = drawing.image(from: rect, scale: 2)
-            }
-            return image ?? UIImage()
-        }
-        return Thread.isMainThread ? make() : DispatchQueue.main.sync(execute: make)
-    }
-
-    /// Widens every stroke by `factor` (preserving relative widths) so ink stays
-    /// legible in heavily-shrunk previews. `factor == 1` returns the drawing as-is.
-    private static func boldened(_ drawing: PKDrawing, factor: CGFloat) -> PKDrawing {
-        guard factor > 1.001 else { return drawing }
-        var strokes = drawing.strokes
-        for i in strokes.indices {
-            let s = strokes[i]
-            let path = s.path
-            let points = (0..<path.count).map { index -> PKStrokePoint in
-                let p = path[index]
-                return PKStrokePoint(
-                    location: p.location, timeOffset: p.timeOffset,
-                    size: CGSize(width: p.size.width * factor, height: p.size.height * factor),
-                    opacity: p.opacity, force: p.force, azimuth: p.azimuth, altitude: p.altitude
-                )
-            }
-            strokes[i] = PKStroke(
-                ink: s.ink,
-                path: PKStrokePath(controlPoints: points, creationDate: path.creationDate),
-                transform: s.transform, mask: s.mask
-            )
-        }
-        return PKDrawing(strokes: strokes)
-    }
 }
