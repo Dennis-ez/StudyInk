@@ -172,13 +172,11 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
             NSNumber(value: UITouch.TouchType.indirectPointer.rawValue),
         ]
         minimumZoomScale = 0.4
-        // Cap at the raster ceiling (transform-zoom rasterizes ink to a bitmap;
-        // past 3x it can't get sharper without breaking PencilKit — see
-        // updateRasterScale). So all reachable zoom stays crisp instead of
-        // letting the user zoom into blur.
-        // Ink is permanently supersampled at inkScale×, so zoom stays native-
-        // sharp up to that factor (no transform-zoom raster wall any more).
-        maximumZoomScale = 4
+        // The old 4× cap existed because PencilKit couldn't re-rasterize past ~3×
+        // without breaking. Our vector engine re-renders ink (tiled) AND the template
+        // at the settled zoom (updateRasterScale), so deep zoom stays crisp — allow it,
+        // Notability-style.
+        maximumZoomScale = 12
         bouncesZoom = true
         alwaysBounceVertical = true
         contentInsetAdjustmentBehavior = .never
@@ -912,6 +910,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
 
     private func settleActivePage() {
         unfreezeInkAfterScroll()
+        publishGeometry(sync: true)   // exact final overlay positions (the scroll throttle may skip the last frame)
         guard !isZooming, !isZoomBouncing else { return }
         // Don't steal the live canvas while the pen is on the page.
         let drawingState = canvas.drawingGestureRecognizer.state
@@ -957,10 +956,14 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
 
     func viewForZooming(in scrollView: UIScrollView) -> UIView? { documentView }
 
+    private var lastGeoPublish: CFTimeInterval = 0
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
-        // Only keep the overlays glued to their pages while scrolling. Activating
-        // the live canvas is deferred to scrollViewDidEnd* (settleActivePage) so
-        // the canvas isn't re-mounted on every page crossed mid-scroll.
+        // Publishing geometry re-evaluates the whole editor body (SwiftUI overlays track
+        // the pages). Cap it to ~33ms so the heavy relayout doesn't run 60×/sec and
+        // starve the scroll; the exact final position is published on settle.
+        let now = CACurrentMediaTime()
+        guard now - lastGeoPublish >= 0.033 else { return }
+        lastGeoPublish = now
         publishGeometry(sync: true)
     }
 
@@ -1036,7 +1039,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         // The vector ink IS safe to re-rasterize (our CATiledLayer, not PencilKit): bump
         // the live canvas's tiles to the settled zoom so zoomed-in ink is crisp (capped
         // at 3× for memory; tiles keep it bounded). Reset toward base when back near 1×.
-        vectorCanvas.setRenderScale(vectorCanvas.baseRenderScale * min(max(zoomScale, 1), 3))
+        vectorCanvas.setRenderScale(vectorCanvas.baseRenderScale * min(max(zoomScale, 1), 8))
 
         // Active page's TEMPLATE / PDF background: re-rasterize at the settled zoom so the
         // ruled lines / grid / imported PDF stay crisp when zoomed (Notability-style),
