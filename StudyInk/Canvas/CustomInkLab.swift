@@ -13,7 +13,7 @@ import UIKit
 ///   • the live stroke is a separate "wet" CAShapeLayer — instant, never blocked.
 ///
 /// Isolated — touches nothing in the real app. Settings → Developer → "Custom ink lab".
-enum InkTool { case pen, eraser }
+enum InkTool { case pen, eraser, shape }
 
 struct CustomInkLabView: View {
     @Environment(\.dismiss) private var dismiss
@@ -25,6 +25,7 @@ struct CustomInkLabView: View {
             HStack(spacing: 8) {
                 Button { lab.setTool(.pen) } label: { toolChip("Pen", on: lab.tool == .pen) }
                 Button { lab.setTool(.eraser) } label: { toolChip("Eraser", on: lab.tool == .eraser) }
+                Button { lab.setTool(.shape) } label: { toolChip("Shape", on: lab.tool == .shape) }
                 ForEach([("S", CGFloat(1.6)), ("M", CGFloat(2.6)), ("L", CGFloat(4.5))], id: \.0) { label, w in
                     Button { lab.setWidth(w) } label: {
                         toolChip(label, on: lab.tool == .pen && abs(lab.penWidth - w) < 0.01)
@@ -374,17 +375,45 @@ final class VectorInkView: UIView {
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         if tool == .eraser { return }
         if current.count > 1 {
-            pushUndo()
-            let stroke = Stroke(color: inkColor, samples: current)
-            strokes.append(stroke)
-            bridgeStrokes.append(current)   // hold it on the bridge until the tile renders
-            rebuildBridge()
-            invalidate(stroke.bbox)
-            scheduleBridgeClear()
-            onChange?()
+            // Shape tool: snap a rough drawing to clean geometry. ShapeRecognizer is
+            // engine-agnostic (takes [CGPoint]) → the recognised shape becomes a clean
+            // vector stroke, rendered crisply by the tiles like any other stroke.
+            if tool == .shape, let shape = ShapeRecognizer.recognize(points: current.map(\.location)) {
+                commit(samples: Self.shapeSamples(shape, width: Self.avgWidth(current)))
+            } else {
+                commit(samples: current)
+            }
         }
         current = []
         liveLayer.path = nil    // committed stroke now held by the bridge, then the tiles
+    }
+
+    private func commit(samples: [InkSample]) {
+        pushUndo()
+        let stroke = Stroke(color: inkColor, samples: samples)
+        strokes.append(stroke)
+        bridgeStrokes.append(samples)   // hold it on the bridge until the tile renders
+        rebuildBridge()
+        invalidate(stroke.bbox)
+        scheduleBridgeClear()
+        onChange?()
+    }
+
+    /// A recognised shape → a dense polyline of samples (so the existing renderer
+    /// draws it as a clean stroke).
+    private static func shapeSamples(_ shape: ShapeRecognizer.Shape, width: CGFloat) -> [InkSample] {
+        switch shape {
+        case let .line(from, to):
+            return [InkSample(location: from, width: width), InkSample(location: to, width: width)]
+        case let .ellipse(center, rx, ry):
+            return (0...64).map { i -> InkSample in
+                let a = CGFloat(i) / 64 * 2 * .pi
+                return InkSample(location: CGPoint(x: center.x + cos(a) * rx, y: center.y + sin(a) * ry), width: width)
+            }
+        case let .polygon(corners):
+            guard let first = corners.first else { return [] }
+            return (corners + [first]).map { InkSample(location: $0, width: width) }
+        }
     }
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
         current = []
