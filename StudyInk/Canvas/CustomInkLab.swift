@@ -251,14 +251,30 @@ final class VectorInkView: UIView {
     private var warmedUp = false
 
     // Lasso selection. lassoLayer draws the dashed outline (in-progress loop + the
-    // selection box); selectionLayer floats the lifted strokes (moved via transform).
+    // selection box); selectionLayer floats the lifted strokes (moved via transform);
+    // handleLayer draws the corner + rotate handles (Apple-style transform UI).
     private let lassoLayer = CAShapeLayer()
     private let selectionLayer = FloatingInkLayer()
+    private let handleLayer = CAShapeLayer()
     private var lassoPoints: [CGPoint] = []
     private var selectionStrokes: [Stroke] = []     // lifted from the model (canonical colour)
-    private var selectionBBox: CGRect = .null        // union bbox in content coords (zero offset)
-    private var selectionOffset: CGPoint = .zero      // live move translation
-    private var moveStart: CGPoint?
+    private var selectionBBox: CGRect = .null        // union bbox in content coords (untransformed)
+    /// The live selection transform (translate + uniform scale + rotate), in CONTENT
+    /// coords. Identity right after a lift; baked into the model on commit.
+    private var selectionTransform: CGAffineTransform = .identity
+
+    /// Which handle the current gesture is dragging.
+    private enum SelectionGesture {
+        case move(start: CGPoint, base: CGAffineTransform)
+        /// Uniform scale about the FIXED (opposite) corner.
+        case scale(fixed: CGPoint, grabbed: CGPoint, base: CGAffineTransform)
+        /// Rotate about the box centre.
+        case rotate(center: CGPoint, startAngle: CGFloat, base: CGAffineTransform)
+    }
+    private var selectionGesture: SelectionGesture?
+    private let handleHitRadius: CGFloat = 22
+    private let rotateHandleGap: CGFloat = 28      // rotate handle sits this far above the top edge
+    private let handleDotRadius: CGFloat = 6
 
     var tool: InkTool = .pen {
         didSet { if oldValue == .lasso, tool != .lasso { commitSelection() } }
@@ -312,10 +328,16 @@ final class VectorInkView: UIView {
         layer.addSublayer(liveLayer)
 
         // Floating selection ink (below the dashed outline). Bbox-sized on lift.
+        // Anchor at (0,0) so its `transform` is interpreted about its frame ORIGIN
+        // (see selectionLayerTransform(for:)), not its centre.
+        selectionLayer.anchorPoint = .zero
         selectionLayer.contentsScale = baseScale
         selectionLayer.isHidden = true
         layer.addSublayer(selectionLayer)
-        // Dashed lasso loop / selection box on top of everything.
+        // Dashed lasso loop / selection box on top of everything. Anchor at (0,0) +
+        // a full-bounds frame (origin 0) so its `transform` is the content-space affine
+        // directly.
+        lassoLayer.anchorPoint = .zero
         lassoLayer.fillColor = UIColor.systemBlue.withAlphaComponent(0.06).cgColor
         lassoLayer.strokeColor = UIColor.systemBlue.cgColor
         lassoLayer.lineWidth = 1.5
@@ -323,6 +345,14 @@ final class VectorInkView: UIView {
         lassoLayer.frame = bounds
         lassoLayer.contentsScale = baseScale
         layer.addSublayer(lassoLayer)
+        // Transform handles (corner scale dots + rotate dot) — drawn in content coords
+        // at the already-transformed positions, so this layer needs no transform.
+        handleLayer.anchorPoint = .zero
+        handleLayer.frame = bounds
+        handleLayer.lineWidth = 1
+        handleLayer.contentsScale = baseScale
+        handleLayer.isHidden = true
+        layer.addSublayer(handleLayer)
         publishModel()
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -332,6 +362,7 @@ final class VectorInkView: UIView {
         liveLayer.frame = bounds
         bridgeLayer.frame = bounds
         lassoLayer.frame = bounds
+        handleLayer.frame = bounds
         contentBounds = bounds        // captured for the off-main tile draw
         warmUp()
     }
@@ -511,8 +542,8 @@ final class VectorInkView: UIView {
         }
         if tool == .lasso {
             let p = t.location(in: self)
-            if !selectionStrokes.isEmpty, selectionHitBox.contains(p) {
-                moveStart = p                 // grab the existing selection to drag it
+            if !selectionStrokes.isEmpty, let g = selectionGesture(at: p) {
+                selectionGesture = g          // grab a handle (scale/rotate) or the box (move)
             } else {
                 commitSelection()             // bake any existing selection, then start a new loop
                 lassoPoints = [p]
@@ -533,8 +564,8 @@ final class VectorInkView: UIView {
         }
         if tool == .lasso {
             let p = t.location(in: self)
-            if let start = moveStart {
-                selectionOffset = CGPoint(x: p.x - start.x, y: p.y - start.y)
+            if let g = selectionGesture {
+                selectionTransform = transform(for: g, finger: p)
                 applySelectionTransform()
             } else if !lassoPoints.isEmpty {
                 for ct in event?.coalescedTouches(for: t) ?? [t] { lassoPoints.append(ct.location(in: self)) }
@@ -548,8 +579,8 @@ final class VectorInkView: UIView {
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         if tool == .eraser { return }
         if tool == .lasso {
-            if moveStart != nil {
-                moveStart = nil               // selection stays floating at its new offset
+            if selectionGesture != nil {
+                selectionGesture = nil        // selection stays floating at its new transform
             } else if lassoPoints.count > 2 {
                 finishLasso()
             } else {
@@ -601,14 +632,97 @@ final class VectorInkView: UIView {
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
         current = []
         liveLayer.path = nil
-        if tool == .lasso { moveStart = nil; lassoPoints = []; if selectionStrokes.isEmpty { lassoLayer.path = nil } }
+        if tool == .lasso { selectionGesture = nil; lassoPoints = []; if selectionStrokes.isEmpty { lassoLayer.path = nil } }
     }
 
     // MARK: Lasso selection
 
-    /// The selection's grab box in content coords (bbox at the current move offset).
-    private var selectionHitBox: CGRect {
-        selectionBBox.offsetBy(dx: selectionOffset.x, dy: selectionOffset.y).insetBy(dx: -10, dy: -10)
+    // MARK: Selection handle geometry (Apple-style transform box)
+
+    /// The selection box (untransformed, content coords) — the dashed outline rect.
+    private var selectionBoxBase: CGRect { selectionBBox.insetBy(dx: -6, dy: -6) }
+
+    /// The 4 corners of the UNTRANSFORMED box: [TL, TR, BR, BL].
+    private var baseCorners: [CGPoint] {
+        let b = selectionBoxBase
+        return [CGPoint(x: b.minX, y: b.minY), CGPoint(x: b.maxX, y: b.minY),
+                CGPoint(x: b.maxX, y: b.maxY), CGPoint(x: b.minX, y: b.maxY)]
+    }
+    /// The rotate-handle anchor in the UNTRANSFORMED box: above the top edge centre.
+    private var baseRotateHandle: CGPoint {
+        let b = selectionBoxBase
+        return CGPoint(x: b.midX, y: b.minY - rotateHandleGap)
+    }
+
+    /// Corners after the live transform (content coords).
+    private var transformedCorners: [CGPoint] { baseCorners.map { $0.applying(selectionTransform) } }
+    private var transformedRotateHandle: CGPoint { baseRotateHandle.applying(selectionTransform) }
+    private var transformedCenter: CGPoint {
+        CGPoint(x: selectionBoxBase.midX, y: selectionBoxBase.midY).applying(selectionTransform)
+    }
+
+    /// Hit-test the handles first (within handleHitRadius), then the box interior.
+    /// Returns the gesture to drive, or nil for "start a new lasso".
+    private func selectionGesture(at p: CGPoint) -> SelectionGesture? {
+        let base = selectionTransform
+        // Rotate handle.
+        let rot = transformedRotateHandle
+        if hypot(p.x - rot.x, p.y - rot.y) <= handleHitRadius {
+            let c = transformedCenter
+            return .rotate(center: c, startAngle: atan2(p.y - c.y, p.x - c.x), base: base)
+        }
+        // Corner handles → uniform scale about the OPPOSITE corner.
+        let corners = transformedCorners
+        for (i, corner) in corners.enumerated() where hypot(p.x - corner.x, p.y - corner.y) <= handleHitRadius {
+            return .scale(fixed: corners[(i + 2) % 4], grabbed: corner, base: base)
+        }
+        // Inside the (transformed) box → move.
+        if pointInQuad(p, corners) {
+            return .move(start: p, base: base)
+        }
+        return nil
+    }
+
+    /// New transform for the in-progress gesture given the current finger point.
+    /// Each case applies its world-space delta AFTER the gesture's base transform.
+    private func transform(for g: SelectionGesture, finger p: CGPoint) -> CGAffineTransform {
+        switch g {
+        case let .move(start, base):
+            let d = CGPoint(x: p.x - start.x, y: p.y - start.y)
+            return base.concatenating(CGAffineTransform(translationX: d.x, y: d.y))
+        case let .scale(fixed, grabbed, base):
+            // Uniform scale about the fixed (opposite) corner. Project the finger onto
+            // the diagonal so off-axis motion stays stable.
+            let gx = grabbed.x - fixed.x, gy = grabbed.y - fixed.y
+            let denom = gx * gx + gy * gy
+            guard denom > 0.0001 else { return base }
+            let fx = p.x - fixed.x, fy = p.y - fixed.y
+            let k = max(0.1, (fx * gx + fy * gy) / denom)   // clamp so it can't collapse/flip
+            let scaleAboutFixed = CGAffineTransform(translationX: fixed.x, y: fixed.y)
+                .scaledBy(x: k, y: k)
+                .translatedBy(x: -fixed.x, y: -fixed.y)
+            return base.concatenating(scaleAboutFixed)
+        case let .rotate(center, startAngle, base):
+            let now = atan2(p.y - center.y, p.x - center.x)
+            let dAngle = now - startAngle
+            let rotateAboutCenter = CGAffineTransform(translationX: center.x, y: center.y)
+                .rotated(by: dAngle)
+                .translatedBy(x: -center.x, y: -center.y)
+            return base.concatenating(rotateAboutCenter)
+        }
+    }
+
+    /// Is `p` inside the (possibly rotated) quad [TL, TR, BR, BL]? Winding test.
+    private func pointInQuad(_ p: CGPoint, _ q: [CGPoint]) -> Bool {
+        guard q.count == 4 else { return false }
+        var sign = 0
+        for i in 0..<4 {
+            let a = q[i], b = q[(i + 1) % 4]
+            let cross = (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x)
+            if cross > 0 { if sign < 0 { return false }; sign = 1 }
+            else if cross < 0 { if sign > 0 { return false }; sign = -1 }
+        }
+        return true
     }
 
     private func updateLassoLayer() {
@@ -636,11 +750,11 @@ final class VectorInkView: UIView {
         }
         guard !selected.isEmpty else { lassoLayer.path = nil; return }
 
-        pushUndo()                                   // captures the ORIGINAL positions (move bakes without re-pushing)
+        pushUndo()                                   // captures the ORIGINAL positions (transform bakes without re-pushing)
         strokes = remaining
         selectionStrokes = selected
         selectionBBox = selected.reduce(CGRect.null) { $0.union($1.bbox) }
-        selectionOffset = .zero
+        selectionTransform = .identity
 
         // Float the selection on a bbox-sized layer (small backing), strokes in LOCAL
         // coords (offset by -origin), display-coloured for the current appearance.
@@ -653,19 +767,51 @@ final class VectorInkView: UIView {
         }
         selectionLayer.isHidden = false
         selectionLayer.setNeedsDisplay()
-        // Dashed box around the selection (in content coords; follows the move transform).
-        lassoLayer.path = CGPath(roundedRect: selectionBBox.insetBy(dx: -6, dy: -6), cornerWidth: 8, cornerHeight: 8, transform: nil)
+        // Dashed box around the selection (in content coords; follows the transform).
+        lassoLayer.path = CGPath(roundedRect: selectionBoxBase, cornerWidth: 8, cornerHeight: 8, transform: nil)
+        handleLayer.isHidden = false
         applySelectionTransform()
         invalidate()                                  // tiles drop the lifted strokes
         onChange?()
     }
 
+    /// The selection layer's `transform` for content-space affine `T`. The layer's
+    /// anchor is (0,0) and its frame sits at the bbox origin, so CA evaluates
+    /// `super = origin + L·(c − origin)`; we want `super = T(c)`, hence
+    /// `L = translate(origin) · T · translate(−origin)` (about the frame origin).
+    private func selectionLayerTransform(for T: CGAffineTransform) -> CATransform3D {
+        let o = selectionLayer.frame.origin
+        let L = CGAffineTransform(translationX: o.x, y: o.y)
+            .concatenating(T)
+            .concatenating(CGAffineTransform(translationX: -o.x, y: -o.y))
+        return CATransform3DMakeAffineTransform(L)
+    }
+
+    /// Apply the live `selectionTransform` to the floating ink + the dashed box, and
+    /// redraw the corner/rotate handles at their transformed positions.
     private func applySelectionTransform() {
-        let tr = CATransform3DMakeTranslation(selectionOffset.x, selectionOffset.y, 0)
         CATransaction.begin(); CATransaction.setDisableActions(true)
-        selectionLayer.transform = tr
-        lassoLayer.transform = tr
+        selectionLayer.transform = selectionLayerTransform(for: selectionTransform)
+        // lassoLayer has anchor (0,0) + a full-bounds frame (origin 0) → its transform
+        // is the content-space affine directly.
+        lassoLayer.transform = CATransform3DMakeAffineTransform(selectionTransform)
+        handleLayer.path = handlesPath()
+        let accent = Self.displayColor(.systemBlue, dark: displayDark)
+        handleLayer.fillColor = accent.cgColor
+        handleLayer.strokeColor = (displayDark ? UIColor(white: 0.12, alpha: 1) : UIColor.white).cgColor
         CATransaction.commit()
+    }
+
+    /// Filled dots for the 4 corner handles + the rotate handle (drawn in content coords
+    /// at the already-transformed positions; the handle layer itself is untransformed).
+    private func handlesPath() -> CGPath {
+        let path = CGMutablePath()
+        func dot(_ c: CGPoint, _ r: CGFloat) {
+            path.addEllipse(in: CGRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2))
+        }
+        for c in transformedCorners { dot(c, handleDotRadius) }
+        dot(transformedRotateHandle, handleDotRadius)
+        return path
     }
 
     /// Bake the floating selection back into the model at its moved position. The
@@ -673,27 +819,32 @@ final class VectorInkView: UIView {
     /// flash out in the gap before CATiledLayer re-renders (no completion callback).
     private func commitSelection() {
         guard !selectionStrokes.isEmpty else { return }
-        let dx = selectionOffset.x, dy = selectionOffset.y
+        let T = selectionTransform
+        let widthScale = sqrt(abs(T.a * T.d - T.b * T.c))   // uniform scale factor → stroke width
         for s in selectionStrokes {
             strokes.append(Stroke(color: s.color,
-                                  samples: s.samples.map { InkSample(location: CGPoint(x: $0.location.x + dx, y: $0.location.y + dy), width: $0.width) }))
+                                  samples: s.samples.map {
+                                      InkSample(location: $0.location.applying(T), width: $0.width * widthScale)
+                                  }))
         }
         // Clear the model-side selection now, but keep the floating LAYER showing.
         selectionStrokes = []
         lassoPoints = []
-        moveStart = nil
+        selectionGesture = nil
         selectionBBox = .null
         lassoLayer.path = nil
         invalidate()
         onChange?()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
             guard let self, self.selectionStrokes.isEmpty else { return }   // a new selection took over
-            self.selectionOffset = .zero
+            self.selectionTransform = .identity
             self.selectionLayer.strokes = []
             self.selectionLayer.isHidden = true
+            self.handleLayer.isHidden = true
             CATransaction.begin(); CATransaction.setDisableActions(true)
             self.selectionLayer.transform = CATransform3DIdentity
             self.lassoLayer.transform = CATransform3DIdentity
+            self.handleLayer.path = nil
             CATransaction.commit()
         }
     }
@@ -708,14 +859,16 @@ final class VectorInkView: UIView {
     private func clearSelectionState() {
         selectionStrokes = []
         lassoPoints = []
-        moveStart = nil
-        selectionOffset = .zero
+        selectionGesture = nil
+        selectionTransform = .identity
         selectionBBox = .null
         selectionLayer.strokes = []
         selectionLayer.isHidden = true
+        handleLayer.isHidden = true
         CATransaction.begin(); CATransaction.setDisableActions(true)
         selectionLayer.transform = CATransform3DIdentity
         lassoLayer.transform = CATransform3DIdentity
+        handleLayer.path = nil
         lassoLayer.path = nil
         CATransaction.commit()
     }
