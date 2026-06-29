@@ -42,6 +42,7 @@ struct CustomInkLabView: View {
                 Button { lab.undo() } label: { chip("Undo") }.disabled(!lab.canUndo).opacity(lab.canUndo ? 1 : 0.4)
                 Button { lab.redo() } label: { chip("Redo") }.disabled(!lab.canRedo).opacity(lab.canRedo ? 1 : 0.4)
                 Button { lab.addRandom(300) } label: { chip("+300") }
+                Button { lab.cyclePaper() } label: { chip(lab.paperName) }
                 Button { lab.clear() } label: { chip("Clear") }
                 if lab.strokeCount > 0 {
                     Text(verbatim: "\(lab.strokeCount)")
@@ -79,7 +80,15 @@ final class InkLabController: ObservableObject {
     @Published var canRedo = false
     @Published var penWidth: CGFloat = 2.6
     @Published var colorIndex = 0
+    @Published var paperName = "Ruled"
+    private let papers: [(PageTemplate?, String)] = [(.wideRuled, "Ruled"), (.squareGrid, "Grid"), (.dotGrid, "Dots"), (nil, "Blank")]
+    private var paperIdx = 0
     let palette: [UIColor] = [UIColor(white: 0.08, alpha: 1), .systemBlue, .systemRed, .systemGreen]
+    func cyclePaper() {
+        paperIdx = (paperIdx + 1) % papers.count
+        view?.paperTemplate = papers[paperIdx].0
+        paperName = papers[paperIdx].1
+    }
     func addRandom(_ n: Int) { view?.addRandomStrokes(n) }
     func clear() { view?.clearAll() }
     func setTool(_ t: InkTool) { tool = t; view?.tool = t }
@@ -219,8 +228,14 @@ final class VectorInkView: UIView {
         super.layoutSubviews()
         liveLayer.frame = bounds
         bridgeLayer.frame = bounds
+        contentBounds = bounds        // captured for the off-main tile draw
         warmUp()
     }
+
+    /// Ruled paper toggle — proves real backgrounds (the editor's `PageTemplate`)
+    /// render under the vector ink. nil = plain paper.
+    var paperTemplate: PageTemplate? = .wideRuled { didSet { tiled.setNeedsDisplay() } }
+    private var contentBounds: CGRect = .zero
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
@@ -365,6 +380,15 @@ final class VectorInkView: UIView {
         guard let ctx = UIGraphicsGetCurrentContext() else { return }
         ctx.setFillColor((dark ? UIColor(white: 0.12, alpha: 1) : .white).cgColor)
         ctx.fill(rect)
+        // Real ruled paper under the ink — the editor's own template renderer, so
+        // the lab is an authentic note surface (clipped to the tile by the context).
+        if let template = paperTemplate, !contentBounds.isEmpty {
+            let lineColor = (dark ? UIColor(red: 0.227, green: 0.227, blue: 0.235, alpha: 1)
+                                  : UIColor(red: 0.82, green: 0.82, blue: 0.839, alpha: 1)).cgColor
+            let accent = (dark ? UIColor(red: 0.039, green: 0.518, blue: 1, alpha: 1)
+                               : UIColor(red: 0, green: 0.478, blue: 1, alpha: 1)).cgColor
+            template.drawCG(in: ctx, rect: contentBounds, scale: 1, lineColor: lineColor, accentColor: accent, spacing: 36)
+        }
         for s in snap where s.bbox.intersects(rect) {
             Self.drawStroke(s.samples, color: Self.displayColor(s.color, dark: dark), in: ctx)
         }
