@@ -486,6 +486,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
 
     private func mountCanvas(on index: Int) {
         guard containers.indices.contains(index) else { return }
+        unfreezeInkAfterScroll()   // restore the live canvas before reparenting it
         PerfMonitor.shared.setActivity("page-mount")
         activeIndex = index
         let container = containers[index]
@@ -856,7 +857,31 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     /// crossing (the old behaviour) re-saved + reloaded + alpha-faded the canvas
     /// against each page's cached image, which produced the page-switch hiccups,
     /// the ink flashing/disappearing, and corrupted background renders.
+    /// While actively scrolling/zooming, the live CATiledLayer re-renders its tiles on
+    /// the CPU every frame (worst when zoomed in) — which tanks the scroll. So freeze
+    /// the ink to a static GPU-composited snapshot for the duration and swap the live
+    /// canvas back in on settle (where it re-renders crisp at the final scale).
+    private var scrollInkSnapshot: UIView?
+    private func freezeInkForScroll() {
+        guard scrollInkSnapshot == nil,
+              vectorCanvas.isUserInteractionEnabled,   // not mid lasso-selection
+              !vectorCanvas.isHidden, vectorCanvas.alpha > 0,
+              let host = vectorCanvas.superview,
+              let snap = vectorCanvas.snapshotView(afterScreenUpdates: false) else { return }
+        snap.frame = vectorCanvas.frame
+        host.insertSubview(snap, aboveSubview: vectorCanvas)
+        vectorCanvas.isHidden = true
+        scrollInkSnapshot = snap
+    }
+    private func unfreezeInkAfterScroll() {
+        guard let snap = scrollInkSnapshot else { return }
+        scrollInkSnapshot = nil
+        snap.removeFromSuperview()
+        vectorCanvas.isHidden = false
+    }
+
     private func settleActivePage() {
+        unfreezeInkAfterScroll()
         guard !isZooming, !isZoomBouncing else { return }
         // Don't steal the live canvas while the pen is on the page.
         let drawingState = canvas.drawingGestureRecognizer.state
@@ -910,6 +935,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     }
 
     func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+        freezeInkForScroll()
         PerfMonitor.shared.setActivity("scroll")
     }
     func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
@@ -922,6 +948,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) { settleActivePage() }
 
     func scrollViewWillBeginZooming(_ scrollView: UIScrollView, with view: UIView?) {
+        freezeInkForScroll()
         PerfMonitor.shared.setActivity("zoom")
     }
 
