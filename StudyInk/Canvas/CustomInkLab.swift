@@ -19,56 +19,117 @@ struct CustomInkLabView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var lab = InkLabController()
 
+    // One height + radius for EVERY control, so the row never looks ragged.
+    private let controlHeight: CGFloat = 34
+    private let controlRadius: CGFloat = 9
+
     var body: some View {
         ZStack(alignment: .top) {
             CustomInkScroll(controller: lab).ignoresSafeArea()
-            HStack(spacing: 8) {
-                Button { lab.setTool(.pen) } label: { toolChip("Pen", on: lab.tool == .pen) }
-                Button { lab.setTool(.eraser) } label: { toolChip("Eraser", on: lab.tool == .eraser) }
-                Button { lab.setTool(.shape) } label: { toolChip("Shape", on: lab.tool == .shape) }
-                Button { lab.setTool(.lasso) } label: { toolChip("Lasso", on: lab.tool == .lasso) }
-                ForEach([("S", CGFloat(1.6)), ("M", CGFloat(2.6)), ("L", CGFloat(4.5))], id: \.0) { label, w in
-                    Button { lab.setWidth(w) } label: {
-                        toolChip(label, on: lab.tool == .pen && abs(lab.penWidth - w) < 0.01)
+            HStack(spacing: 10) {
+                // Tools
+                HStack(spacing: 4) {
+                    toolButton("Pen", on: lab.tool == .pen) { lab.setTool(.pen) }
+                    toolButton("Eraser", on: lab.tool == .eraser) { lab.setTool(.eraser) }
+                    toolButton("Shape", on: lab.tool == .shape) { lab.setTool(.shape) }
+                    toolButton("Lasso", on: lab.tool == .lasso) { lab.setTool(.lasso) }
+                }
+
+                separator
+
+                // Widths
+                HStack(spacing: 4) {
+                    ForEach([("S", CGFloat(1.6)), ("M", CGFloat(2.6)), ("L", CGFloat(4.5))], id: \.0) { label, w in
+                        toolButton(label, on: lab.tool == .pen && abs(lab.penWidth - w) < 0.01, fixedWidth: controlHeight) {
+                            lab.setWidth(w)
+                        }
                     }
                 }
-                ForEach(Array(lab.palette.enumerated()), id: \.offset) { i, c in
-                    Button { lab.setColor(i) } label: {
-                        Circle().fill(Color(c)).frame(width: 24, height: 24)
-                            .overlay(Circle().strokeBorder(
-                                lab.tool == .pen && lab.colorIndex == i ? Color.primary : Color.black.opacity(0.15),
-                                lineWidth: lab.tool == .pen && lab.colorIndex == i ? 2.5 : 1))
+
+                separator
+
+                // Colours
+                HStack(spacing: 6) {
+                    ForEach(Array(lab.palette.enumerated()), id: \.offset) { i, c in
+                        let selected = lab.tool == .pen && lab.colorIndex == i
+                        Button { lab.setColor(i) } label: {
+                            Circle().fill(Color(c)).frame(width: 22, height: 22)
+                                .overlay(Circle().strokeBorder(
+                                    selected ? Color.accentColor : Color.primary.opacity(0.18),
+                                    lineWidth: selected ? 2.5 : 1))
+                                .frame(width: controlHeight, height: controlHeight)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
-                Button { lab.undo() } label: { chip("Undo") }.disabled(!lab.canUndo).opacity(lab.canUndo ? 1 : 0.4)
-                Button { lab.redo() } label: { chip("Redo") }.disabled(!lab.canRedo).opacity(lab.canRedo ? 1 : 0.4)
-                Button { lab.addRandom(300) } label: { chip("+300") }
-                Button { lab.cyclePaper() } label: { chip(lab.paperName) }
-                Button { lab.clear() } label: { chip("Clear") }
+
+                separator
+
+                // Undo / redo
+                HStack(spacing: 4) {
+                    actionButton("Undo") { lab.undo() }.disabled(!lab.canUndo).opacity(lab.canUndo ? 1 : 0.4)
+                    actionButton("Redo") { lab.redo() }.disabled(!lab.canRedo).opacity(lab.canRedo ? 1 : 0.4)
+                }
+
+                separator
+
+                // Page actions
+                HStack(spacing: 4) {
+                    actionButton("+300") { lab.addRandom(300) }
+                    actionButton(lab.paperName) { lab.cyclePaper() }
+                    actionButton("Clear") { lab.clear() }
+                }
+
                 if lab.strokeCount > 0 {
                     Text(verbatim: "\(lab.strokeCount)")
                         .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                        .frame(height: controlHeight)
                 }
-                Spacer()
-                Button { dismiss() } label: { chip("Done", bold: true) }
+
+                Spacer(minLength: 8)
+
+                actionButton("Done", bold: true) { dismiss() }
             }
-            .padding(.horizontal, 16).padding(.top, 10)
+            .padding(.horizontal, 14).padding(.top, 10)
         }
     }
 
-    private func chip(_ text: String, bold: Bool = false) -> some View {
-        Text(verbatim: text)
-            .font(.footnote.weight(bold ? .semibold : .regular))
-            .padding(.horizontal, 14).padding(.vertical, 8)
-            .background(.ultraThinMaterial, in: Capsule())
+    private var separator: some View {
+        Rectangle()
+            .fill(Color.primary.opacity(0.12))
+            .frame(width: 1, height: controlHeight - 12)
     }
 
-    private func toolChip(_ text: String, on: Bool) -> some View {
-        Text(verbatim: text)
-            .font(.footnote.weight(on ? .semibold : .regular))
-            .foregroundStyle(on ? Color.white : Color.primary)
-            .padding(.horizontal, 14).padding(.vertical, 8)
-            .background(on ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.ultraThinMaterial), in: Capsule())
+    /// Tool / width chip — fills the shared height, tints when selected.
+    private func toolButton(_ text: String, on: Bool, fixedWidth: CGFloat? = nil, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(verbatim: text)
+                .font(.footnote.weight(on ? .semibold : .regular))
+                .foregroundStyle(on ? Color.white : Color.primary)
+                .lineLimit(1)
+                .padding(.horizontal, fixedWidth == nil ? 12 : 0)
+                .frame(width: fixedWidth, height: controlHeight)
+                .frame(minWidth: controlHeight)
+                .background(
+                    on ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.ultraThinMaterial),
+                    in: RoundedRectangle(cornerRadius: controlRadius, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Neutral action chip (undo/redo/page actions/done) — same height + radius.
+    private func actionButton(_ text: String, bold: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(verbatim: text)
+                .font(.footnote.weight(bold ? .semibold : .regular))
+                .foregroundStyle(Color.primary)
+                .lineLimit(1)
+                .padding(.horizontal, 12)
+                .frame(height: controlHeight)
+                .frame(minWidth: controlHeight)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: controlRadius, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 }
 
