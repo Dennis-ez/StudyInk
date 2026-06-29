@@ -19,6 +19,15 @@ enum VectorInk {
     struct Stroke {
         let color: UIColor
         let samples: [InkSample]
+        let bbox: CGRect        // cached for tile culling / erase broad-phase
+        init(color: UIColor, samples: [InkSample]) {
+            self.color = color
+            self.samples = samples
+            var r = samples.first.map { CGRect(origin: $0.location, size: .zero) } ?? .null
+            for s in samples { r = r.union(CGRect(origin: s.location, size: .zero)) }
+            let w = samples.map(\.width).max() ?? 3
+            self.bbox = r.isNull ? .null : r.insetBy(dx: -w, dy: -w)
+        }
     }
 
     // MARK: Persistence — compact, versioned, Codable

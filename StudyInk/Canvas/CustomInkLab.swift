@@ -135,23 +135,8 @@ struct CustomInkScroll: UIViewRepresentable {
     }
 }
 
-// InkSample is shared (defined in VectorInk.swift).
-
-/// A finished stroke: its colour, its samples, and a cached bounds (so erase/cull
-/// never recompute bounds, and the tile renderer can draw each stroke in its colour).
-private struct Stroke {
-    let color: UIColor
-    let samples: [InkSample]
-    let bbox: CGRect
-    init(color: UIColor, samples: [InkSample]) {
-        self.color = color
-        self.samples = samples
-        var r = samples.first.map { CGRect(origin: $0.location, size: .zero) } ?? .null
-        for s in samples { r = r.union(CGRect(origin: s.location, size: .zero)) }
-        let w = samples.map(\.width).max() ?? 3
-        self.bbox = r.isNull ? .null : r.insetBy(dx: -w, dy: -w)
-    }
-}
+// InkSample + Stroke are shared (defined in VectorInk.swift).
+private typealias Stroke = VectorInk.Stroke
 
 /// A tiled layer that re-renders invalidated tiles instantly (no fade-in).
 final class TiledInkLayer: CATiledLayer {
@@ -241,6 +226,42 @@ final class VectorInkView: UIView {
         super.didMoveToWindow()
         applyAppearance()
         warmUp()
+        loadFromDisk()
+    }
+
+    // MARK: Persistence (proves the VectorInk encode/decode round-trip end-to-end)
+
+    private var loadedFromDisk = false
+    private var saveWork: DispatchWorkItem?
+    private static var saveURL: URL {
+        let dir = (try? FileManager.default.url(for: .documentDirectory, in: .userDomainMask,
+                                                appropriateFor: nil, create: true))
+            ?? URL(fileURLWithPath: NSTemporaryDirectory())
+        return dir.appendingPathComponent("inklab.vink")
+    }
+
+    private func loadFromDisk() {
+        guard !loadedFromDisk else { return }
+        loadedFromDisk = true
+        guard let data = try? Data(contentsOf: Self.saveURL),
+              let s = VectorInk.decode(data), !s.isEmpty else { return }
+        strokes = s
+        undoStack.removeAll(); redoStack.removeAll()
+        invalidate()
+        onChange?()
+    }
+
+    /// Debounced autosave, off the main thread.
+    private func scheduleSave() {
+        guard loadedFromDisk else { return }   // don't overwrite the file before we've loaded it
+        saveWork?.cancel()
+        let snapshot = strokes
+        let url = Self.saveURL
+        let work = DispatchWorkItem {
+            if let data = VectorInk.encode(snapshot) { try? data.write(to: url, options: .atomic) }
+        }
+        saveWork = work
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.6, execute: work)
     }
 
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
@@ -330,6 +351,7 @@ final class VectorInkView: UIView {
     /// Publish the model, then re-render the affected tiles (or all, if `rect` nil).
     private func invalidate(_ rect: CGRect? = nil) {
         publishModel()
+        scheduleSave()
         if let rect, !rect.isNull { tiled.setNeedsDisplay(rect) } else { tiled.setNeedsDisplay() }
     }
 
