@@ -1094,6 +1094,18 @@ final class VectorInkView: UIView {
     /// The current committed model (canonical colours) — for the host to persist.
     func currentStrokes() -> [VectorInk.Stroke] { strokes }
 
+    /// The tiles' base render scale (screen × oversample).
+    var baseRenderScale: CGFloat { baseScale }
+    /// Re-rasterize the tiles at `scale`. In the editor the canvas itself isn't the
+    /// zoomed view (an ancestor scroll view is), so CATiledLayer doesn't auto-bump its
+    /// detail on zoom — the host calls this with baseScale × zoom so zoomed-in ink stays
+    /// crisp. Memory stays bounded because CATiledLayer only rasterizes VISIBLE tiles.
+    func setRenderScale(_ scale: CGFloat) {
+        guard abs(tiled.contentsScale - scale) > 0.05 else { return }
+        tiled.contentsScale = scale
+        tiled.setNeedsDisplay()
+    }
+
     /// Per-page undo persistence: the editor reuses ONE view across pages, so it
     /// saves each page's stacks before switching and restores them on return (the
     /// undo history no longer evaporates when you swipe to another page).

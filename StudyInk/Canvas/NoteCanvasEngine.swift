@@ -1033,6 +1033,10 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
                 container.setNeedsDisplay()
             }
         }
+        // The vector ink IS safe to re-rasterize (our CATiledLayer, not PencilKit): bump
+        // the live canvas's tiles to the settled zoom so zoomed-in ink is crisp (capped
+        // at 3× for memory; tiles keep it bounded). Reset toward base when back near 1×.
+        vectorCanvas.setRenderScale(vectorCanvas.baseRenderScale * min(max(zoomScale, 1), 3))
         // DO NOT bump the live canvas's contentsScale to chase sharper zoom.
         // PROVEN on the iOS 26 SDK (PR #155 added it; PR #159's budget cap made
         // the allocation succeed, which EXPOSED the failure; reverted here):
