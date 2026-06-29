@@ -65,13 +65,11 @@ enum PageRenderer {
         guard let data = snapshot.drawingData, let stored = try? PKDrawing(data: data), !stored.strokes.isEmpty
         else { return nil }
         let adapted = InkColorAdapter.displayDrawing(stored, darkMode: darkMode)
-        // Phase 1: render page ink with the custom vector engine instead of PencilKit
-        // (flag-gated, reversible). Colours are already appearance-adapted, so render
-        // the converted strokes as-is.
-        if UserDefaults.standard.bool(forKey: "settings.canvas.customInk") {
-            return VectorInk.image(VectorInk.strokes(from: adapted),
-                                   size: snapshot.pageSize, scale: scale)
-        }
+        // NOTE: Phase 1 (rendering page images via on-the-fly PK→vector conversion)
+        // was reverted — bulk CoreGraphics stroking on the main thread per page was
+        // too slow and doesn't use the engine's tiling. The engine integrates as the
+        // LIVE active-page renderer instead (Phase 2). VectorInk + the converter stay
+        // for that. Page images keep rendering via PencilKit.
         let drawing = boldened(adapted, factor: inkBoost(forScale: scale))
         return inkImage(drawing, from: CGRect(origin: .zero, size: snapshot.pageSize))
     }
