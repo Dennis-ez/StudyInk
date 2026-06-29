@@ -46,6 +46,35 @@ enum StrokeSelector {
         return StrokeSelection(pageIndex: pageIndex, strokeIndices: indices, bounds: bounds, image: image, polygon: polygon)
     }
 
+    // MARK: Vector-native selection (no PencilKit round-trip)
+
+    /// Indices of vector strokes with a sample inside the lasso polygon (PAGE space).
+    static func vectorIndices(in strokes: [VectorInk.Stroke], polygon: [CGPoint]) -> [Int] {
+        guard polygon.count > 3 else { return [] }
+        return strokes.enumerated().compactMap { index, s in
+            for sm in s.samples where contains(polygon: polygon, point: sm.location) { return index }
+            return nil
+        }
+    }
+
+    /// Build a selection straight from the engine's vector strokes — the preview image
+    /// is rendered by OUR renderer (VectorInk.image), so it can't come back blank the
+    /// way a synthesized PKDrawing.image() did. Everything is PAGE space.
+    static func vectorSelection(from strokes: [VectorInk.Stroke], polygon: [CGPoint], pageIndex: Int, darkMode: Bool) -> StrokeSelection? {
+        let indices = vectorIndices(in: strokes, polygon: polygon)
+        guard !indices.isEmpty else { return nil }
+        let sel = indices.map { strokes[$0] }
+        let bounds = sel.dropFirst().reduce(sel[0].bbox) { $0.union($1.bbox) }
+        guard bounds.width > 0, bounds.height > 0 else { return nil }
+        // Render display-coloured + offset to bounds-local so the image fills its frame.
+        let preview = sel.map { s -> VectorInk.Stroke in
+            VectorInk.Stroke(color: InkColorAdapter.displayColor(s.color, darkMode: darkMode),
+                             samples: s.samples.map { InkSample(location: CGPoint(x: $0.location.x - bounds.minX, y: $0.location.y - bounds.minY), width: $0.width) })
+        }
+        let image = VectorInk.image(preview, size: bounds.size, scale: 2) ?? UIImage()
+        return StrokeSelection(pageIndex: pageIndex, strokeIndices: indices, bounds: bounds, image: image, polygon: polygon)
+    }
+
     /// Ray-casting point-in-polygon.
     static func contains(polygon: [CGPoint], point: CGPoint) -> Bool {
         var inside = false

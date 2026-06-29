@@ -214,16 +214,13 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         vectorCanvas.externalLasso = true
         vectorCanvas.onLassoBeganExternal = { [weak self] in self?.controller.onLassoBegan?() }
         vectorCanvas.onLassoChangedExternal = { [weak self] pts in
-            guard let self else { return }
-            self.controller.lassoPoints = pts.map { CGPoint(x: $0.x * self.inkScale, y: $0.y * self.inkScale) }
+            self?.controller.lassoPoints = pts   // PAGE space — overlays use transform(forPage:)
         }
         vectorCanvas.onLassoEndedExternal = { [weak self] pts in
             guard let self else { return }
-            self.syncCanvasProjection()   // canvas.drawing must mirror current strokes for selection
-            let scaled = pts.map { CGPoint(x: $0.x * self.inkScale, y: $0.y * self.inkScale) }
-            self.controller.onLassoComplete?(scaled)
-            // Clear the LIVE loop so its marching-ants outline doesn't linger at the
-            // original spot once the selection overlay takes over.
+            self.controller.onLassoComplete?(pts)
+            // Clear the LIVE loop so its marching-ants outline doesn't linger once the
+            // selection overlay takes over.
             self.controller.lassoPoints = []
         }
         controller.attachVector(vectorCanvas)
@@ -617,6 +614,86 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         noteUndo.append((index, before))
         applyNoteHistory(index: index, strokes: after)
     }
+    // MARK: Lasso selection — directly on vector strokes (no PencilKit projection)
+
+    private var vectorSelIndices: [Int]?
+    private var vectorSelBefore: [VectorInk.Stroke]?
+
+    private func selectionTransform(_ rotation: Double, _ scale: CGFloat, _ translation: CGSize, _ selection: StrokeSelection) -> CGAffineTransform {
+        let c = CGPoint(x: selection.bounds.midX, y: selection.bounds.midY)
+        return CGAffineTransform(translationX: c.x, y: c.y)
+            .rotated(by: rotation * .pi / 180)
+            .scaledBy(x: scale, y: scale)
+            .translatedBy(x: -c.x, y: -c.y)
+            .concatenating(CGAffineTransform(translationX: translation.width, y: translation.height))
+    }
+    private func transformed(_ strokes: [VectorInk.Stroke], indices: Set<Int>, by t: CGAffineTransform) -> [VectorInk.Stroke] {
+        let w = sqrt(abs(t.a * t.d - t.b * t.c))
+        return strokes.enumerated().map { i, s in
+            guard indices.contains(i) else { return s }
+            return VectorInk.Stroke(color: s.color, samples: s.samples.map {
+                InkSample(location: $0.location.applying(t), width: $0.width * w) })
+        }
+    }
+
+    /// Lift the selected vector strokes off the page (they ride in the overlay).
+    func liftVectorSelection(_ indices: [Int]) {
+        guard vectorSelBefore == nil else { return }
+        let all = vectorCanvas.currentStrokes()
+        vectorSelBefore = all
+        vectorSelIndices = indices
+        let set = Set(indices)
+        let remaining = all.enumerated().filter { !set.contains($0.offset) }.map(\.element)
+        vectorCanvas.setStrokesPreservingHistory(remaining)
+        lastStrokes[activeIndex] = remaining
+        vectorCanvas.isUserInteractionEnabled = false   // drag → overlay, not a new lasso
+    }
+    func commitVectorSelection(rotation: Double, scale: CGFloat, translation: CGSize, selection: StrokeSelection) {
+        guard let before = vectorSelBefore, let indices = vectorSelIndices else { return }
+        vectorSelBefore = nil; vectorSelIndices = nil
+        vectorCanvas.isUserInteractionEnabled = true
+        let t = selectionTransform(rotation, scale, translation, selection)
+        finishVectorSelection(before: before, after: transformed(before, indices: Set(indices), by: t))
+    }
+    func cancelVectorSelection() {
+        guard let before = vectorSelBefore else { return }
+        vectorSelBefore = nil; vectorSelIndices = nil
+        vectorCanvas.isUserInteractionEnabled = true
+        vectorCanvas.setStrokesPreservingHistory(before)
+        lastStrokes[activeIndex] = before
+    }
+    func deleteVectorSelection() {
+        guard let before = vectorSelBefore, let indices = vectorSelIndices else { return }
+        vectorSelBefore = nil; vectorSelIndices = nil
+        vectorCanvas.isUserInteractionEnabled = true
+        let set = Set(indices)
+        finishVectorSelection(before: before, after: before.enumerated().filter { !set.contains($0.offset) }.map(\.element))
+    }
+    func duplicateVectorSelection(rotation: Double, scale: CGFloat, translation: CGSize, selection: StrokeSelection) {
+        guard let before = vectorSelBefore, let indices = vectorSelIndices else { return }
+        vectorSelBefore = nil; vectorSelIndices = nil
+        vectorCanvas.isUserInteractionEnabled = true
+        let set = Set(indices)
+        let moved = transformed(before, indices: set, by: selectionTransform(rotation, scale, translation, selection))
+        let off = CGAffineTransform(translationX: 26, y: 26)
+        let copies = indices.compactMap { moved.indices.contains($0) ? moved[$0] : nil }.map { s in
+            VectorInk.Stroke(color: s.color, samples: s.samples.map { InkSample(location: $0.location.applying(off), width: $0.width) })
+        }
+        finishVectorSelection(before: before, after: moved + copies)
+    }
+    private func finishVectorSelection(before: [VectorInk.Stroke], after: [VectorInk.Stroke]) {
+        noteUndo.append((activeIndex, before)); if noteUndo.count > 250 { noteUndo.removeFirst() }
+        noteRedo.removeAll()
+        lastStrokes[activeIndex] = after
+        vectorCanvas.setStrokesPreservingHistory(after)
+        let index = activeIndex
+        saveWorkItem?.cancel()
+        let work = DispatchWorkItem { [controller] in controller.onDrawingChanged?(index, VectorInk.pkDrawing(from: after)) }
+        saveWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
+        controller.refreshUndoState()
+    }
+
     private func applyNoteHistory(index: Int, strokes: [VectorInk.Stroke]) {
         lastStrokes[index] = strokes
         controller.onDrawingChanged?(index, VectorInk.pkDrawing(from: strokes))   // persist

@@ -383,7 +383,7 @@ struct NoteEditorView: View {
             TransformLassoOverlay(
                 isActive: $transformLassoActive,
                 rectangular: canvasController.lassoRectangular,
-                transform: canvasController.canvasTransform(forPage: pageIndex),
+                transform: canvasController.transform(forPage: pageIndex),
                 points: canvasController.lassoPoints,
                 onCancel: { canvasController.select(.ballpoint) }
             )
@@ -573,29 +573,29 @@ struct NoteEditorView: View {
             if let selection = strokeSelection {
                 StrokeTransformOverlay(
                     selection: selection,
-                    transform: canvasController.canvasTransform(forPage: selection.pageIndex),
+                    transform: canvasController.transform(forPage: selection.pageIndex),
                     rotation: $strokeRotation,
                     translation: $strokeTranslation,
                     scale: $strokeScale,
                     onDone: applyStrokeTransform,
                     onCancel: {
-                        canvasController.engine?.cancelStrokeSelection()
+                        canvasController.engine?.cancelVectorSelection()
                         clearStrokeSelection()
                     },
-                    canPaste: canvasController.hasPasteContent,
-                    onCut: { canvasController.engine?.cutStrokeSelection(selection); clearStrokeSelection() },
+                    canPaste: false,
+                    onCut: { canvasController.engine?.deleteVectorSelection(); clearStrokeSelection() },
                     onCopy: {
                         let t = selectionTransform(selection)
-                        canvasController.engine?.copyStrokeSelection(rotation: t.0, scale: t.1, translation: t.2, selection: selection)
+                        canvasController.engine?.commitVectorSelection(rotation: t.0, scale: t.1, translation: t.2, selection: selection)
                         clearStrokeSelection()
                     },
-                    onPaste: { canvasController.engine?.pasteStrokes(); clearStrokeSelection() },
+                    onPaste: { canvasController.engine?.cancelVectorSelection(); clearStrokeSelection() },
                     onDuplicate: {
                         let t = selectionTransform(selection)
-                        canvasController.engine?.duplicateStrokeSelection(rotation: t.0, scale: t.1, translation: t.2, selection: selection)
+                        canvasController.engine?.duplicateVectorSelection(rotation: t.0, scale: t.1, translation: t.2, selection: selection)
                         clearStrokeSelection()
                     },
-                    onDelete: { canvasController.engine?.deleteStrokeSelection(); clearStrokeSelection() }
+                    onDelete: { canvasController.engine?.deleteVectorSelection(); clearStrokeSelection() }
                 )
             }
 
@@ -1188,21 +1188,20 @@ struct NoteEditorView: View {
 
     /// Lasso completed: capture the strokes under the loop for move+rotate.
     private func beginStrokeTransform(with polygon: [CGPoint]) {
-        guard let drawing = canvasController.canvasView?.drawing else { return }
+        let strokes = canvasController.vectorCanvas?.currentStrokes() ?? []
         strokeRotation = 0
         strokeTranslation = .zero
         strokeScale = 1
-        if let selection = StrokeSelector.selection(
-            from: drawing,
+        // Select straight from the vector strokes (PAGE space) — no PencilKit round-trip.
+        if let selection = StrokeSelector.vectorSelection(
+            from: strokes,
             polygon: polygon,
             pageIndex: pageIndex,
             darkMode: colorScheme == .dark
         ) {
             Haptics.selection()
             strokeSelection = selection
-            // Lift the selected strokes out of the live ink so dragging the
-            // selection doesn't leave a copy at the original position.
-            canvasController.engine?.liftStrokeSelection(selection.strokeIndices)
+            canvasController.engine?.liftVectorSelection(selection.strokeIndices)
         } else {
             // No editable ink in the loop — select the lassoed REGION (a chunk of
             // PDF / printed problem) and offer copy / duplicate / delete via a pill,
@@ -1225,8 +1224,7 @@ struct NoteEditorView: View {
     /// in the canvas's inkScale× space.
     private func makeRegionSelection(canvasPolygon polygon: [CGPoint]) -> RegionSelection? {
         guard let page = currentPage, polygon.count >= 3 else { return nil }
-        let s = canvasController.inkScale
-        let pagePoly = polygon.map { CGPoint(x: $0.x / s, y: $0.y / s) }   // page coords
+        let pagePoly = polygon   // already PAGE coords (vector lasso, no inkScale)
         let xs = pagePoly.map(\.x), ys = pagePoly.map(\.y)
         guard let minX = xs.min(), let maxX = xs.max(), let minY = ys.min(), let maxY = ys.max(),
               maxX - minX > 8, maxY - minY > 8 else { return nil }
@@ -1286,16 +1284,16 @@ struct NoteEditorView: View {
         guard let selection = strokeSelection else { return }
         guard abs(strokeRotation) > 0.5 || strokeTranslation != .zero || abs(strokeScale - 1) > 0.01 else {
             // No real change — just drop the lifted strokes back where they were.
-            canvasController.engine?.cancelStrokeSelection()
+            canvasController.engine?.cancelVectorSelection()
             return
         }
-        // The overlay drag is in screen points; convert to the canvas's own
-        // (inkScale×) coordinate space, where the selected strokes live.
-        let zoom = canvasController.canvasTransform(forPage: selection.pageIndex).zoomScale
-        let canvasTranslation = CGSize(width: strokeTranslation.width / zoom,
-                                       height: strokeTranslation.height / zoom)
-        canvasController.engine?.commitStrokeSelection(
-            rotation: strokeRotation, scale: strokeScale, translation: canvasTranslation, selection: selection)
+        // The overlay drag is in screen points; convert to PAGE space (where the vector
+        // strokes live) by dividing out the zoom.
+        let zoom = canvasController.transform(forPage: selection.pageIndex).zoomScale
+        let pageTranslation = CGSize(width: strokeTranslation.width / zoom,
+                                     height: strokeTranslation.height / zoom)
+        canvasController.engine?.commitVectorSelection(
+            rotation: strokeRotation, scale: strokeScale, translation: pageTranslation, selection: selection)
         Haptics.success()
     }
 
