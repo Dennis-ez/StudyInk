@@ -1774,8 +1774,14 @@ struct NoteCanvasView: UIViewRepresentable {
     }
 
     func updateUIView(_ engine: DocumentScrollView, context: Context) {
-        if controller.isDarkMode != (colorScheme == .dark) {
-            controller.isDarkMode = colorScheme == .dark
+        let dark = colorScheme == .dark
+        if controller.isDarkMode != dark {
+            // Mutating an @Published HERE (inside a view-update pass) is undefined
+            // behavior ("Publishing changes from within view updates") AND its didSet
+            // re-renders every page — defer it out of the update.
+            DispatchQueue.main.async { [controller] in
+                if controller.isDarkMode != dark { controller.isDarkMode = dark }
+            }
         }
         engine.apply(pageSizes: pageSizes, signature: layoutSignature)
         engine.ensureContent()
