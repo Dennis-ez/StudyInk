@@ -887,7 +887,9 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     /// keep the live canvas until the post-edit refresh lands.
     private var activeImageDirty = false
     private func freezeInkForScroll() {
-        guard !scrollImageActive, !activeImageDirty,
+        // Only freeze near 1× — a frozen image pixelates when magnified. Zoomed in, let
+        // the live tiled canvas re-render crisp (now cheap via the stroke spatial grid).
+        guard !scrollImageActive, !activeImageDirty, zoomScale <= 1.3,
               vectorCanvas.isUserInteractionEnabled,   // not mid lasso-selection
               !vectorCanvas.isHidden, vectorCanvas.alpha > 0,
               containers.indices.contains(activeIndex) else { return }

@@ -236,6 +236,12 @@ final class VectorInkView: UIView {
     private var current: [InkSample] = []
     private let modelLock = NSLock()
     private var renderStrokes: [Stroke] = []
+    /// Spatial index: grid cell → indices of strokes overlapping it. Lets the tile
+    /// renderer fetch only the strokes inside a tile instead of scanning ALL strokes
+    /// per tile (the dense-page tiling cost — what made zoom/scroll heavy vs Notability).
+    private var renderGrid: [Int: [Int]] = [:]
+    private let gridCell: CGFloat = 360
+    private func cellKey(_ col: Int, _ row: Int) -> Int { (col &+ 4096) &* 1_000_000 &+ (row &+ 4096) }
 
     var penWidth: CGFloat = 2.6
     var inkColor = UIColor(white: 0.08, alpha: 1)   // current pen colour (selectable)
@@ -485,8 +491,17 @@ final class VectorInkView: UIView {
     // MARK: Model snapshot for the off-main tile renderer
 
     private func publishModel() {
+        var grid: [Int: [Int]] = [:]
+        for (i, s) in strokes.enumerated() {
+            let b = s.bbox
+            guard !b.isNull else { continue }
+            let c0 = Int(floor(b.minX / gridCell)), c1 = Int(floor(b.maxX / gridCell))
+            let r0 = Int(floor(b.minY / gridCell)), r1 = Int(floor(b.maxY / gridCell))
+            for col in c0...c1 { for row in r0...r1 { grid[cellKey(col, row), default: []].append(i) } }
+        }
         modelLock.lock()
         renderStrokes = strokes
+        renderGrid = grid
         modelLock.unlock()
     }
 
@@ -528,6 +543,7 @@ final class VectorInkView: UIView {
     override func draw(_ rect: CGRect) {
         modelLock.lock()
         let snap = renderStrokes
+        let grid = renderGrid
         modelLock.unlock()
         let dark = displayDark
         guard let ctx = UIGraphicsGetCurrentContext() else { return }
@@ -546,7 +562,15 @@ final class VectorInkView: UIView {
         } else {
             ctx.clear(rect)
         }
-        for s in snap where s.bbox.intersects(rect) {
+        // Only the strokes whose grid cells overlap this tile (not every stroke). Indices
+        // are drawn in order so layering is preserved.
+        let c0 = Int(floor(rect.minX / gridCell)), c1 = Int(floor(rect.maxX / gridCell))
+        let r0 = Int(floor(rect.minY / gridCell)), r1 = Int(floor(rect.maxY / gridCell))
+        var hits = Set<Int>()
+        for col in c0...c1 { for row in r0...r1 { if let cell = grid[cellKey(col, row)] { hits.formUnion(cell) } } }
+        for i in hits.sorted() where snap.indices.contains(i) {
+            let s = snap[i]
+            guard s.bbox.intersects(rect) else { continue }
             Self.drawStroke(s.samples, color: Self.displayColor(s.color, dark: dark), in: ctx)
         }
     }
