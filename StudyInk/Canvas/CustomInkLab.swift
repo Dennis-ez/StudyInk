@@ -104,7 +104,9 @@ struct CustomInkScroll: UIViewRepresentable {
         scroll.minimumZoomScale = 1
         scroll.maximumZoomScale = 8
         scroll.bouncesZoom = true
-        scroll.backgroundColor = UIColor(white: 0.98, alpha: 1)
+        // Dynamic "desk" colour — auto-adapts to dark mode with the trait collection.
+        scroll.backgroundColor = UIColor { $0.userInterfaceStyle == .dark
+            ? UIColor(white: 0.06, alpha: 1) : UIColor(white: 0.98, alpha: 1) }
         scroll.delegate = context.coordinator
         scroll.contentInsetAdjustmentBehavior = .never
         // Notes-app split: ONE finger/pencil draws, TWO fingers pan, pinch zooms.
@@ -112,7 +114,8 @@ struct CustomInkScroll: UIViewRepresentable {
         scroll.delaysContentTouches = false
 
         let ink = VectorInkView(frame: CGRect(origin: .zero, size: page))
-        ink.backgroundColor = .white
+        ink.backgroundColor = UIColor { $0.userInterfaceStyle == .dark
+            ? UIColor(white: 0.12, alpha: 1) : .white }
         ink.onChange = { [weak controller] in controller?.syncState() }
         scroll.contentSize = page
         scroll.addSubview(ink)
@@ -238,18 +241,58 @@ final class VectorInkView: UIView {
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
+        applyAppearance()
         warmUp()
     }
 
-    /// Allocate the wet-layer backing store up front (off-bounds, invisible) so the
-    /// FIRST stroke doesn't hitch while CA lazily allocates it.
+    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
+        super.traitCollectionDidChange(previous)
+        if previous?.userInterfaceStyle != traitCollection.userInterfaceStyle { applyAppearance() }
+    }
+
+    /// Allocate the wet-layer backing store up front so the FIRST stroke doesn't
+    /// hitch while CA lazily allocates it: keep an off-screen 1px path for ONE
+    /// runloop (so CA actually renders/allocates), then clear it.
     private func warmUp() {
         guard window != nil, !warmedUp, bounds.width > 0 else { return }
         warmedUp = true
         CATransaction.begin(); CATransaction.setDisableActions(true)
-        liveLayer.path = CGPath(rect: CGRect(x: -100, y: -100, width: 1, height: 1), transform: nil)
-        liveLayer.path = nil
+        liveLayer.path = CGPath(rect: CGRect(x: -10, y: -10, width: 1, height: 1), transform: nil)
         CATransaction.commit()
+        DispatchQueue.main.async { [weak self] in
+            CATransaction.begin(); CATransaction.setDisableActions(true)
+            self?.liveLayer.path = nil
+            CATransaction.commit()
+        }
+    }
+
+    // MARK: Appearance (dark mode) — we own rendering, so adaptation is render-time.
+
+    private var displayDark = false
+    private var paperColor: UIColor { displayDark ? UIColor(white: 0.12, alpha: 1) : .white }
+
+    private func applyAppearance() {
+        displayDark = traitCollection.userInterfaceStyle == .dark
+        backgroundColor = paperColor
+        refreshPenDisplay()      // wet + bridge to the adapted pen colour
+        invalidate()             // re-render tiles with the new paper + adapted ink
+    }
+
+    /// Map a stored (canonical) colour to its on-screen colour for the current
+    /// appearance — black ink shows light on a dark page; colours brighten a touch.
+    private static func displayColor(_ c: UIColor, dark: Bool) -> UIColor {
+        guard dark else { return c }
+        var w: CGFloat = 0, a: CGFloat = 0
+        if c.getWhite(&w, alpha: &a) { return UIColor(white: 1 - w, alpha: a) }   // black↔white
+        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0
+        c.getHue(&h, saturation: &s, brightness: &b, alpha: &a)
+        return UIColor(hue: h, saturation: s * 0.85, brightness: min(1, b + 0.22), alpha: a)
+    }
+
+    private func refreshPenDisplay() {
+        let cg = Self.displayColor(inkColor, dark: displayDark).cgColor
+        liveLayer.strokeColor = cg
+        bridgeLayer.fillColor = cg
     }
 
     // MARK: Model snapshot for the off-main tile renderer
@@ -298,11 +341,12 @@ final class VectorInkView: UIView {
         modelLock.lock()
         let snap = renderStrokes
         modelLock.unlock()
+        let dark = displayDark
         guard let ctx = UIGraphicsGetCurrentContext() else { return }
-        ctx.setFillColor(UIColor.white.cgColor)
+        ctx.setFillColor((dark ? UIColor(white: 0.12, alpha: 1) : .white).cgColor)
         ctx.fill(rect)
         for s in snap where s.bbox.intersects(rect) {
-            Self.drawStroke(s.samples, color: s.color, in: ctx)
+            Self.drawStroke(s.samples, color: Self.displayColor(s.color, dark: dark), in: ctx)
         }
     }
 
@@ -458,12 +502,12 @@ final class VectorInkView: UIView {
         onChange?()
     }
 
-    /// Pen colour for NEW strokes. Existing strokes keep their own (per-stroke) colour
-    /// in the tiles; the wet preview + bridge switch to the new colour.
+    /// Pen colour for NEW strokes (stored canonical). Existing strokes keep their own
+    /// colour in the tiles; the wet preview + bridge switch to the new colour (adapted
+    /// for the current appearance).
     func setColor(_ c: UIColor) {
         inkColor = c
-        liveLayer.strokeColor = c.cgColor
-        bridgeLayer.fillColor = c.cgColor
+        refreshPenDisplay()
     }
 
     // MARK: Geometry helpers
