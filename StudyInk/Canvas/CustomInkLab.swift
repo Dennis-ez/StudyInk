@@ -1045,6 +1045,15 @@ final class VectorInkView: UIView {
     /// The current committed model (canonical colours) — for the host to persist.
     func currentStrokes() -> [VectorInk.Stroke] { strokes }
 
+    /// Per-page undo persistence: the editor reuses ONE view across pages, so it
+    /// saves each page's stacks before switching and restores them on return (the
+    /// undo history no longer evaporates when you swipe to another page).
+    func exportHistory() -> (undo: [[VectorInk.Stroke]], redo: [[VectorInk.Stroke]]) { (undoStack, redoStack) }
+    func restoreHistory(undo: [[VectorInk.Stroke]], redo: [[VectorInk.Stroke]]) {
+        undoStack = undo
+        redoStack = redo
+    }
+
     /// Append strokes (e.g. AI ink insertion): undoable, re-rendered, and `onChange`
     /// fires so the host saves.
     func insert(_ newStrokes: [VectorInk.Stroke]) {

@@ -69,6 +69,9 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     let canvas = InkCanvasView()   // inert — PencilKit is being removed
     /// The live custom vector ink canvas (the real ink surface).
     let vectorCanvas = VectorInkView()
+    /// Per-page undo/redo stacks (the single live view is reused across pages, so we
+    /// save/restore each page's history across switches — undo survives a page swipe).
+    private var pageUndoHistory: [Int: (undo: [[VectorInk.Stroke]], redo: [[VectorInk.Stroke]])] = [:]
     private var activeIndex = 0
     private var isProgrammaticChange = false
     /// True once the active page's real drawing has been loaded into the live
@@ -321,6 +324,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         if !containers.isEmpty, samePageAtActiveIndex { flushPendingSave() }
         saveWorkItem?.cancel()
         saveWorkItem = nil
+        pageUndoHistory.removeAll()   // page list changed → index-keyed history is stale
         layoutSignature = signature
         pageSizes = sizes
 
@@ -477,6 +481,9 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         // appearance at render time (no inkScale, no pre-adaptation needed).
         let canonical = controller.drawingProvider?(index) ?? PKDrawing()
         vectorCanvas.loadStrokes(VectorInk.strokes(from: canonical))
+        // Restore this page's undo history (loadStrokes cleared it) so swiping back
+        // to a page you edited keeps its undo/redo.
+        if let h = pageUndoHistory[index] { vectorCanvas.restoreHistory(undo: h.undo, redo: h.redo) }
         isProgrammaticChange = false
         // If the provider is wired up, this page is fully loaded (an empty page
         // is legitimately empty). If not, ensureContent() seeds it once the
@@ -516,6 +523,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         guard index != activeIndex, containers.indices.contains(index) else { return }
         abortStrokeEditIfNeeded()
         flushPendingSave()
+        pageUndoHistory[activeIndex] = vectorCanvas.exportHistory()   // remember this page's undo
         let oldIndex = activeIndex
         if containers.indices.contains(oldIndex) {
             // Show the old page's cached render IMMEDIATELY as the canvas leaves
