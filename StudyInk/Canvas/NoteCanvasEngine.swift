@@ -1390,12 +1390,17 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         canvas.drawing = lifted
         isProgrammaticChange = false
         syncVectorFromCanvas()   // hide the lifted strokes on the real vector canvas
+        // Take the vector canvas OUT of the touch path so dragging the selection goes
+        // to the transform overlay — not a NEW lasso loop (which would zero-commit the
+        // selection and drop the strokes back, the "disappears then reappears" bug).
+        vectorCanvas.isUserInteractionEnabled = false
     }
 
     /// Commit the lasso transform onto the original (un-lifted) strokes.
     func commitStrokeSelection(rotation: Double, scale: CGFloat, translation: CGSize, selection: StrokeSelection) {
         guard let original = selectionOriginal else { return }
         selectionOriginal = nil
+        vectorCanvas.isUserInteractionEnabled = true   // selection ended → restore draw/lasso input
         let transformed = StrokeSelector.applyTransform(
             rotation: rotation, scale: scale, translation: translation, selection: selection, to: original)
         canvas.undoManager?.registerUndo(withTarget: canvas) { [original] target in
@@ -1408,6 +1413,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     func cancelStrokeSelection() {
         guard let original = selectionOriginal else { return }
         selectionOriginal = nil
+        vectorCanvas.isUserInteractionEnabled = true   // selection ended → restore draw/lasso input
         isProgrammaticChange = true
         canvas.drawing = original
         isProgrammaticChange = false
@@ -1420,6 +1426,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     func deleteStrokeSelection() {
         guard let original = selectionOriginal else { return }
         selectionOriginal = nil
+        vectorCanvas.isUserInteractionEnabled = true   // selection ended → restore draw/lasso input
         let lifted = canvas.drawing   // already without the selected strokes
         canvas.undoManager?.registerUndo(withTarget: canvas) { target in target.drawing = original }
         persist(lifted, at: activeIndex)
@@ -1431,6 +1438,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     func duplicateStrokeSelection(rotation: Double, scale: CGFloat, translation: CGSize, selection: StrokeSelection) {
         guard let original = selectionOriginal else { return }
         selectionOriginal = nil
+        vectorCanvas.isUserInteractionEnabled = true   // selection ended → restore draw/lasso input
         let moved = StrokeSelector.applyTransform(
             rotation: rotation, scale: scale, translation: translation, selection: selection, to: original)
         let picked = selection.strokeIndices.compactMap {
