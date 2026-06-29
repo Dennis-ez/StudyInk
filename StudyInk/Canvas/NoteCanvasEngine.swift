@@ -858,26 +858,27 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     /// against each page's cached image, which produced the page-switch hiccups,
     /// the ink flashing/disappearing, and corrupted background renders.
     /// While actively scrolling/zooming, the live CATiledLayer re-renders its tiles on
-    /// the CPU every frame (worst when zoomed in) — which tanks the scroll. So freeze
-    /// the ink to a static GPU-composited snapshot for the duration and swap the live
-    /// canvas back in on settle (where it re-renders crisp at the final scale).
-    private var scrollInkSnapshot: UIView?
+    /// the CPU every frame (worst zoomed in) — which tanks the scroll. So hide the live
+    /// canvas and show the page's already-cached image (the same cheap path inactive
+    /// pages use — no per-drag bitmap allocation), then swap the live canvas back in on
+    /// settle (it re-renders crisp at the final scale).
+    private var scrollImageActive = false
     private func freezeInkForScroll() {
-        guard scrollInkSnapshot == nil,
+        guard !scrollImageActive,
               vectorCanvas.isUserInteractionEnabled,   // not mid lasso-selection
               !vectorCanvas.isHidden, vectorCanvas.alpha > 0,
-              let host = vectorCanvas.superview,
-              let snap = vectorCanvas.snapshotView(afterScreenUpdates: false) else { return }
-        snap.frame = vectorCanvas.frame
-        host.insertSubview(snap, aboveSubview: vectorCanvas)
+              containers.indices.contains(activeIndex) else { return }
+        scrollImageActive = true
+        let container = containers[activeIndex]
+        renderImage(for: activeIndex, priority: .userInitiated)   // refresh with the latest ink (off-main)
+        container.imageView.isHidden = false
         vectorCanvas.isHidden = true
-        scrollInkSnapshot = snap
     }
     private func unfreezeInkAfterScroll() {
-        guard let snap = scrollInkSnapshot else { return }
-        scrollInkSnapshot = nil
-        snap.removeFromSuperview()
+        guard scrollImageActive else { return }
+        scrollImageActive = false
         vectorCanvas.isHidden = false
+        if containers.indices.contains(activeIndex) { containers[activeIndex].imageView.isHidden = true }
     }
 
     private func settleActivePage() {
