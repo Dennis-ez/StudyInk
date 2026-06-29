@@ -66,7 +66,9 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     private var layoutSignature = ""
     private let pageGap: CGFloat = 0
 
-    let canvas = InkCanvasView()
+    let canvas = InkCanvasView()   // inert — PencilKit is being removed
+    /// The live custom vector ink canvas (the real ink surface).
+    let vectorCanvas = VectorInkView()
     private var activeIndex = 0
     private var isProgrammaticChange = false
     /// True once the active page's real drawing has been loaded into the live
@@ -192,6 +194,11 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         canvas.overrideUserInterfaceStyle = .light
         controller.inkScale = inkScale
         controller.attach(canvas)
+        // The real ink surface: transparent over the page container, page-coordinate
+        // (no inkScale — the tiled layer re-renders sharp at any zoom).
+        vectorCanvas.backgroundColor = .clear
+        vectorCanvas.onChange = { [weak self] in self?.vectorCanvasChanged() }
+        controller.attachVector(vectorCanvas)
         controller.engine = self
 
         let pencilInteraction = UIPencilInteraction()
@@ -461,29 +468,24 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         // the old ink shows for one frame at the new page (the flash when swiping
         // to the first/last page). PencilKit also renders the swapped-in drawing
         // asynchronously, so the canvas stays hidden until it catches up.
-        canvas.alpha = 0
+        vectorCanvas.alpha = 0
         container.imageView.isHidden = false
-        canvas.isUserInteractionEnabled = true
-        applyCanvasGeometry(pageSize: pageSizes[index])
-        container.addSubview(canvas)
+        applyVectorGeometry(pageSize: pageSizes[index])
+        container.addSubview(vectorCanvas)
         isProgrammaticChange = true
-        // Storage → display: black ink shows near-white on a dark canvas, scaled
-        // up into the canvas's inkScale coordinate space.
-        canvas.drawing = displayIntoCanvas(controller.drawingProvider?(index) ?? PKDrawing())
+        // Load the page's CANONICAL strokes; the engine adapts colour to the current
+        // appearance at render time (no inkScale, no pre-adaptation needed).
+        let canonical = controller.drawingProvider?(index) ?? PKDrawing()
+        vectorCanvas.loadStrokes(VectorInk.strokes(from: canonical))
         isProgrammaticChange = false
         // If the provider is wired up, this page is fully loaded (an empty page
         // is legitimately empty). If not, ensureContent() seeds it once the
         // provider connects.
         seededActiveDrawing = controller.drawingProvider != nil
-        // Show the page's cached render (incl. ink) and keep the live canvas hidden
-        // behind it until PencilKit has rendered — so the ink shows immediately
-        // instead of a blank page for a beat.
+        // Show the page's cached render and keep the live canvas hidden behind it
+        // until the tiles render — so the ink shows immediately, no blank beat.
         bridgeActiveReveal(index: index)
-        // The undo stack is per-canvas, not per-page: undoing after a page
-        // switch would resurrect the previous page's ink on this one.
-        canvas.undoManager?.removeAllActions()
         shapeWorkItem?.cancel()
-        lastStrokeCount = canvas.drawing.strokes.count
         DispatchQueue.main.async { [controller] in controller.refreshUndoState() }
     }
 
@@ -497,14 +499,14 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         let container = containers[index]
         revealToken += 1
         let token = revealToken
-        canvas.alpha = 0
+        vectorCanvas.alpha = 0
         container.imageView.isHidden = false
         // Render the active page's cached ink at high priority (it's the thing the
         // user is waiting to see). Only inactive pages are pre-rendered elsewhere.
         if container.imageView.image == nil { renderImage(for: index, priority: .userInitiated) }
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self, weak container] in
             guard let self, self.activeIndex == index, self.revealToken == token else { return }
-            self.canvas.alpha = 1
+            self.vectorCanvas.alpha = 1
             container?.imageView.isHidden = true
             if PerfMonitor.shared.activity == "page-mount" { PerfMonitor.shared.setActivity("idle") }
         }
@@ -529,7 +531,34 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     private func flushPendingSave() {
         saveWorkItem?.cancel()
         saveWorkItem = nil
-        persist(canvas.drawing, at: activeIndex)
+        persistVector(at: activeIndex)
+    }
+
+    /// Geometry for the vector canvas: 1:1 with the page (no inkScale — the tiled
+    /// layer re-renders sharp at any zoom, so no supersample transform is needed).
+    private func applyVectorGeometry(pageSize: CGSize) {
+        vectorCanvas.transform = .identity
+        vectorCanvas.frame = CGRect(origin: .zero, size: pageSize)
+    }
+
+    /// The vector canvas changed (commit / erase / move / undo). Debounce a save and
+    /// refresh undo state. Strokes carry CANONICAL colour, so the PKDrawing projection
+    /// written to Core Data (for OCR / export / AI-vision) is canonical too.
+    private func vectorCanvasChanged() {
+        guard !isProgrammaticChange else { return }
+        let index = activeIndex
+        controller.refreshUndoState()
+        let strokes = vectorCanvas.currentStrokes()
+        saveWorkItem?.cancel()
+        let work = DispatchWorkItem { [controller] in
+            controller.onDrawingChanged?(index, VectorInk.pkDrawing(from: strokes))
+        }
+        saveWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
+    }
+
+    private func persistVector(at index: Int) {
+        controller.onDrawingChanged?(index, VectorInk.pkDrawing(from: vectorCanvas.currentStrokes()))
     }
 
     /// Display → storage, then hand the canonical drawing to the editor to

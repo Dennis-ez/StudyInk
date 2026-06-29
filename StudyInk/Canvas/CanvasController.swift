@@ -95,7 +95,11 @@ final class CanvasController: NSObject, ObservableObject {
     private var eraserViaDoubleTap = false
 
     /// The live PKCanvasView (hosted on the active page by the engine).
+    /// Being retired — the real ink surface is now `vectorCanvas`.
     weak var canvasView: PKCanvasView?
+    /// The live custom vector ink canvas (replacing PencilKit). All tool/undo/insert
+    /// commands route here; the editor persists from its `currentStrokes()`.
+    weak var vectorCanvas: VectorInkView?
     /// The engine, for commands like scroll-to-page.
     weak var engine: DocumentScrollView?
 
@@ -238,7 +242,25 @@ final class CanvasController: NSObject, ObservableObject {
         canvas.drawingPolicy = pencilOnly ? .pencilOnly : .anyInput
     }
 
+    /// The engine hands over the live vector canvas (the real ink surface).
+    func attachVector(_ canvas: VectorInkView) {
+        vectorCanvas = canvas
+        canvas.persistsToDisk = false   // the editor owns persistence
+        canvas.drawsPaper = false       // transparent over the page container
+        applyTool()
+    }
+
     func applyTool() {
+        // The real surface: map the user tool to the vector engine.
+        if let v = vectorCanvas {
+            let cfg = toolState.vectorTool()
+            v.tool = cfg.tool
+            v.penWidth = cfg.width
+            v.setColor(cfg.color)
+            // Hand → let a finger pan the document instead of drawing.
+            v.isUserInteractionEnabled = cfg.draws
+        }
+        // PKCanvasView is inert (being removed) but kept in sync to avoid surprises.
         canvasView?.tool = toolState.pkTool(darkMode: isDarkMode, widthScale: inkScale)
         // Hand tool: nothing draws, one finger pans regardless of pencil-only.
         let isHand = toolState.kind == .hand
@@ -255,12 +277,12 @@ final class CanvasController: NSObject, ObservableObject {
         engine?.setLassoGestureActive(toolState.kind == .lasso)
     }
 
-    func undo() { canvasView?.undoManager?.undo(); refreshUndoState() }
-    func redo() { canvasView?.undoManager?.redo(); refreshUndoState() }
+    func undo() { vectorCanvas?.undo(); refreshUndoState() }
+    func redo() { vectorCanvas?.redo(); refreshUndoState() }
 
     func refreshUndoState() {
-        let undo = canvasView?.undoManager?.canUndo ?? false
-        let redo = canvasView?.undoManager?.canRedo ?? false
+        let undo = vectorCanvas?.canUndo ?? false
+        let redo = vectorCanvas?.canRedo ?? false
         if canUndo != undo { canUndo = undo }
         if canRedo != redo { canRedo = redo }
     }

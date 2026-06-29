@@ -370,6 +370,17 @@ final class VectorInkView: UIView {
     /// Ruled paper toggle — proves real backgrounds (the editor's `PageTemplate`)
     /// render under the vector ink. nil = plain paper.
     var paperTemplate: PageTemplate? = .wideRuled { didSet { tiled.setNeedsDisplay() } }
+
+    /// Editor mounts the engine as a TRANSPARENT ink layer over the page container
+    /// (paper/PDF rendered by the container). Lab keeps `true` (draws its own paper).
+    var drawsPaper = true {
+        didSet {
+            isOpaque = drawsPaper
+            tiled.isOpaque = drawsPaper
+            backgroundColor = drawsPaper ? paperColor : .clear
+            tiled.setNeedsDisplay()
+        }
+    }
     private var contentBounds: CGRect = .zero
 
     override func didMoveToWindow() {
@@ -443,7 +454,7 @@ final class VectorInkView: UIView {
 
     private func applyAppearance() {
         displayDark = traitCollection.userInterfaceStyle == .dark
-        backgroundColor = paperColor
+        backgroundColor = drawsPaper ? paperColor : .clear
         refreshPenDisplay()      // wet + bridge to the adapted pen colour
         invalidate()             // re-render tiles with the new paper + adapted ink
     }
@@ -514,16 +525,20 @@ final class VectorInkView: UIView {
         modelLock.unlock()
         let dark = displayDark
         guard let ctx = UIGraphicsGetCurrentContext() else { return }
-        ctx.setFillColor((dark ? UIColor(white: 0.12, alpha: 1) : .white).cgColor)
-        ctx.fill(rect)
-        // Real ruled paper under the ink — the editor's own template renderer, so
-        // the lab is an authentic note surface (clipped to the tile by the context).
-        if let template = paperTemplate, !contentBounds.isEmpty {
-            let lineColor = (dark ? UIColor(red: 0.227, green: 0.227, blue: 0.235, alpha: 1)
-                                  : UIColor(red: 0.82, green: 0.82, blue: 0.839, alpha: 1)).cgColor
-            let accent = (dark ? UIColor(red: 0.039, green: 0.518, blue: 1, alpha: 1)
-                               : UIColor(red: 0, green: 0.478, blue: 1, alpha: 1)).cgColor
-            template.drawCG(in: ctx, rect: contentBounds, scale: 1, lineColor: lineColor, accentColor: accent, spacing: 36)
+        // Editor mode (drawsPaper == false): render ONLY ink so the page container's
+        // paper / template / imported PDF shows through. The lab draws its own paper.
+        if drawsPaper {
+            ctx.setFillColor((dark ? UIColor(white: 0.12, alpha: 1) : .white).cgColor)
+            ctx.fill(rect)
+            if let template = paperTemplate, !contentBounds.isEmpty {
+                let lineColor = (dark ? UIColor(red: 0.227, green: 0.227, blue: 0.235, alpha: 1)
+                                      : UIColor(red: 0.82, green: 0.82, blue: 0.839, alpha: 1)).cgColor
+                let accent = (dark ? UIColor(red: 0.039, green: 0.518, blue: 1, alpha: 1)
+                                   : UIColor(red: 0, green: 0.478, blue: 1, alpha: 1)).cgColor
+                template.drawCG(in: ctx, rect: contentBounds, scale: 1, lineColor: lineColor, accentColor: accent, spacing: 36)
+            }
+        } else {
+            ctx.clear(rect)
         }
         for s in snap where s.bbox.intersects(rect) {
             Self.drawStroke(s.samples, color: Self.displayColor(s.color, dark: dark), in: ctx)
