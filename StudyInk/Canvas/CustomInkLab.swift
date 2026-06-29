@@ -280,6 +280,10 @@ final class VectorInkView: UIView {
     var onChange: (() -> Void)?
     var strokeCount: Int { strokes.count }
 
+    /// Editor-config: when FALSE the view never autosaves to `inklab.vink` and never
+    /// loads it — the host (real editor) owns persistence via `loadStrokes`/`onChange`.
+    var persistsToDisk = true
+
     override init(frame: CGRect) {
         super.init(frame: frame)
         isMultipleTouchEnabled = false
@@ -341,7 +345,7 @@ final class VectorInkView: UIView {
         super.didMoveToWindow()
         applyAppearance()
         warmUp()
-        loadFromDisk()
+        if persistsToDisk { loadFromDisk() }
     }
 
     // MARK: Persistence (proves the VectorInk encode/decode round-trip end-to-end)
@@ -368,6 +372,7 @@ final class VectorInkView: UIView {
 
     /// Debounced autosave, off the main thread.
     private func scheduleSave() {
+        guard persistsToDisk else { return }   // host owns persistence
         guard loadedFromDisk else { return }   // don't overwrite the file before we've loaded it
         saveWork?.cancel()
         let snapshot = strokes
@@ -852,6 +857,35 @@ final class VectorInkView: UIView {
     func setColor(_ c: UIColor) {
         inkColor = c
         refreshPenDisplay()
+    }
+
+    // MARK: Editor-config API (the real editor drives the same view through these)
+
+    /// Replace the model with `newStrokes` (e.g. when opening a page). Clears history
+    /// and re-renders, but does NOT fire `onChange` — loading must not trigger a save.
+    func loadStrokes(_ newStrokes: [VectorInk.Stroke]) {
+        discardSelection()
+        strokes = newStrokes
+        current = []
+        liveLayer.path = nil
+        clearBridge()
+        undoStack.removeAll()
+        redoStack.removeAll()
+        invalidate()            // re-render; scheduleSave() no-ops when persistsToDisk == false
+    }
+
+    /// The current committed model (canonical colours) — for the host to persist.
+    func currentStrokes() -> [VectorInk.Stroke] { strokes }
+
+    /// Append strokes (e.g. AI ink insertion): undoable, re-rendered, and `onChange`
+    /// fires so the host saves.
+    func insert(_ newStrokes: [VectorInk.Stroke]) {
+        guard !newStrokes.isEmpty else { return }
+        pushUndo()
+        strokes.append(contentsOf: newStrokes)
+        clearBridge()
+        invalidate()
+        onChange?()
     }
 
     // MARK: Geometry helpers
