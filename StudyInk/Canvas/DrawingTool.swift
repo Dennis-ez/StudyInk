@@ -115,6 +115,38 @@ struct ToolState: Codable, Equatable {
         default: return .pen
         }
     }
+
+    // MARK: Custom vector engine mapping (settings.canvas.customInk)
+
+    /// The custom engine's config for this tool. Unlike `pkTool`, colours are
+    /// CANONICAL (storage) — the engine maps to the current appearance at render
+    /// time (VectorInkView.displayColor), and works in page coordinates (no inkScale).
+    /// `.hand` returns `draws == false` so the mount can let a finger pan instead.
+    struct VectorToolConfig {
+        var tool: InkTool
+        var color: UIColor       // canonical
+        var width: CGFloat
+        var draws: Bool          // false for hand → mount disables ink capture
+    }
+
+    func vectorTool() -> VectorToolConfig {
+        let canonical = UIColor(hex: colorHex) ?? .black
+        switch kind {
+        case .eraserPixel, .eraserObject:
+            return VectorToolConfig(tool: .eraser, color: canonical, width: width, draws: true)
+        case .lasso:
+            return VectorToolConfig(tool: .lasso, color: canonical, width: width, draws: true)
+        case .hand:
+            return VectorToolConfig(tool: .pen, color: canonical, width: width, draws: false)
+        case .highlighter:
+            return VectorToolConfig(tool: .pen, color: canonical.withAlphaComponent(min(opacity, 0.4)),
+                                    width: width * 2.2, draws: true)
+        case .ballpoint, .fountain, .monoline, .pencil:
+            // Our pen is constant-width like monoline, which reads heavier than PK's
+            // tapered pens — scale down to match (mirrors penWeight in the converter).
+            return VectorToolConfig(tool: .pen, color: canonical, width: width * 0.6, draws: true)
+        }
+    }
 }
 
 extension ToolState {

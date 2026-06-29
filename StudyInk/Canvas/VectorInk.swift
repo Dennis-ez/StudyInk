@@ -144,6 +144,26 @@ enum VectorInk {
         }
     }
 
+    // MARK: vector strokes → PencilKit (the interop projection)
+
+    /// Build a `PKDrawing` from vector strokes — the projection written to
+    /// `Page.drawingData` so OCR / export / AI-vision (which read the PKDrawing blob)
+    /// keep working when the engine owns the live canvas. Colour is taken as-is
+    /// (pass canonical/storage colours, same convention as user ink).
+    static func pkDrawing(from strokes: [Stroke]) -> PKDrawing {
+        let pk = strokes.compactMap { s -> PKStroke? in
+            guard !s.samples.isEmpty else { return nil }
+            let pts = s.samples.enumerated().map { i, k in
+                PKStrokePoint(location: k.location, timeOffset: Double(i) * 0.01,
+                              size: CGSize(width: max(k.width, 1), height: max(k.width, 1)),
+                              opacity: 1, force: 1, azimuth: 0, altitude: .pi / 2)
+            }
+            let path = PKStrokePath(controlPoints: pts, creationDate: Date())
+            return PKStroke(ink: PKInk(.pen, color: s.color), path: path)
+        }
+        return PKDrawing(strokes: pk)
+    }
+
     // MARK: Rasterise
 
     /// Render strokes to a transparent image of `size` at `scale`. Safe OFF the main
