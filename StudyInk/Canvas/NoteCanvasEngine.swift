@@ -499,28 +499,36 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         container.imageView.isHidden = false
         applyVectorGeometry(pageSize: pageSizes[index])
         container.addSubview(vectorCanvas)
-        isProgrammaticChange = true
-        // Load the page's CANONICAL strokes; the engine adapts colour to the current
-        // appearance at render time (no inkScale, no pre-adaptation needed).
-        // Use the cached vector strokes if present (avoids re-converting the PKDrawing
-        // on every swipe — the per-mount conversion was the scroll-jank culprit); else
-        // convert once and cache. The PK projection is seeded lazily on lasso, not here.
-        let strokes: [VectorInk.Stroke]
-        if let cached = lastStrokes[index] {
-            strokes = cached
-        } else {
-            strokes = VectorInk.strokes(from: controller.drawingProvider?(index) ?? PKDrawing())
-            lastStrokes[index] = strokes
-        }
-        vectorCanvas.loadStrokes(strokes)
-        isProgrammaticChange = false
-        // If the provider is wired up, this page is fully loaded (an empty page
-        // is legitimately empty). If not, ensureContent() seeds it once the
-        // provider connects.
         seededActiveDrawing = controller.drawingProvider != nil
-        // Show the page's cached render and keep the live canvas hidden behind it
-        // until the tiles render — so the ink shows immediately, no blank beat.
-        bridgeActiveReveal(index: index)
+        // Load the page's CANONICAL strokes (the engine adapts colour at render time).
+        if let cached = lastStrokes[index] {
+            isProgrammaticChange = true
+            vectorCanvas.loadStrokes(cached)
+            isProgrammaticChange = false
+            bridgeActiveReveal(index: index)
+        } else {
+            // Convert PKDrawing → vectors OFF the main thread. On a DENSE page this takes
+            // hundreds of ms–seconds; on main it froze the UI (the multi-second hitches
+            // and the laggy first stroke). The cached page image bridges the gap; reveal
+            // the live canvas once the conversion lands.
+            let data = (controller.drawingProvider?(index) ?? PKDrawing()).dataRepresentation()
+            isProgrammaticChange = true
+            vectorCanvas.loadStrokes([])
+            isProgrammaticChange = false
+            container.imageView.isHidden = false
+            Task.detached(priority: .userInitiated) {
+                let pk = (try? PKDrawing(data: data)) ?? PKDrawing()
+                let converted = VectorInk.strokes(from: pk)
+                await MainActor.run { [weak self] in
+                    guard let self, self.activeIndex == index else { return }
+                    self.lastStrokes[index] = converted
+                    self.isProgrammaticChange = true
+                    self.vectorCanvas.loadStrokes(converted)
+                    self.isProgrammaticChange = false
+                    self.bridgeActiveReveal(index: index)
+                }
+            }
+        }
         shapeWorkItem?.cancel()
         DispatchQueue.main.async { [controller] in controller.refreshUndoState() }
     }
