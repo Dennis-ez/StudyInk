@@ -135,8 +135,10 @@ final class VectorInkView: UIView {
     private var tiled: TiledInkLayer { layer as! TiledInkLayer }
 
     // Model lives on the main thread; an immutable snapshot (+ per-stroke bounds)
-    // is what the off-main tile renderer reads, under a lock.
+    // is what the off-main tile renderer reads, under a lock. `bboxes` is kept in
+    // sync with `strokes` so erase/cull never recompute bounds (the erase perf fix).
     private var strokes: [[InkSample]] = []
+    private var bboxes: [CGRect] = []
     private var current: [InkSample] = []
     private let modelLock = NSLock()
     private var renderStrokes: [[InkSample]] = []
@@ -147,6 +149,13 @@ final class VectorInkView: UIView {
 
     /// The in-progress "wet" stroke — instant, GPU-composited, never blocks.
     private let liveLayer = CAShapeLayer()
+    /// Bridges the wet→tile handoff: a just-committed stroke stays shown here for a
+    /// beat (the CATiledLayer re-renders its tile async with no completion callback),
+    /// so the stroke doesn't flash out between lifting and the tile appearing.
+    private let bridgeLayer = CAShapeLayer()
+    private var bridgeStrokes: [[InkSample]] = []
+    private var bridgeWork: DispatchWorkItem?
+    private var warmedUp = false
 
     var tool: InkTool = .pen
     private let eraserRadius: CGFloat = 16
@@ -177,6 +186,13 @@ final class VectorInkView: UIView {
         tiled.levelsOfDetailBias = 4
         tiled.contentsScale = baseScale
 
+        // Bridge layer (committed-but-maybe-not-yet-tiled strokes), beneath the wet.
+        bridgeLayer.fillColor = inkColor.cgColor
+        bridgeLayer.strokeColor = nil
+        bridgeLayer.frame = bounds
+        bridgeLayer.contentsScale = baseScale
+        layer.addSublayer(bridgeLayer)
+
         liveLayer.fillColor = nil
         liveLayer.strokeColor = inkColor.cgColor
         liveLayer.lineWidth = penWidth
@@ -192,17 +208,61 @@ final class VectorInkView: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         liveLayer.frame = bounds
+        bridgeLayer.frame = bounds
+        warmUp()
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        warmUp()
+    }
+
+    /// Allocate the wet-layer backing store up front (off-bounds, invisible) so the
+    /// FIRST stroke doesn't hitch while CA lazily allocates it.
+    private func warmUp() {
+        guard window != nil, !warmedUp, bounds.width > 0 else { return }
+        warmedUp = true
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        liveLayer.path = CGPath(rect: CGRect(x: -100, y: -100, width: 1, height: 1), transform: nil)
+        liveLayer.path = nil
+        CATransaction.commit()
     }
 
     // MARK: Model snapshot for the off-main tile renderer
 
     private func publishModel() {
-        let snap = strokes
-        let boxes = snap.map { strokeBounds($0) }
         modelLock.lock()
-        renderStrokes = snap
-        renderBoxes = boxes
+        renderStrokes = strokes      // bboxes kept in sync with strokes (no recompute)
+        renderBoxes = bboxes
         modelLock.unlock()
+    }
+
+    private func rebuildBBoxes() { bboxes = strokes.map { strokeBounds($0) } }
+
+    // MARK: Bridge layer (wet→tile handoff)
+
+    private func rebuildBridge() {
+        let combined = CGMutablePath()
+        for s in bridgeStrokes {
+            combined.addPath(smoothedCenterline(s).copy(strokingWithWidth: avgWidth(s),
+                                                        lineCap: .round, lineJoin: .round, miterLimit: 10))
+        }
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        bridgeLayer.path = combined.isEmpty ? nil : combined
+        CATransaction.commit()
+    }
+    private func scheduleBridgeClear() {
+        bridgeWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.clearBridge() }
+        bridgeWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
+    }
+    private func clearBridge() {
+        bridgeWork?.cancel(); bridgeWork = nil
+        bridgeStrokes = []
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        bridgeLayer.path = nil
+        CATransaction.commit()
     }
 
     /// Publish the model, then re-render the affected tiles (or all, if `rect` nil).
@@ -255,12 +315,17 @@ final class VectorInkView: UIView {
         if tool == .eraser { return }
         if current.count > 1 {
             pushUndo()
+            let box = strokeBounds(current)
             strokes.append(current)
-            invalidate(strokeBounds(current).insetBy(dx: -penWidth * 3, dy: -penWidth * 3))
+            bboxes.append(box)
+            bridgeStrokes.append(current)   // hold it on the bridge until the tile renders
+            rebuildBridge()
+            invalidate(box)
+            scheduleBridgeClear()
             onChange?()
         }
         current = []
-        liveLayer.path = nil    // the committed stroke is now rendered by the tiles
+        liveLayer.path = nil    // committed stroke now held by the bridge, then the tiles
     }
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
         current = []
@@ -292,24 +357,33 @@ final class VectorInkView: UIView {
     @discardableResult
     private func eraseAt(_ p: CGPoint) -> CGRect {
         let r = eraserRadius
+        // Broad-phase on the CACHED bbox (no per-point bounds recompute), then a
+        // point scan only for strokes whose box is under the eraser.
+        func hits(_ i: Int) -> Bool {
+            bboxes[i].insetBy(dx: -r, dy: -r).contains(p)
+                && strokes[i].contains { hypot($0.location.x - p.x, $0.location.y - p.y) <= r + $0.width / 2 }
+        }
+        guard strokes.indices.contains(where: hits) else { return .null }   // nothing under the eraser
+
         let snapshot = strokes
         var removed = CGRect.null
-        let before = strokes.count
-        strokes.removeAll { stroke in
-            let box = strokeBounds(stroke)
-            guard box.insetBy(dx: -r, dy: -r).contains(p) else { return false }
-            for s in stroke where hypot(s.location.x - p.x, s.location.y - p.y) <= r + s.width / 2 {
-                removed = removed.union(box)
-                return true
-            }
-            return false
+        var keepStrokes: [[InkSample]] = []
+        var keepBoxes: [CGRect] = []
+        keepStrokes.reserveCapacity(strokes.count)
+        keepBoxes.reserveCapacity(strokes.count)
+        for i in strokes.indices {
+            if hits(i) { removed = removed.union(bboxes[i]) }
+            else { keepStrokes.append(strokes[i]); keepBoxes.append(bboxes[i]) }
         }
-        if strokes.count != before, !erasedThisGesture {   // one undo step per gesture
+        if !erasedThisGesture {     // one undo step per gesture
             erasedThisGesture = true
             undoStack.append(snapshot)
             if undoStack.count > maxUndo { undoStack.removeFirst() }
             redoStack.removeAll()
+            clearBridge()           // a bridged stroke may be among those erased
         }
+        strokes = keepStrokes
+        bboxes = keepBoxes
         return removed.isNull ? .null : removed.insetBy(dx: -r, dy: -r)
     }
 
@@ -336,6 +410,8 @@ final class VectorInkView: UIView {
     private func afterHistoryChange() {
         current = []
         liveLayer.path = nil
+        clearBridge()
+        rebuildBBoxes()
         invalidate()
         onChange?()
     }
@@ -353,6 +429,7 @@ final class VectorInkView: UIView {
                 s.append(InkSample(location: p, width: penWidth * .random(in: 0.6...1.4)))
             }
             strokes.append(s)
+            bboxes.append(strokeBounds(s))
         }
         invalidate()
         onChange?()
@@ -361,8 +438,10 @@ final class VectorInkView: UIView {
     func clearAll() {
         if !strokes.isEmpty { pushUndo() }   // clearing is undoable
         strokes = []
+        bboxes = []
         current = []
         liveLayer.path = nil
+        clearBridge()
         invalidate()
         onChange?()
     }
