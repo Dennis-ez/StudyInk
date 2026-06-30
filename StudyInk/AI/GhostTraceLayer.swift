@@ -1,0 +1,122 @@
+import SwiftUI
+
+/// Feature 2a — **Suggest next step · The fill-in ghost** (handoff §4.2, `NextStep.dc.html`).
+/// The next line renders inline as dimmed student ink with the ONE insight-bearing token
+/// blanked into a pulsing scaffold box. The student can write it themselves, reveal it,
+/// or trace to keep — which commits to solid amber tagged AI ink (one-undo, export-strippable).
+struct GhostTraceLayer: View {
+    /// The next line as plain/unicode text, e.g. "= sin(u) + C".
+    let fullText: String
+    /// The token to mask first (the substituted variable / key operand), e.g. "u".
+    let blankToken: String
+    let why: String?
+    var onAccept: (String) -> Void
+    var onDismiss: () -> Void
+
+    enum GhostState { case scaffold, revealed, accepted }
+    @State private var state: GhostState = .scaffold
+    @State private var showWhy = false
+    @State private var pulse = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var parts: (pre: String, blank: String, post: String) {
+        let text = fullText.mathToUnicode()
+        let token = blankToken.mathToUnicode()
+        guard !token.isEmpty, let r = text.range(of: token) else { return (text, "", "") }
+        return (String(text[text.startIndex..<r.lowerBound]), String(text[r]), String(text[r.upperBound...]))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 6) {
+                traceLine
+                actionCluster
+            }
+            if showWhy { whyCard }
+            if state == .accepted { aiInkPill }
+        }
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) { pulse = true }
+        }
+    }
+
+    // The dimmed step with the blank in the middle.
+    private var traceLine: some View {
+        let p = parts
+        let accepted = state == .accepted
+        return HStack(spacing: 0) {
+            Text(p.pre).font(AITokens.caveat(26))
+            blankView
+            Text(p.post).font(AITokens.caveat(26))
+        }
+        .foregroundStyle(accepted ? AITokens.ai : AITokens.inkStudent)
+        .opacity(accepted ? 1 : AITokens.inkGhostOpacity)
+    }
+
+    @ViewBuilder private var blankView: some View {
+        let p = parts
+        switch state {
+        case .scaffold:
+            // The one exception to "no box": the blank is a pulsing scaffold box.
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                .fill(AITokens.scaffoldBoxBg)
+                .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous).strokeBorder(AITokens.scaffoldBoxRing))
+                .frame(width: max(26, CGFloat(p.blank.count) * 13), height: 30)
+                .scaleEffect(pulse ? 1.06 : 1.0)
+                .opacity(1)   // the blank stays full-strength even though the trace is dimmed
+                .onTapGesture { withAnimation(AITokens.Motion.unfold) { state = .revealed } }
+        case .revealed, .accepted:
+            Text(p.blank).font(AITokens.caveat(26))
+        }
+    }
+
+    // ? (toggle why) · fill the blank · trace to keep.
+    private var actionCluster: some View {
+        HStack(spacing: 6) {
+            Button { withAnimation(AITokens.Motion.dismiss) { showWhy.toggle() } } label: {
+                Image(systemName: "questionmark")
+                    .font(.system(size: 11, weight: .bold)).foregroundStyle(AITokens.ai)
+                    .frame(width: 24, height: 24)
+                    .overlay(Circle().strokeBorder(style: StrokeStyle(lineWidth: 1.4, dash: [3, 2])).foregroundStyle(AITokens.ai))
+            }
+            .buttonStyle(.plain)
+            switch state {
+            case .scaffold:
+                TutorChip(title: "ambient.ghost.fillBlank", action: { withAnimation(AITokens.Motion.unfold) { state = .revealed } })
+            case .revealed:
+                TutorChip(title: "ambient.ghost.traceToKeep", systemImage: "checkmark",
+                          accent: AITokens.success, action: commit)
+            case .accepted:
+                EmptyView()
+            }
+            Button(action: onDismiss) {
+                Image(systemName: "xmark").font(.system(size: 10, weight: .bold)).foregroundStyle(AITokens.textFaint)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var whyCard: some View {
+        TutorCard(kicker: "why this step", title: nil, accent: .ai, maxWidth: 280) {
+            Text(why ?? "You've reduced it to ∫ cos(u) du. The antiderivative of cosine is sine — so the blank fills with u, and you'll back-substitute next.")
+                .font(.system(size: 13)).foregroundStyle(AITokens.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var aiInkPill: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "sparkle").font(.system(size: 10, weight: .semibold))
+            Text("ambient.ghost.aiInkOneUndo").font(AITokens.mono(9)).tracking(0.4)
+        }
+        .foregroundStyle(AITokens.ai)
+        .padding(.horizontal, 8).padding(.vertical, 4)
+        .background(AITokens.aiInkTagBg, in: Capsule())
+    }
+
+    private func commit() {
+        withAnimation(.easeOut(duration: AITokens.Motion.commitDuration)) { state = .accepted }
+        onAccept(fullText)
+    }
+}

@@ -241,6 +241,21 @@
 "ambient.nextStep" = "Next step";
 "ambient.revealAnswer" = "Reveal answer";
 "ambient.suggest" = "Suggest next step";
+// Conote AI handoff — tutor surfaces
+"ambient.ladder.stuckHint" = "Still stuck — hint me";
+"ambient.ladder.showStep" = "Show the step";
+"ambient.ladder.replay" = "Replay the ladder";
+"ambient.showRule" = "Show the rule";
+"ambient.findMistake" = "Find my mistake";
+"ambient.circle.explain" = "Explain";
+"ambient.circle.simpler" = "Simpler";
+"ambient.circle.analogy" = "Analogy";
+"ambient.chat.gotIt" = "got it";
+"ambient.chat.showOnPage" = "show on page";
+"ambient.chat.askAboutLine" = "ask about this line";
+"ambient.ghost.fillBlank" = "fill the blank";
+"ambient.ghost.traceToKeep" = "trace to keep";
+"ambient.ghost.aiInkOneUndo" = "✦ AI ink · one-undo";
 "ambient.sensitivity" = "Ambient tutor";
 "ambient.showWhy" = "Show why";
 "ambient.glyph.correct" = "Looks right";

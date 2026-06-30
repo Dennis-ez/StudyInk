@@ -241,6 +241,21 @@
 "ambient.nextStep" = "הצעד הבא";
 "ambient.revealAnswer" = "גלה את התשובה";
 "ambient.suggest" = "הצע צעד הבא";
+// Conote AI handoff — tutor surfaces
+"ambient.ladder.stuckHint" = "עדיין תקוע — רמז לי";
+"ambient.ladder.showStep" = "הראה את הצעד";
+"ambient.ladder.replay" = "התחל מחדש את הסולם";
+"ambient.showRule" = "הראה את הכלל";
+"ambient.findMistake" = "מצא את הטעות שלי";
+"ambient.circle.explain" = "הסבר";
+"ambient.circle.simpler" = "פשוט יותר";
+"ambient.circle.analogy" = "אנלוגיה";
+"ambient.chat.gotIt" = "הבנתי";
+"ambient.chat.showOnPage" = "הראה בדף";
+"ambient.chat.askAboutLine" = "שאל על השורה הזו";
+"ambient.ghost.fillBlank" = "מלא את החסר";
+"ambient.ghost.traceToKeep" = "עקוב כדי לשמור";
+"ambient.ghost.aiInkOneUndo" = "✦ דיו AI · ביטול יחיד";
 "ambient.sensitivity" = "מורה סביבתי";
 "ambient.showWhy" = "הראה למה";
 "ambient.glyph.correct" = "נראה נכון";
