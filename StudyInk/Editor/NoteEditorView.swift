@@ -134,7 +134,11 @@ struct NoteEditorView: View {
                 transform: canvasController.transform(forPage: bubble.pageIndex)
             )
         }
-        ForEach(tutor.bubbles.filter { $0.isPanelOnly != true }) { bubble in
+        ForEach(tutor.bubbles.filter {
+            // Hide the floating card while its conversation is open in the side
+            // panel — otherwise the same thread shows in both places.
+            $0.isPanelOnly != true && !(tutor.panelOpen && $0.id == tutor.panelBubbleID)
+        }) { bubble in
             AIBubbleView(
                 bubble: bubble,
                 isLoading: tutor.loadingBubbleIDs.contains(bubble.id),
@@ -188,7 +192,10 @@ struct NoteEditorView: View {
                 .ignoresSafeArea()
                 .overlay { if showLoader { ProgressView().controlSize(.large).tint(.secondary) } }
                 .opacity(showLoader ? 1 : 0)
-                .allowsHitTesting(showLoader)
+                // Never eat touches — the loader is a visual mask only. Blocking
+                // hits here meant you couldn't swipe/scroll for the first ~150ms
+                // after entering a note. Finger pans now reach the scroll view.
+                .allowsHitTesting(false)
                 .animation(.easeOut(duration: 0.25), value: showLoader)
                 .zIndex(50)
                 .task {

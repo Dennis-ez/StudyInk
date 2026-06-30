@@ -11,7 +11,10 @@ struct AIBubbleView: View {
     var onInsertTextBox: (TextBoxModel) -> Void
 
     @State private var followUpText = ""
-    @State private var dragStart: CGPoint?
+    /// Live drag translation in SCREEN points. Kept local so dragging the bubble
+    /// doesn't write `tutor.move` every frame (which re-renders the whole editor —
+    /// the lag). Committed to the model once, on release.
+    @State private var dragOffset: CGSize = .zero
     @State private var appeared = false
     @State private var shimmerPhase = false
     @FocusState private var followUpFocused: Bool
@@ -59,6 +62,7 @@ struct AIBubbleView: View {
         }
         .scaleEffect(pageZoom * (appeared ? 1 : 0.8), anchor: .top)
         .position(x: screenPos.x + cardWidth * pageZoom / 2, y: screenPos.y + 90 * pageZoom)
+        .offset(dragOffset)   // live drag is purely visual; committed on release
         .opacity(appeared ? 1 : 0)
         .onAppear {
             withAnimation(DS.Motion.bubbleAppear) { appeared = true }
@@ -76,6 +80,12 @@ struct AIBubbleView: View {
         } label: {
             HStack(spacing: 6) {
                 avatar
+                // A pinned chip reads as a note marker stuck on the page.
+                if bubble.isPinned {
+                    Image(systemName: "pin.fill")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(aiAccent)
+                }
                 Text(String(bubble.latestAnswer.prefix(20)))
                     .font(.caption2)
                     .lineLimit(1)
@@ -390,16 +400,19 @@ struct AIBubbleView: View {
         // finger and the bubble vibrates. Global space is stable.
         DragGesture(minimumDistance: 6, coordinateSpace: .global)
             .onChanged { value in
-                if dragStart == nil { dragStart = CGPoint(x: bubble.x, y: bubble.y) }
-                guard let start = dragStart else { return }
-                // Position maps through the *real* zoom; pageZoom is the clamped
-                // display scale. Dividing by the clamp made drags overshoot or
-                // lag whenever zoomed past the clamp range.
-                tutor.move(bubbleID: bubble.id, to: CGPoint(
-                    x: start.x + value.translation.width / transform.zoomScale,
-                    y: start.y + value.translation.height / transform.zoomScale
-                ))
+                // Purely visual — no per-frame model write (that re-rendered the
+                // whole editor body and caused the lag).
+                dragOffset = value.translation
             }
-            .onEnded { _ in dragStart = nil }
+            .onEnded { value in
+                // Commit ONCE. Converting the screen translation to page space and
+                // resetting the offset in the same update lands the bubble exactly
+                // where it was dragged — no jump (toScreen is linear in the zoom).
+                tutor.move(bubbleID: bubble.id, to: CGPoint(
+                    x: bubble.x + value.translation.width / transform.zoomScale,
+                    y: bubble.y + value.translation.height / transform.zoomScale
+                ))
+                dragOffset = .zero
+            }
     }
 }

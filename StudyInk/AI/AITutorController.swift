@@ -170,6 +170,13 @@ final class AITutorController: ObservableObject {
     func pin(bubbleID: UUID) {
         guard let index = bubbles.firstIndex(where: { $0.id == bubbleID }) else { return }
         bubbles[index].isPinned.toggle()
+        // Pinning tucks the card into its compact chip, anchored on the page — a
+        // persistent, returnable marker (tap the chip to reopen). Unpinning
+        // re-expands it. The chip stays in place, so it reads as "pinned here",
+        // not "vanished".
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            bubbles[index].isCollapsed = bubbles[index].isPinned
+        }
         persistPinnedBubbles()
     }
 

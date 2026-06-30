@@ -172,8 +172,36 @@ struct AIPanelView: View {
                             )
                     }
                 }
+                // Quick-reply chips — same suggestions the floating bubble offers,
+                // so following up from the panel is one tap, not retyping.
+                if !bubble.chips.isEmpty && !tutor.loadingBubbleIDs.contains(bubble.id) {
+                    chipsRow(bubble)
+                }
             }
             .padding(14)
+        }
+    }
+
+    private func chipsRow(_ bubble: AIBubbleModel) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(bubble.chips, id: \.self) { chip in
+                    Button {
+                        Haptics.tap()
+                        Task { await tutor.followUp(bubbleID: bubble.id, question: chip) }
+                    } label: {
+                        Text(chip)
+                            .font(.system(size: 13, weight: .medium))
+                            .lineLimit(1)
+                            .foregroundStyle(aiAccent)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 4)
+                            .background(SemanticColor.surface, in: Capsule())
+                            .overlay(Capsule().strokeBorder(SemanticColor.separator, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
         }
     }
 }
