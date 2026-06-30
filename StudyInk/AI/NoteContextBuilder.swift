@@ -69,9 +69,9 @@ enum NoteContextBuilder {
                 summary += "\nPage \(index + 1) typed text:\n" + typed.joined(separator: "\n")
             }
             if let ocr = page.ocrText, !ocr.isEmpty {
-                // Vision's handwriting OCR (esp. math + Hebrew) is rough — flag it so the
-                // model leans on the clean page image (its reliable channel) instead.
-                summary += "\nPage \(index + 1) handwriting OCR (ROUGH auto-transcription, often wrong for math/Hebrew — READ THE PAGE IMAGE and trust it over this):\n" + ocr
+                // Vision's handwriting OCR is rough in general — flag it so the model
+                // leans on the clean page image (its reliable channel) instead.
+                summary += "\nPage \(index + 1) handwriting OCR (ROUGH auto-transcription — frequently wrong for handwriting of any kind: math, diagrams, non-Latin scripts, messy writing — READ THE PAGE IMAGE and trust it over this):\n" + ocr
             }
         }
 

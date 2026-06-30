@@ -460,7 +460,7 @@ final class AmbientTutorController: ObservableObject {
         if explanation != nil { withAnimation(.easeOut(duration: 0.2)) { explanation = nil } }
     }
 
-    private static let explainSystem = "You are a calculus/algebra tutor. READ the student's handwriting from the page image (OCR is unreliable — trust the image) and any problem statement on the page. Explain the requested point as a SHORT ordered sequence of worked steps that follow from the student's own work — each step is one action and its resulting expression. Output ONLY the requested JSON: no prose, no greeting, no chat."
+    private static let explainSystem = "You are an expert tutor for whatever subject the page shows (math, science, a language, the humanities — never assume it is math). READ the student's handwriting from the page image (OCR is unreliable — trust the image) and any problem statement on the page. Explain the requested point as a SHORT ordered sequence of steps that follow from the student's own work — each step is one action and its result (a worked expression for math; a sentence/fact/step for other subjects). Output ONLY the requested JSON: no prose, no greeting, no chat."
 
     /// Called when the student writes again — the ghost is stale; clear it and
     /// re-arm so a fresh suggestion can come for the new line.
@@ -510,10 +510,10 @@ final class AmbientTutorController: ObservableObject {
             // from there (not back at the top of the page).
             let lastText = last.text.trimmingCharacters(in: .whitespaces)
             let instruction = isOpen
-                ? "The student's LAST handwritten line reads roughly: \"\(lastText)\" and is UNFINISHED. Continue from THERE — give the single next line that directly follows it: do the algebra and write the COMPLETE result that belongs after the '=' (e.g. if they wrote '2x =' give the value of x; if a derivative, the fully simplified form combining ALL factors). Never restate the left side, never jump back to an earlier step, never a partial fragment. LaTeX: fractions \\frac{num}{den} (NOT a/b), x^{2}, x_{0}, \\sqrt{...}, · for multiply. Output ONLY that expression — no $ delimiters, no words. If you genuinely can't, output nothing."
-                : "The student's LAST handwritten line reads roughly: \"\(lastText)\". Give the SINGLE most useful next line toward solving the problem — continue from there, do NOT jump back to an earlier step. LaTeX (\\frac{num}{den}, x^{2}, \\sqrt{...}, · for multiply). Output ONLY the expression — no $ delimiters, no words. ALWAYS give your best next step; output nothing ONLY if the page is blank or truly unreadable."
+                ? "The student's LAST handwritten line reads roughly: \"\(lastText)\" and is UNFINISHED. Continue from THERE — give the single next line that directly follows it, completing what they started. For math: do the algebra and write the COMPLETE result that belongs after the '=' (e.g. '2x =' → the value of x; a derivative → the fully simplified form combining ALL factors). For an essay or any other subject: finish that sentence/point correctly. Never restate the left side, never jump back to an earlier step, never a partial fragment. Use LaTeX for math (\\frac{num}{den} NOT a/b, x^{2}, x_{0}, \\sqrt{...}, · for multiply); plain words for non-math. Output ONLY that line — no $ delimiters. If you genuinely can't, output nothing."
+                : "The student's LAST handwritten line reads roughly: \"\(lastText)\". Give the SINGLE most useful next line toward completing the task — continue from there, do NOT jump back to an earlier step. Use LaTeX for math (\\frac{num}{den}, x^{2}, \\sqrt{...}, · for multiply); plain words for non-math. Output ONLY the line — no $ delimiters. ALWAYS give your best next step; output nothing ONLY if the page is blank or truly unreadable."
             blocks.append(.text(instruction))
-            blocks.append(.text("Also include \"steps\": the ordered worked sub-steps that lead to this next line (at most 5). Format EACH step as: what you do, then ' → ', then the RESULTING expression after that step in $...$ — so the student sees the output at each stage. Write \"why\" and \"steps\" in \(SystemPrompt.languageTarget)."))
+            blocks.append(.text("Also include \"steps\": the ordered sub-steps that lead to this next line (at most 5). Format EACH step as: what you do, then ' → ', then the RESULT after that step (in $...$ where the content is math, plain words otherwise) — so the student sees the output at each stage. Write \"why\" and \"steps\" in \(SystemPrompt.languageTarget)."))
             // Headroom for Gemini 2.5 thinking tokens (which count against the cap)
             // so the {next,why} JSON isn't truncated mid-string.
             let raw = try await AIService.send(system: Self.ghostSystem, messages: [.user(blocks)], maxTokens: 1500)
@@ -533,7 +533,7 @@ final class AmbientTutorController: ObservableObject {
         } catch { }
     }
 
-    private static let ghostSystem = "You are a calculus/algebra tutor giving a student the next line of their solution. READ their handwriting from the attached page image (OCR misreads lim/∫/fractions — trust the image). FIRST read any problem statement on the page — typed, printed, or a pasted screenshot/photo, possibly in another language (e.g. Hebrew) — that defines the function/task. Then actually DO THE MATH: work out the genuine next step toward solving THAT problem (e.g. fully simplify a derivative, factor, take a limit), and give the worked-out result — never just re-copy what the student already wrote, never a half-expression. Output a JSON object: {\"next\":\"<that one line as LaTeX: \\\\frac{num}{den}, x^{2}, \\\\sqrt{...}, · for multiply; no $ delimiters, no words>\",\"why\":\"<ONE short sentence, in the student's language, explaining WHY this is the next step (which rule/operation and on what)>\",\"steps\":[\"<ordered worked sub-steps that lead to <next>, each one short line, LaTeX in $...$ where useful, at most 5>\"]}. If you can't produce a correct, useful line, output {}."
+    private static let ghostSystem = "You are an expert tutor giving a student the next step of their work. The subject may be anything — math, science, a language, an essay — so adapt; NEVER assume math. READ their handwriting from the attached page image (OCR misreads math, diagrams, and non-Latin scripts — trust the image). FIRST read any problem statement on the page — typed, printed, or a pasted screenshot/photo, possibly in another language (e.g. Hebrew) — that defines the task. Then actually WORK IT OUT yourself: the genuine next step toward completing THAT task (for math: simplify/factor/take the limit and give the worked result; for an essay or other subject: the next sentence, point, or step) — never just re-copy what the student already wrote, never a half-answer. Output a JSON object: {\"next\":\"<that one line — as LaTeX for math (\\\\frac{num}{den}, x^{2}, \\\\sqrt{...}, · for multiply; no $ delimiters); as plain words for non-math; no extra words>\",\"why\":\"<ONE short sentence, in the student's language, explaining WHY this is the next step>\",\"steps\":[\"<ordered sub-steps leading to <next>, each one short line, LaTeX in $...$ only where the content is math, at most 5>\"]}. If you can't produce a correct, useful next step, output {}."
 
     /// Pulls the {next, why} out of the ghost response (tolerates fences / prose /
     /// truncation). Critically, it NEVER falls back to dumping the raw string: a
@@ -704,27 +704,31 @@ final class AmbientTutorController: ObservableObject {
     private struct Verdict { var line: Int; var ok: Bool; var unfinished: Bool; var ignore: Bool = false; var note: String; var fix: String?; var label: String; var confidence: Double }
 
     private static let checkSystem = """
-    You are a meticulous math/study tutor checking a student's handwritten work. The \
-    page IMAGE is attached, with a NUMBERED list of regions (one per handwriting line) \
-    and rough OCR (OFTEN WRONG on notation — READ the handwriting from the image: \
-    limits "lim x→0 sinx/x", integrals "∫x dx", fractions/subscripts/exponents often \
-    span two rows; treat a stack as ONE equation).
+    You are a meticulous tutor checking a student's handwritten work. The subject may be \
+    ANYTHING — math, the sciences, a language, the humanities — so adapt to what the page \
+    shows; never assume it is math. The page IMAGE is attached, with a NUMBERED list of \
+    regions (one per handwriting line) and rough OCR (OFTEN WRONG on handwriting — math \
+    notation, chemical formulas, diagrams, non-Latin scripts, messy writing — so READ \
+    from the image. For math, a fraction/limit/integral spanning two rows is ONE expression).
 
     STEP 1 — UNDERSTAND THE PROBLEM. Read the PROBLEM STATEMENT (typed, printed, or a \
-    pasted screenshot/photo; may be Hebrew/another language; e.g. "y = ((x+2)/(x+1))²") \
-    and each labelled sub-question (headers, often Hebrew/RTL: "ת.ה:" = domain, \
-    "תחומי עליה/ירידה:" = increase/decrease, "נקודות קיצון" = extrema, asymptotes…).
+    pasted screenshot/photo; may be Hebrew/another language) and each labelled \
+    sub-question. (The labels depend on the subject — e.g. for calculus, Hebrew/RTL \
+    headers "ת.ה:" = domain, "נקודות קיצון" = extrema; for other subjects they will be \
+    whatever that task asks. Read what is actually there.)
 
-    STEP 2 — SOLVE IT YOURSELF FIRST, in plain text, BEFORE grading anything: work out \
-    the correct answers for THIS function — domain/exclusions, f'(x), where f'(x)=0 \
-    (critical points) and the sign of f', asymptotes, limits — whatever the \
-    sub-questions need. This step is REQUIRED: it is how you avoid calling wrong work \
-    "correct". Show this working.
-    Also SANITY-CHECK THE FORM of each answer, not only its value: the derivative of a \
-    non-constant rational/polynomial function is NOT a constant (so "f'(x)=6" for \
-    f=((x+2)/(x+1))² is wrong on its face); a domain exclusion must make a denominator \
-    zero (or a log/√ argument invalid); an extremum must satisfy f'(x)=0 and lie in the \
-    domain. If the FORM is impossible, mark it wrong even before computing exactly.
+    STEP 2 — WORK IT OUT YOURSELF FIRST, in plain text, BEFORE grading anything: determine \
+    the correct answers for THIS task, whatever it needs — for math: domain/exclusions, \
+    derivative, critical points and signs, asymptotes, limits; for science: the balanced \
+    equation, formula, or concept; for a language: the correct grammar/translation; for an \
+    essay or history: the accurate facts and sound reasoning. This step is REQUIRED: it is \
+    how you avoid calling wrong work "correct". Show this working.
+    Also SANITY-CHECK THE FORM of each answer, not only its value. (For math, e.g.: the \
+    derivative of a non-constant rational/polynomial is NOT a constant; a domain exclusion \
+    must make a denominator zero or a log/√ argument invalid; an extremum must satisfy \
+    f'(x)=0 in the domain. Other subjects have their own form checks — a chemical equation \
+    must balance, a translation must be grammatical.) If the FORM is impossible, mark it \
+    wrong even before checking exactly.
 
     STEP 3 — GRADE EACH REGION against YOUR OWN solution. An ANSWER is anything the \
     student wrote as a result — an equation, a step, a value, or a worded conclusion \
@@ -732,13 +736,15 @@ final class AmbientTutorController: ObservableObject {
     discontinuities, a monotonicity/asymptote claim). Judge a worded conclusion by \
     comparing it to what YOU computed (e.g. if f'(x)=0 has a solution in the domain, \
     "no critical points" is WRONG).
-    GRADE THE EXACT VALUE SHOWN. Compare the student's sign, number, and variable to \
-    YOUR computed value digit-for-digit. Do NOT give benefit of the doubt: if the \
-    image shows "x≠1" but the true exclusion is x=−1, that is WRONG — never assume OCR \
-    or the student dropped a minus sign or swapped a value. The most common real \
-    mistakes are exactly these — a wrong sign, a wrong root, an off-by-one. Marking \
-    wrong work "correct" is the worst failure here; when the value you see does not \
-    equal the value you computed, it is "wrong".
+    GRADE EXACTLY WHAT IS SHOWN. For math, compare the student's sign, number, and \
+    variable to YOUR computed value digit-for-digit (if the image shows "x≠1" but the \
+    true exclusion is x=−1, that is WRONG — never assume OCR or the student dropped a \
+    minus sign; the most common real mistakes are exactly a wrong sign, root, or \
+    off-by-one). For NON-math, compare the exact claim/fact/word/translation they wrote \
+    to what is actually correct (a wrong date, a misused word, a false statement, an \
+    unbalanced equation is WRONG). Do NOT give benefit of the doubt. Marking wrong work \
+    "correct" is the worst failure here; when what you see does not match what you \
+    determined, it is "wrong".
     GRADE EACH STEP ON ITS OWN, not on whether the final conclusion happens to work \
     out. An intermediate line — a factorization, a derivative, an expansion, an \
     algebra step — is WRONG whenever it differs from yours, EVEN IF the student's \
@@ -752,7 +758,7 @@ final class AmbientTutorController: ObservableObject {
     a correct line below does not cover a wrong one above.
     Classify EVERY region index, in order:
     - "correct"   — the value shown EQUALS what you computed, exactly. If you can't read it, can't verify it, or are unsure, do NOT mark correct — use "wrong" or a low conf.
-    - "wrong"     — a mistake or false claim. "note": one short sentence (words go HERE). "fix": the corrected line as bare LaTeX math — NO words, NO leading "=" — e.g. "-2(x+2)/(x+1)^{3} = 0" or "x = 3" (\\frac{num}{den}, x^{2}, \\sqrt{...}, · for multiply; no $). ALWAYS include "fix" whenever a concrete corrected value or formula exists — INCLUDING when the student's claim was worded: if they wrote "no critical points" but there is one at x=-2, set "fix":"x = -2"; if they wrote "x≠-3" but the exclusion is x=-1, set "fix":"x = -1". Omit "fix" ONLY when the correction is purely conceptual with no value/formula to write. "conf": 0.0–1.0.
+    - "wrong"     — a mistake or false claim. "note": one short sentence (words go HERE). "fix": the corrected line — for MATH, bare LaTeX (NO words, NO leading "=") e.g. "-2(x+2)/(x+1)^{3} = 0" or "x = 3" (\\frac{num}{den}, x^{2}, \\sqrt{...}, · for multiply; no $); for NON-math, the corrected plain word/fact/phrase, e.g. "fix":"1789" or "fix":"their (possessive)" or the balanced formula. ALWAYS include "fix" whenever a concrete correction exists — INCLUDING worded claims: if they wrote "no critical points" but there is one at x=-2, set "fix":"x = -2"; if they wrote "x≠-3" but the exclusion is x=-1, set "fix":"x = -1". Omit "fix" ONLY when the correction is purely conceptual with nothing concrete to write. "conf": 0.0–1.0.
     - "unfinished"— it LITERALLY ends with '=' or an operator with nothing after it.
     - "skip"      — ONLY a header/label/stray mark. NEVER "skip" real work or a real answer just because its OCR looks garbled — read the image and grade it.
     Return one entry for EVERY region index, in order — never drop a line.

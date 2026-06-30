@@ -38,7 +38,7 @@ extension AITutorController {
             Connect points smoothly; prefer fewer, longer strokes over many tiny ones.
             """
             let raw = try await AIService.send(
-                system: SystemPrompt.tutor(subjectContext: note?.subjectContext ?? "calculus1", directAnswer: true),
+                system: SystemPrompt.tutor(subjectContext: note?.subjectContext ?? "general", directAnswer: true),
                 messages: [.user(text: prompt)],
                 maxTokens: 3000
             )
@@ -107,15 +107,15 @@ extension AITutorController {
             var blocks = context.blocks
             blocks.append(.text("""
             INK ANSWER MODE: The student asked: "\(request)".
-            FIRST read any problem statement on the page (typed, printed, or a pasted screenshot/photo — possibly Hebrew/another language) that defines the function/task, so you answer the RIGHT question in context.
-            Solve/answer it from the note's content (do the math properly; show the result, not the working, unless asked).
+            FIRST read any problem statement on the page (typed, printed, or a pasted screenshot/photo — possibly Hebrew/another language) that defines the task, so you answer the RIGHT question in context. The subject may be anything — math, science, a language, the humanities — so answer in the form that fits it; never assume math.
+            Answer it from the note's content (work it out properly; give the result, not the working, unless asked).
             Respond with ONLY a JSON object:
-            {"answer": "<the answer as it should be written on the page, as LaTeX: fractions \\\\frac{num}{den} (NOT a/b), exponents x^{2}, subscripts x_{0}, roots \\\\sqrt{...}, · for multiply; no $ delimiters; \\n between lines, at most 4 lines>",
+            {"answer": "<the answer as it should be written on the page — for MATH as LaTeX (fractions \\\\frac{num}{den} NOT a/b, exponents x^{2}, subscripts x_{0}, roots \\\\sqrt{...}, · for multiply; no $ delimiters); for NON-math as plain words; \\n between lines, at most 4 lines>",
              "anchor": "<the exact text of the question as it appears in the note OCR, copied verbatim, or null if unsure>"}
             """))
 
             let raw = try await AIService.send(
-                system: SystemPrompt.tutor(subjectContext: note.subjectContext ?? "calculus1", directAnswer: true),
+                system: SystemPrompt.tutor(subjectContext: note.subjectContext ?? "general", directAnswer: true),
                 messages: [.user(blocks)],
                 maxTokens: 800
             )
@@ -306,11 +306,12 @@ struct SubjectContextMenu: View {
     var body: some View {
         Menu {
             Picker("ai.subject", selection: subjectBinding) {
+                Text(verbatim: "General (auto-detect)").tag("general")
                 Text("ai.subject.calculus1").tag("calculus1")
                 Text("ai.subject.discrete1").tag("discrete1")
             }
             Button {
-                customText = note.subjectContext.flatMap { ["calculus1", "discrete1"].contains($0) ? nil : $0 } ?? ""
+                customText = note.subjectContext.flatMap { ["general", "calculus1", "discrete1"].contains($0) ? nil : $0 } ?? ""
                 showCustomAlert = true
             } label: {
                 Label("ai.subject.custom", systemImage: "pencil")
@@ -335,7 +336,7 @@ struct SubjectContextMenu: View {
 
     private var subjectBinding: Binding<String> {
         Binding(
-            get: { note.subjectContext ?? "calculus1" },
+            get: { note.subjectContext ?? "general" },
             set: { note.subjectContext = $0; PersistenceController.shared.save() }
         )
     }
