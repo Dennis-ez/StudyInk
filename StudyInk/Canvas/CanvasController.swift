@@ -1,6 +1,20 @@
 import SwiftUI
 import PencilKit
 
+/// Debug-only latency probe. Launch with the env var PERF_LOG=1 to print, via NSLog,
+/// the time from a note tap (`begin`) to each `mark` — used to find where note-open
+/// time goes. Zero cost (no NSLog) when PERF_LOG is unset.
+enum PerfProbe {
+    private static var start: CFAbsoluteTime?
+    private static var enabled = ProcessInfo.processInfo.environment["PERF_LOG"] != nil
+    static func begin() { if enabled { start = CFAbsoluteTimeGetCurrent() } }
+    static func end() { start = nil }
+    static func mark(_ label: String) {
+        guard enabled, let s = start else { return }
+        NSLog("[PERF] %@ at +%dms", label, Int((CFAbsoluteTimeGetCurrent() - s) * 1000))
+    }
+}
+
 /// The document's per-frame geometry — page screen origins + zoom — as a STANDALONE
 /// observable. The engine updates it every scroll/zoom frame; the editor's overlays
 /// observe it through a small `GeometryGate` so those frame-rate updates re-render only
@@ -91,7 +105,11 @@ final class CanvasController: NSObject, ObservableObject {
     /// shows a loader over the canvas until then — which also masks the brief
     /// stale-ink flash when rebuilding for a different note.
     @Published var isContentReady = false
-    func markReady() { if !isContentReady { isContentReady = true } }
+    func markReady() {
+        if !isContentReady { isContentReady = true }
+        PerfProbe.mark("note visible (markReady)")
+        PerfProbe.end()
+    }
 
     var isDarkMode = false {
         didSet {

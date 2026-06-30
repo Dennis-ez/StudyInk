@@ -1443,6 +1443,7 @@ struct NoteCanvasView: UIViewRepresentable {
     @Environment(\.colorScheme) private var colorScheme
 
     func makeUIView(context: Context) -> DocumentScrollView {
+        PerfProbe.mark("makeUIView start")
         let engine = DocumentScrollView(controller: controller)
         // Paper follows appearance — dark page in dark mode. The iOS 26 SDK
         // renders PencilKit colors literally, so ink is adapted at display
@@ -1450,6 +1451,7 @@ struct NoteCanvasView: UIViewRepresentable {
         // canonical. See CanvasController.isDarkMode / engine.appearanceChanged.
         controller.isDarkMode = colorScheme == .dark
         engine.apply(pageSizes: pageSizes, signature: layoutSignature)
+        PerfProbe.mark("makeUIView + apply done")
         return engine
     }
 

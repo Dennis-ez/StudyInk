@@ -580,6 +580,7 @@ struct NoteGridView: View {
         // The editor is presented full-screen (window level), so it's independent
         // of the content-column width — no sidebar-collapse dance, no desk strip.
         Haptics.tap()
+        PerfProbe.begin()
         autoOpenNote = note
     }
 
