@@ -51,7 +51,9 @@ enum NoteContextBuilder {
                 let scale: CGFloat = index == currentPageIndex
                     ? 2.0
                     : (snapshots[index].mediaItems.isEmpty ? 0.6 : 1.3)
-                result[index] = PageRenderer.recognitionImage(snapshots[index], scale: scale)
+                // Crop to the actual work so a sparse page focuses the model on the answer
+                // (and costs fewer tokens) instead of a mostly-empty sheet.
+                result[index] = PageRenderer.recognitionImage(snapshots[index], scale: scale, cropToContent: true)
             }
             return result
         }.value

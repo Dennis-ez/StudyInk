@@ -16,13 +16,18 @@ enum OCRService {
 
     /// Recognizes text in a rendered page image. `pageSize` converts Vision's
     /// normalized, bottom-left-origin boxes into top-left page coordinates.
-    static func recognize(image: UIImage, pageSize: CGSize) async -> [OCRLine] {
+    /// `minConfidence` drops near-garbage reads (handwriting OCR emits a lot of
+    /// low-confidence noise) so they don't pollute search or the AI's context.
+    static func recognize(image: UIImage, pageSize: CGSize, minConfidence: Float = 0.3) async -> [OCRLine] {
         guard let cgImage = image.cgImage else { return [] }
         return await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 let request = VNRecognizeTextRequest { request, _ in
                     let lines: [OCRLine] = (request.results as? [VNRecognizedTextObservation])?.compactMap { obs in
-                        guard let candidate = obs.topCandidates(1).first else { return nil }
+                        // Confidence floor drops handwriting-OCR garbage (stray marks read
+                        // low); a real single digit/variable scores high enough to survive.
+                        guard let candidate = obs.topCandidates(1).first,
+                              candidate.confidence >= minConfidence else { return nil }
                         let b = obs.boundingBox
                         let rect = CGRect(
                             x: b.minX * pageSize.width,

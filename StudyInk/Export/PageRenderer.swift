@@ -63,17 +63,44 @@ enum PageRenderer {
     /// for recognition) — always LIGHT so ink reads dark-on-white whatever the user's
     /// appearance. Render at a generous scale for OCR; the vector engine strokes ink at
     /// any resolution off-main.
-    static func recognitionImage(_ snapshot: Snapshot, scale: CGFloat) -> UIImage {
+    /// `cropToContent` trims surrounding whitespace to the actual work (ink + media +
+    /// text) — for AI VISION images, so a sparse page focuses the model on the answer
+    /// instead of an empty sheet, and costs fewer tokens. Leave OFF for OCR (it needs the
+    /// recognized boxes in full-page coordinates).
+    static func recognitionImage(_ snapshot: Snapshot, scale: CGFloat, cropToContent: Bool = false) -> UIImage {
         let format = UIGraphicsImageRendererFormat()
         // Cap the long side (~3500px) so an unusually tall PDF page can't blow up the
         // render buffer; normal letter pages render at the full requested scale.
         let longSide = max(snapshot.pageSize.width, snapshot.pageSize.height)
-        format.scale = min(scale, 3500 / max(longSide, 1))
+        let effScale = min(scale, 3500 / max(longSide, 1))
+        format.scale = effScale
         format.opaque = true
         let renderer = UIGraphicsImageRenderer(size: snapshot.pageSize, format: format)
-        return renderer.image { ctx in
+        let full = renderer.image { ctx in
             draw(snapshot, in: ctx.cgContext, darkMode: false, recognition: true)
         }
+        guard cropToContent, let bounds = contentBounds(snapshot), let cg = full.cgImage else { return full }
+        let px = CGRect(x: bounds.minX * effScale, y: bounds.minY * effScale,
+                        width: bounds.width * effScale, height: bounds.height * effScale)
+            .intersection(CGRect(x: 0, y: 0, width: cg.width, height: cg.height))
+        guard !px.isEmpty, let cropped = cg.cropping(to: px) else { return full }
+        return UIImage(cgImage: cropped)
+    }
+
+    /// The bounding box of everything the student actually put on the page — ink, media,
+    /// non-empty text — padded a little, clamped to the page. nil if the page is empty.
+    static func contentBounds(_ snapshot: Snapshot) -> CGRect? {
+        var rects = snapshot.mediaItems.map(\.frame)
+        rects += snapshot.textBoxes.filter { !$0.text.isEmpty }.map(\.frame)
+        if let data = snapshot.vectorInkData, let strokes = VectorInk.decode(data), !strokes.isEmpty {
+            rects.append(strokes.dropFirst().reduce(strokes[0].bbox) { $0.union($1.bbox) })
+        } else if let data = snapshot.drawingData, let pk = try? PKDrawing(data: data), !pk.strokes.isEmpty {
+            rects.append(pk.bounds)
+        }
+        guard let first = rects.first else { return nil }
+        let union = rects.dropFirst().reduce(first) { $0.union($1) }
+        return union.insetBy(dx: -28, dy: -28)
+            .intersection(CGRect(origin: .zero, size: snapshot.pageSize))
     }
 
     /// Legacy pre-rasterization hook. The custom engine now ALWAYS strokes the

@@ -29,11 +29,13 @@ struct InkWriterPreview: View {
                 Text("Page render for OCR / AI vision — full page vs. clean recognition")
                     .font(.headline)
                 if let snap = Self.firstPageSnapshot() {
-                    HStack(alignment: .top, spacing: 24) {
+                    HStack(alignment: .top, spacing: 20) {
                         cell("old: full page @1×", PageRenderer.render(snap, darkMode: false, scale: 1)
-                            .resized(toWidth: 300))
-                        cell("new: recognition @3×", PageRenderer.recognitionImage(snap, scale: 3)
-                            .resized(toWidth: 300))
+                            .resized(toWidth: 240))
+                        cell("recognition @3×", PageRenderer.recognitionImage(snap, scale: 3)
+                            .resized(toWidth: 240))
+                        cell("recognition + crop", PageRenderer.recognitionImage(snap, scale: 3, cropToContent: true)
+                            .resized(toWidth: 240))
                     }
                 } else {
                     Text("(no note found to render)").font(.caption).foregroundStyle(.secondary)
