@@ -45,9 +45,13 @@ enum NoteContextBuilder {
             for index in imageIndices where snapshots.indices.contains(index) {
                 // Clean, ALWAYS-LIGHT recognition render (dark ink on white, no ruled-line
                 // noise) — far more legible to the vision model than the user's dark-mode
-                // page (light ink on dark). Current page big so handwriting reads.
-                result[index] = PageRenderer.recognitionImage(snapshots[index],
-                                                              scale: index == currentPageIndex ? 2.0 : 0.6)
+                // page (light ink on dark). Scale by importance: the current page big (the
+                // answer being read), media-bearing pages mid (they hold the pasted/printed
+                // PROBLEM the model must read to grade), plain context pages small.
+                let scale: CGFloat = index == currentPageIndex
+                    ? 2.0
+                    : (snapshots[index].mediaItems.isEmpty ? 0.6 : 1.3)
+                result[index] = PageRenderer.recognitionImage(snapshots[index], scale: scale)
             }
             return result
         }.value
