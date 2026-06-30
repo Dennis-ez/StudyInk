@@ -100,43 +100,37 @@ enum VectorInk {
 
     /// A FILLED outline whose half-width follows EACH sample's width — true
     /// variable-width ink (pressure/velocity taper), versus stroking one avg width.
-    /// The centerline is assumed already smoothed (dense samples → smooth edges); the
-    /// two ends get round caps. Constant widths render as a constant band, so this is
-    /// safe for every pen — only the fountain feeds it varying widths.
+    /// Built as a UNION of round-capped capsules (one per segment, at that segment's
+    /// width): `copy(strokingWithWidth:)` produces a clean closed outline per segment,
+    /// and the capsules all wind the same way so a `.nonZero` fill never cancels into
+    /// holes (the band+cap-circle approach DID — black artifacts at ends/bends). Round
+    /// caps/joins come for free. Constant widths → a constant stroke, so it's safe for
+    /// every pen; only the fountain feeds it varying widths.
     static func variableWidthOutline(_ pts: [InkSample]) -> CGPath {
-        let path = CGMutablePath()
+        let combined = CGMutablePath()
         guard pts.count >= 2 else {
             if let p = pts.first {
                 let w = max(0.4, p.width)
-                path.addEllipse(in: CGRect(x: p.location.x - w / 2, y: p.location.y - w / 2, width: w, height: w))
+                combined.addEllipse(in: CGRect(x: p.location.x - w / 2, y: p.location.y - w / 2, width: w, height: w))
             }
-            return path
+            return combined
         }
-        func unitNormal(_ i: Int) -> (CGFloat, CGFloat) {
-            let a = pts[max(0, i - 1)].location, b = pts[min(pts.count - 1, i + 1)].location
-            let dx = b.x - a.x, dy = b.y - a.y
-            let len = hypot(dx, dy)
-            guard len > 0.0001 else { return (0, 0) }
-            return (-dy / len, dx / len)
+        // Constant width (every pen but the fountain): ONE clean stroked outline — fast
+        // and exactly the proven artifact-free render. Only varying widths need the
+        // per-segment capsule union below.
+        let w0 = pts[0].width
+        if pts.allSatisfy({ abs($0.width - w0) < 0.01 }) {
+            return inkPath(pts).copy(strokingWithWidth: max(0.4, w0), lineCap: .round, lineJoin: .round, miterLimit: 10)
         }
-        var left = [CGPoint](), right = [CGPoint]()
-        left.reserveCapacity(pts.count); right.reserveCapacity(pts.count)
-        for i in pts.indices {
-            let p = pts[i].location, hw = max(0.2, pts[i].width / 2)
-            let (nx, ny) = unitNormal(i)
-            left.append(CGPoint(x: p.x + nx * hw, y: p.y + ny * hw))
-            right.append(CGPoint(x: p.x - nx * hw, y: p.y - ny * hw))
+        for i in 0..<(pts.count - 1) {
+            let a = pts[i], b = pts[i + 1]
+            let seg = CGMutablePath()
+            seg.move(to: a.location)
+            seg.addLine(to: b.location)
+            let w = max(0.4, (a.width + b.width) / 2)
+            combined.addPath(seg.copy(strokingWithWidth: w, lineCap: .round, lineJoin: .round, miterLimit: 10))
         }
-        path.move(to: left[0])
-        for i in 1..<left.count { path.addLine(to: left[i]) }
-        for i in stride(from: right.count - 1, through: 0, by: -1) { path.addLine(to: right[i]) }
-        path.closeSubpath()
-        // Round caps as circles at the two ends, unioned with the band (.winding fill).
-        for end in [pts[0], pts[pts.count - 1]] {
-            let w = max(0.4, end.width)
-            path.addEllipse(in: CGRect(x: end.location.x - w / 2, y: end.location.y - w / 2, width: w, height: w))
-        }
-        return path
+        return combined
     }
 
     static func drawStroke(_ pts: [InkSample], color: UIColor, in ctx: CGContext) {
