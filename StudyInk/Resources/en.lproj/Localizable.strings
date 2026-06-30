@@ -238,6 +238,8 @@
 "ambient.check" = "Check my work";
 "ambient.fixIt" = "Fix it for me";
 "ambient.flickAccept" = "flick to accept";
+"ambient.nextStep" = "Next step";
+"ambient.revealAnswer" = "Reveal answer";
 "ambient.suggest" = "Suggest next step";
 "ambient.sensitivity" = "Ambient tutor";
 "ambient.showWhy" = "Show why";

@@ -103,7 +103,9 @@ struct MarginLaneView: View {
                         transform: transform,
                         onAccept: { onAcceptGhost(g) },
                         onDismiss: { ambient.dismissGhost() },
-                        onDetailChanged: { ghostDetailShown = $0 }
+                        onDetailChanged: { ghostDetailShown = $0 },
+                        // Subtle = no-spoiler: park a glyph, reveal the answer on request.
+                        spoilerHidden: ambient.sensitivity == .subtle
                     )
                     .onDisappear { ghostDetailShown = false }
                 }
@@ -183,21 +185,62 @@ struct GhostInkLayer: View {
     /// Fired when the why/steps detail is revealed/hidden, so the editor can show
     /// the matching color-coded highlights over the student's ink on the canvas.
     var onDetailChanged: (Bool) -> Void = { _ in }
+    /// No-spoiler mode (hardwired to the "subtle" sensitivity): park a glyph instead
+    /// of writing the answer ahead of the pen. Tap → the HOW (why + steps); the
+    /// answer ink only appears once the student taps "Reveal answer".
+    var spoilerHidden: Bool = false
     @State private var showDetail = false
+    @State private var revealed = false
     @State private var preview: PreviewState = .rendering
 
     private enum PreviewState { case rendering; case ready([[CGPoint]], CGRect); case failed }
 
+    /// Whether the answer ink itself may be shown (vs. kept behind the glyph).
+    private var showAnswer: Bool { !spoilerHidden || revealed }
+
     var body: some View {
         Group {
-            switch preview {
-            case .ready(let lines, let bounds): handwriting(lines, bounds)
-            case .failed:                       typesetFallback
-            case .rendering:                    Color.clear.frame(width: 1, height: 1)
+            if !showAnswer {
+                spoilerGlyph
+            } else {
+                switch preview {
+                case .ready(let lines, let bounds): handwriting(lines, bounds)
+                case .failed:                       typesetFallback
+                case .rendering:                    Color.clear.frame(width: 1, height: 1)
+                }
             }
         }
         .task(id: ghost.text) { await renderPreview() }
         .onChange(of: showDetail) { onDetailChanged(showDetail) }
+    }
+
+    /// The no-spoiler affordance: a compact "Next step" pill at the anchor. Tapping
+    /// opens the why/steps card (the HOW) without revealing the answer line; the card
+    /// carries a "Reveal answer" button that flips `revealed` on.
+    private var spoilerGlyph: some View {
+        let p = transform.toScreen(ghost.anchor)
+        return ZStack(alignment: .topLeading) {
+            Button { withAnimation(.easeOut(duration: 0.2)) { showDetail.toggle() } } label: {
+                HStack(spacing: 5) {
+                    Lucide("sparkles", size: 13).foregroundStyle(AppTheme.current.aiAccent)
+                    Text("ambient.nextStep").font(.caption2.weight(.semibold))
+                        .foregroundStyle(AppTheme.current.aiAccent)
+                }
+                .padding(.horizontal, 10).padding(.vertical, 6)
+                .background(.regularMaterial, in: Capsule())
+                .overlay(Capsule().strokeBorder(AppTheme.current.aiAccent.opacity(0.35)))
+                .shadow(color: AppTheme.current.aiAccent.opacity(0.14), radius: 6, y: 2)
+            }
+            .buttonStyle(.plain)
+            dismissButton.offset(x: 12, y: -12)
+        }
+        .fixedSize()
+        .overlay(alignment: .topLeading) {
+            if showDetail { ghostSteps.fixedSize().offset(y: 38) }
+        }
+        .highPriorityGesture(flick)
+        .position(x: p.x + (ghost.inline ? 56 : 30), y: p.y)
+        .transition(.opacity)
     }
 
     /// The handwriting strokes drawn as vectors, sized + placed to match writeInk.
@@ -356,11 +399,16 @@ struct GhostInkLayer: View {
         VStack(alignment: .leading, spacing: 6) {
             StepDetailCard(why: ghost.why, steps: ghost.steps, highlights: ghost.highlights,
                            onDismiss: { withAnimation(.easeOut(duration: 0.2)) { showDetail = false } })
-            // Keep — write the suggestion in as real ink (the step card has no verb).
-            Button(action: onAccept) {
+            // No-spoiler mode shows "Reveal answer" first (the card explained the HOW
+            // without the answer); once revealed it becomes "Keep" — write it as ink.
+            let needsReveal = spoilerHidden && !revealed
+            Button(action: {
+                if needsReveal { withAnimation(.easeOut(duration: 0.25)) { revealed = true } }
+                else { onAccept() }
+            }) {
                 HStack(spacing: 6) {
-                    Image(systemName: "checkmark").font(.system(size: 11, weight: .bold))
-                    Text("ambient.flickAccept").font(.caption.weight(.semibold))
+                    Image(systemName: needsReveal ? "eye" : "checkmark").font(.system(size: 11, weight: .bold))
+                    Text(needsReveal ? "ambient.revealAnswer" : "ambient.flickAccept").font(.caption.weight(.semibold))
                 }
                 .foregroundStyle(.white)
                 .padding(.horizontal, 14).padding(.vertical, 7)
