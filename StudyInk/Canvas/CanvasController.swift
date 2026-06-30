@@ -154,9 +154,6 @@ final class CanvasController: NSObject, ObservableObject {
     }
     /// Tapping the trailing "add page" affordance.
     var onAddPage: (() -> Void)?
-    /// A shape was just recognized and snapped clean (informational — fresh
-    /// shapes stay unselected): (pageIndex, strokeIndex, shape, ink, width, hex).
-    var onShapeCreated: ((Int, Int, ShapeRecognizer.Shape, PKInk, Double, String) -> Void)?
     /// Finger-tap on a committed shape — the only path that opens node editing.
     var onShapeTapped: ((Int, Int, ShapeRecognizer.Shape, PKInk, Double, String) -> Void)?
     /// Finger-tap on the canvas that didn't hit a shape — page coordinates. Used
