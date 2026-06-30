@@ -654,7 +654,19 @@ final class VectorInkView: UIView {
             }
             return
         }
-        for ct in event?.coalescedTouches(for: t) ?? [t] { current.append(sample(ct)) }
+        for ct in event?.coalescedTouches(for: t) ?? [t] {
+            current.append(sample(ct))
+            // Smooth the now-interior point online (1-sample lag) so the LIVE stroke is
+            // as smooth as you write, not just after commit; the pen tip stays raw.
+            let n = current.count
+            if n >= 3 {
+                let a = current[n - 3].location, b = current[n - 2].location, c = current[n - 1].location
+                current[n - 2] = InkSample(
+                    location: CGPoint(x: 0.25 * a.x + 0.5 * b.x + 0.25 * c.x,
+                                      y: 0.25 * a.y + 0.5 * b.y + 0.25 * c.y),
+                    width: current[n - 2].width)
+            }
+        }
         updateLiveLayer()
     }
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -1179,20 +1191,18 @@ final class VectorInkView: UIView {
         return pts.reduce(0) { $0 + $1.width } / CGFloat(pts.count)
     }
 
-    /// Light low-pass on a drawn stroke's points to remove pen/finger jitter — most
-    /// visible on THIN strokes (a fat stroke hides the wobble). Two gentle 3-tap
-    /// passes kill the jitter while keeping handwriting shape; endpoints stay exact.
+    /// Final low-pass on a committed stroke — one gentle 3-tap pass on top of the
+    /// online live smoothing, to settle any residual jitter (most visible on THIN
+    /// strokes). Endpoints stay exact so the stroke keeps its start/end.
     static func smoothed(_ s: [InkSample]) -> [InkSample] {
         guard s.count > 4 else { return s }
         var loc = s.map(\.location)
-        for _ in 0..<2 {
-            var next = loc
-            for i in 1..<(loc.count - 1) {
-                next[i] = CGPoint(x: 0.25 * loc[i - 1].x + 0.5 * loc[i].x + 0.25 * loc[i + 1].x,
-                                  y: 0.25 * loc[i - 1].y + 0.5 * loc[i].y + 0.25 * loc[i + 1].y)
-            }
-            loc = next
+        var next = loc
+        for i in 1..<(loc.count - 1) {
+            next[i] = CGPoint(x: 0.25 * loc[i - 1].x + 0.5 * loc[i].x + 0.25 * loc[i + 1].x,
+                              y: 0.25 * loc[i - 1].y + 0.5 * loc[i].y + 0.25 * loc[i + 1].y)
         }
+        loc = next
         return zip(s, loc).map { InkSample(location: $1, width: $0.width) }
     }
 
