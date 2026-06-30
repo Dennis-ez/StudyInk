@@ -2067,6 +2067,9 @@ extension NoteEditorView {
             scheduleOCR(for: pages[index])
             // Erasing ink should clear any AI mark that pointed at it.
             tutor.pruneAnnotations(onPage: index, strokes: strokes)
+            // Re-arm guided mode's pen-pause watcher (its trigger was lost in the
+            // vector migration, so it stopped reacting to writing). No-op when off.
+            guidedMode.strokeOccurred()
         }
     }
 

@@ -204,6 +204,8 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         canvas.vectorCanvas = vectorCanvas   // AI ink routes through the inert canvas → here
         vectorCanvas.onChange = { [weak self] in self?.vectorCanvasChanged() }
         vectorCanvas.onDrawWillBegin = { [weak self] in self?.revealActiveCanvasNow() }
+        vectorCanvas.pencilOnly = controller.pencilOnly   // seed; updated via didSet
+        vectorCanvas.onEraseEnded = { [weak self] in self?.controller.eraseGestureFinished() }
         // The editor's TransformLassoOverlay owns selection — the engine just captures
         // the loop and reports it (in canvas/inkScale space, matching the projection the
         // existing lasso pipeline reads).

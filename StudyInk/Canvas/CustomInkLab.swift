@@ -304,6 +304,11 @@ final class VectorInkView: UIView {
     /// mid page-open "bridge" (when it's held transparent) — otherwise the first
     /// stroke after entering a note is invisible until the bridge finishes.
     var onDrawWillBegin: (() -> Void)?
+    /// "Apple Pencil only" — when true, finger touches don't draw/erase (they fall
+    /// through to the scroll view to pan). Mirrors CanvasController.pencilOnly.
+    var pencilOnly = true
+    /// Fired when an erase gesture lifts — the engine reverts to the previous tool.
+    var onEraseEnded: (() -> Void)?
     var strokeCount: Int { strokes.count }
     /// True while a pen stroke is mid-flight (touch down, not yet lifted). The engine
     /// uses it to avoid re-laying-out / re-mounting the page under the pen.
@@ -590,6 +595,9 @@ final class VectorInkView: UIView {
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let t = touches.first else { return }
+        // "Apple Pencil only": a finger (.direct) touch must NOT draw/erase — let it
+        // fall through to the scroll view to pan. Pencil / indirect pointer still draw.
+        if pencilOnly, t.type == .direct { return }
         // Reveal this canvas immediately if it's mid page-open bridge (transparent),
         // so the very first stroke shows at once. Cheap — the engine no-ops unless
         // the canvas is actually hidden.
@@ -650,7 +658,11 @@ final class VectorInkView: UIView {
         updateLiveLayer()
     }
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        if tool == .eraser { return }
+        if tool == .eraser {
+            // Erase lifted — if it actually removed ink, revert to the previous tool.
+            if erasedThisGesture { onEraseEnded?() }
+            return
+        }
         if tool == .lasso {
             if externalLasso {
                 let pts = lassoPoints

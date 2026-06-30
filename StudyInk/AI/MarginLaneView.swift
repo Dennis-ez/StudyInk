@@ -181,6 +181,7 @@ struct GhostInkLayer: View {
             .contentShape(Rectangle())
             .onTapGesture { onAccept() }
             whyButton.offset(x: 18, y: -14)
+            dismissButton.offset(x: 18, y: 14)
         }
         .frame(width: dw, height: dh)
         .overlay(alignment: .topLeading) {
@@ -198,6 +199,7 @@ struct GhostInkLayer: View {
             AIInkMath(latex: ghost.text, color: AppTheme.current.aiAccent, fontSize: 20)
                 .opacity(0.7).contentShape(Rectangle()).onTapGesture { onAccept() }
             whyButton
+            dismissButton
         }
         .fixedSize()
         .overlay(alignment: .topLeading) { if showDetail { ghostSteps.fixedSize().offset(y: 36) } }
@@ -225,6 +227,22 @@ struct GhostInkLayer: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text("ambient.why"))
+    }
+
+    /// A visible dismiss (✕) — the left-flick alone wasn't discoverable, so the ghost
+    /// felt impossible to get rid of.
+    private var dismissButton: some View {
+        Button { onDismiss() } label: {
+            Image(systemName: "xmark")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(SemanticColor.textMutedColor)
+                .frame(width: 22, height: 22)
+                .background(Circle().fill(SemanticColor.surface))
+                .overlay(Circle().strokeBorder(SemanticColor.separator))
+                .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("ai.dismiss"))
     }
 
     /// Build the handwriting polylines (off-main) the way writeInk would, so the

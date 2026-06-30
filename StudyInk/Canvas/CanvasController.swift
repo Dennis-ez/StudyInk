@@ -50,6 +50,9 @@ final class CanvasController: NSObject, ObservableObject {
             if toolState.kind != .hand {
                 engine?.panGestureRecognizer.minimumNumberOfTouches = pencilOnly ? 1 : 2
             }
+            // The canvas itself must also reject finger STROKES when pencil-only
+            // (the pan-gesture change alone let a finger still draw).
+            vectorCanvas?.pencilOnly = pencilOnly
         }
     }
     @Published private(set) var canUndo = false
@@ -240,6 +243,12 @@ final class CanvasController: NSObject, ObservableObject {
     func select(_ kind: ToolKind) {
         if kind == .eraserPixel || kind == .eraserObject {
             lastEraserKind = kind
+            // The eraser is momentary even when picked from the toolbar (A4):
+            // remember the tool to hop back to after the erase gesture. Don't
+            // overwrite when just switching eraser variants.
+            if !isEraserActive { toolBeforeEraser = toolState.kind }
+        } else {
+            toolBeforeEraser = nil
         }
         eraserViaDoubleTap = false
         guard kind != toolState.kind else { return }
@@ -252,11 +261,12 @@ final class CanvasController: NSObject, ObservableObject {
         toolState.kind == .eraserPixel || toolState.kind == .eraserObject
     }
 
-    /// Called by the engine when an erase gesture finishes: if the eraser was
-    /// engaged via double-tap, hop back to the tool that was active before.
+    /// Called by the engine when an erase gesture finishes: hop back to the tool
+    /// that was active before the eraser (whether it was picked from the toolbar or
+    /// engaged via Pencil double-tap). Momentary eraser (A4).
     func eraseGestureFinished() {
-        guard eraserViaDoubleTap, isEraserActive else { return }
-        select(toolBeforeEraser ?? .ballpoint)
+        guard isEraserActive, let prev = toolBeforeEraser else { return }
+        select(prev)
         Haptics.selection()
     }
 
