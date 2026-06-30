@@ -8,6 +8,10 @@ struct ContentView: View {
         if ProcessInfo.processInfo.environment["INK_PREVIEW"] != nil {
             return AnyView(InkWriterPreview())
         }
+        // DEV: launch with CONOTE_GALLERY=1 to eyeball the five tutor surfaces (no API).
+        if ProcessInfo.processInfo.environment["CONOTE_GALLERY"] != nil {
+            return AnyView(TutorGallery())
+        }
         return AnyView(library)
     }
 
