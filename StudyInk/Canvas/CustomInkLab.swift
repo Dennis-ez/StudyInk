@@ -691,7 +691,7 @@ final class VectorInkView: UIView {
                       let shape = ShapeRecognizer.recognize(points: current.map(\.location), minDiagonal: 70) {
                 commit(samples: Self.shapeSamples(shape, width: Self.avgWidth(current)))
             } else {
-                commit(samples: current)
+                commit(samples: Self.smoothed(current))
             }
         }
         current = []
@@ -1179,6 +1179,23 @@ final class VectorInkView: UIView {
         return pts.reduce(0) { $0 + $1.width } / CGFloat(pts.count)
     }
 
+    /// Light low-pass on a drawn stroke's points to remove pen/finger jitter — most
+    /// visible on THIN strokes (a fat stroke hides the wobble). Two gentle 3-tap
+    /// passes kill the jitter while keeping handwriting shape; endpoints stay exact.
+    static func smoothed(_ s: [InkSample]) -> [InkSample] {
+        guard s.count > 4 else { return s }
+        var loc = s.map(\.location)
+        for _ in 0..<2 {
+            var next = loc
+            for i in 1..<(loc.count - 1) {
+                next[i] = CGPoint(x: 0.25 * loc[i - 1].x + 0.5 * loc[i].x + 0.25 * loc[i + 1].x,
+                                  y: 0.25 * loc[i - 1].y + 0.5 * loc[i].y + 0.25 * loc[i + 1].y)
+            }
+            loc = next
+        }
+        return zip(s, loc).map { InkSample(location: $1, width: $0.width) }
+    }
+
     /// Midpoint-smoothed centerline. Static → also safe from the off-main tile render.
     private static func inkPath(_ pts: [InkSample]) -> CGPath {
         let path = CGMutablePath()
@@ -1189,13 +1206,20 @@ final class VectorInkView: UIView {
             }
             return path
         }
+        // Curve THROUGH the midpoints using each sample as the control point, so the
+        // centerline never passes exactly through a jittered sample (that's what made
+        // thin strokes wiggle). Standard quadratic midpoint smoothing.
         path.move(to: pts[0].location)
-        for i in 1..<pts.count {
-            let a = pts[i - 1].location, b = pts[i].location
-            let mid = CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
-            path.addQuadCurve(to: mid, control: a)
-            path.addLine(to: b)
+        guard pts.count > 2 else {
+            path.addLine(to: pts[pts.count - 1].location)
+            return path
         }
+        for i in 1..<(pts.count - 1) {
+            let c = pts[i].location, n = pts[i + 1].location
+            let mid = CGPoint(x: (c.x + n.x) / 2, y: (c.y + n.y) / 2)
+            path.addQuadCurve(to: mid, control: c)
+        }
+        path.addLine(to: pts[pts.count - 1].location)
         return path
     }
 
