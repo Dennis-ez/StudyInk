@@ -27,13 +27,10 @@ final class CanvasController: NSObject, ObservableObject {
             rememberCurrentTool()
         }
     }
-    @Published var isRulerActive = false {
-        didSet { canvasView?.isRulerActive = isRulerActive }
-    }
+    @Published var isRulerActive = false
     /// true = Apple Pencil only (palm rejection via system); false = finger drawing allowed.
     @Published var pencilOnly = true {
         didSet {
-            canvasView?.drawingPolicy = pencilOnly ? .pencilOnly : .anyInput
             // With finger drawing on, one-finger drags must ink, not scroll
             // (unless the hand tool is active — then one finger always pans).
             if toolState.kind != .hand {
@@ -120,9 +117,6 @@ final class CanvasController: NSObject, ObservableObject {
     /// True while the eraser was engaged by Pencil double-tap (momentary mode).
     private var eraserViaDoubleTap = false
 
-    /// The live PKCanvasView (hosted on the active page by the engine).
-    /// Being retired — the real ink surface is now `vectorCanvas`.
-    weak var canvasView: PKCanvasView?
     /// The live custom vector ink canvas (replacing PencilKit). All tool/undo/insert
     /// commands route here; the editor persists from its `currentStrokes()`.
     weak var vectorCanvas: VectorInkView?
@@ -260,13 +254,6 @@ final class CanvasController: NSObject, ObservableObject {
     /// the canvas's inkScale× coordinate space.
     var inkScale: CGFloat = 1
 
-    func attach(_ canvas: PKCanvasView) {
-        canvasView = canvas
-        applyTool()
-        canvas.isRulerActive = isRulerActive
-        canvas.drawingPolicy = pencilOnly ? .pencilOnly : .anyInput
-    }
-
     /// The engine hands over the live vector canvas (the real ink surface).
     func attachVector(_ canvas: VectorInkView) {
         vectorCanvas = canvas
@@ -288,20 +275,11 @@ final class CanvasController: NSObject, ObservableObject {
             // with an inking tool (never the eraser/lasso/hand).
             v.autoShapes = autoShapes && toolState.kind.isInking
         }
-        // PKCanvasView is inert (being removed) but kept in sync to avoid surprises.
-        canvasView?.tool = toolState.pkTool(darkMode: isDarkMode, widthScale: inkScale)
         // Hand tool: nothing draws, one finger pans regardless of pencil-only.
         let isHand = toolState.kind == .hand
-        // Lasso: our TransformLassoOverlay owns selection, so the canvas's drawing
-        // gesture must be OFF — otherwise the built-in PKLassoTool starts a SECOND
-        // (native) selection, which spawns the system edit menu and a stroke-group
-        // index crash. Disabling the gesture (not just hit-testing) is the reliable
-        // way to keep the native lasso from ever engaging.
-        let drawingDisabled = isHand || toolState.kind == .lasso
-        canvasView?.drawingGestureRecognizer.isEnabled = !drawingDisabled
         engine?.panGestureRecognizer.minimumNumberOfTouches = (isHand || pencilOnly) ? 1 : 2
-        // The lasso loop is captured by a dedicated PENCIL gesture on the canvas
-        // (so a finger still scrolls); enable it only for the lasso tool.
+        // The lasso loop is captured by a dedicated PENCIL gesture; enable it only for
+        // the lasso tool.
         engine?.setLassoGestureActive(toolState.kind == .lasso)
     }
 

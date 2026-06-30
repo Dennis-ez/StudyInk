@@ -70,52 +70,6 @@ struct ToolState: Codable, Equatable {
     /// Pressure-sensitive ink (pen/fountain respond to Pencil force); off = constant width.
     var pressureSensitive: Bool = true
 
-    /// Builds the PencilKit tool. `darkMode` drives ink remapping: pure black ink
-    /// renders near-white on a dark canvas while the stored logical color is unchanged.
-    /// `widthScale` is the live canvas's supersample factor (inkScale): the
-    /// canvas works in inkScale× coordinates for native-sharp zoom, so a pen the
-    /// user picked as 4pt must be 4×inkScale in canvas space to *look* 4pt. The
-    /// stored stroke is scaled back to canonical on save, so widths stay correct.
-    func pkTool(darkMode: Bool, widthScale: CGFloat = 1) -> PKTool {
-        let width = self.width * widthScale
-        switch kind {
-        case .eraserPixel: return PKEraserTool(.bitmap, width: width)
-        case .eraserObject: return PKEraserTool(.vector, width: width)
-        // NEVER PKLassoTool — it engages Apple's native lasso selection on top of
-        // ours. Our lasso is driven by a separate pencil gesture; the canvas's
-        // drawing gesture is disabled for these tools (see applyTool), so an inert
-        // clear pen is fine and PencilKit simply never has a lasso tool to fire.
-        case .lasso, .hand: return PKInkingTool(.pen, color: .clear, width: 1)
-        case .ballpoint, .fountain, .monoline, .highlighter, .pencil:
-            // iOS 26 SDK renders PencilKit tool/stroke colors LITERALLY (no
-            // appearance re-interpretation), so the tool color must already be
-            // the DISPLAY color: black ink → near-white on a dark canvas. No
-            // convertColor — that pre-conversion inverted dark ink into
-            // invisibility on this SDK. Storage stays canonical (the live
-            // drawing is mapped back via InkColorAdapter.storageDrawing).
-            let base = InkColorAdapter.displayColor(UIColor(hex: colorHex) ?? .black, darkMode: darkMode)
-            let color = base.withAlphaComponent(kind == .highlighter ? min(opacity, 0.6) : opacity)
-            let type = inkType
-            // Constant-width inks (monoline = pressure-off pens) render at the FULL
-            // nominal width, which reads much heavier than the tapered pressure pens
-            // at the same size. Scale them down so the sizes feel consistent.
-            let typeFactor: CGFloat = type == .monoline ? 0.38 : 1
-            return PKInkingTool(type, color: color, width: width * typeFactor)
-        }
-    }
-
-    private var inkType: PKInkingTool.InkType {
-        switch kind {
-        // With pressure off, force-responsive inks fall back to constant-width monoline.
-        case .ballpoint: return pressureSensitive ? .pen : .monoline
-        case .fountain: return pressureSensitive ? .fountainPen : .monoline
-        case .monoline: return .monoline
-        case .highlighter: return .marker
-        case .pencil: return .pencil
-        default: return .pen
-        }
-    }
-
     // MARK: Custom vector engine mapping (settings.canvas.customInk)
 
     /// The custom engine's config for this tool. Unlike `pkTool`, colours are

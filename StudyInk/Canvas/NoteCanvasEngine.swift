@@ -198,7 +198,6 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         // Ink colors are pre-adapted by appearance via InkColorAdapter.
         canvas.overrideUserInterfaceStyle = .light
         controller.inkScale = inkScale
-        controller.attach(canvas)
         // The real ink surface: transparent over the page container, page-coordinate
         // (no inkScale — the tiled layer re-renders sharp at any zoom).
         vectorCanvas.backgroundColor = .clear
