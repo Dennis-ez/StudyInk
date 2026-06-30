@@ -55,7 +55,9 @@ final class GhostWitnessController: ObservableObject {
         geometry = nil
 
         let image = await Task.detached(priority: .userInitiated) {
-            PageRenderer.render(snapshot, darkMode: false, scale: 2)
+            // Clean render (no ruled/grid lines) so they don't get mistaken for sketch
+            // strokes when fitting guide lines. Full page → geometry stays in page coords.
+            PageRenderer.recognitionImage(snapshot, scale: 2)
         }.value
         guard let block = AIContent.image(image) else { return }
 

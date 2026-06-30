@@ -174,7 +174,8 @@ final class GuidedModeController: ObservableObject {
         let pageImage = await Task.detached(priority: .utility) {
             // 2× so small handwriting (stacked fractions, limit subscripts) and a
             // pasted question image are legible — at 1× the model can't read them.
-            PageRenderer.render(snapshot, darkMode: false, scale: 2)
+            // Clean render: white paper, no ruled-line noise, dark ink on white.
+            PageRenderer.recognitionImage(snapshot, scale: 2)
         }.value
 
         let hint = """
