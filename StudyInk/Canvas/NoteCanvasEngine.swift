@@ -227,12 +227,15 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         addInteraction(pencilInteraction)
 
 
-        // Finger-tap a committed shape to re-select it for move/rotate/reshape.
-        let shapeTap = UITapGestureRecognizer(target: self, action: #selector(canvasTapped(_:)))
-        shapeTap.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.direct.rawValue)]
-        shapeTap.cancelsTouchesInView = false
-        shapeTap.delegate = self
-        canvas.addGestureRecognizer(shapeTap)
+        // Finger-tap on the live canvas → select/deselect media, dismiss the region
+        // pill, or tap-to-define a concept (the editor's onCanvasFingerTap). Lives on the
+        // vector canvas (the real ink surface) so it actually fires — a clean tap never
+        // commits a stroke (that needs movement), so it can't draw a dot.
+        let fingerTap = UITapGestureRecognizer(target: self, action: #selector(canvasTapped(_:)))
+        fingerTap.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.direct.rawValue)]
+        fingerTap.cancelsTouchesInView = false
+        fingerTap.delegate = self
+        vectorCanvas.addGestureRecognizer(fingerTap)
 
         // Standard iPad editing gestures: two-finger tap undoes, three redoes.
         let undoTap = UITapGestureRecognizer(target: self, action: #selector(multiFingerUndo(_:)))
@@ -1237,65 +1240,11 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     /// Finger tap: if it lands on a stroke that reads as a clean shape,
     /// reopen it for editing (move / rotate / reshape via nodes).
     @objc private func canvasTapped(_ recognizer: UITapGestureRecognizer) {
-        let location = recognizer.location(in: canvas)
-        let drawing = canvas.drawing
-        let tolerance: CGFloat = max(14, 10 / max(zoomScale, 0.1))
-
-        for (index, stroke) in drawing.strokes.enumerated().reversed() {
-            guard stroke.renderBounds.insetBy(dx: -tolerance, dy: -tolerance).contains(location) else { continue }
-            guard strokeDistance(from: stroke, to: location) <= tolerance else { continue }
-            guard let shape = ShapeRecognizer.recognize(stroke) else { return }
-            Haptics.selection()
-            // Shape + width stay in the canvas's inkScale× space; the editor
-            // overlay maps them with canvasTransform (and a canvas-scaled snap).
-            controller.onShapeTapped?(
-                activeIndex,
-                index,
-                shape,
-                stroke.ink,
-                Double(averageWidth(of: stroke)),
-                displayHex(for: stroke.ink)
-            )
-            return
-        }
-        // No shape under the tap — report it in PAGE coordinates so the editor can
-        // select/deselect media (unselected media is non-interactive).
-        controller.onCanvasFingerTap?(CGPoint(x: location.x / inkScale, y: location.y / inkScale))
+        // The vector canvas is page-space (no inkScale), so its tap location IS the page
+        // point. The editor uses it to select/deselect media, dismiss the region pill,
+        // or tap-to-define a concept.
+        controller.onCanvasFingerTap?(recognizer.location(in: vectorCanvas))
     }
-
-    private func strokeDistance(from stroke: PKStroke, to point: CGPoint) -> CGFloat {
-        let path = stroke.path
-        let step = max(1, path.count / 80)
-        var best = CGFloat.greatestFiniteMagnitude
-        for i in stride(from: 0, to: path.count, by: step) {
-            let p = path[i].location.applying(stroke.transform)
-            best = min(best, hypot(p.x - point.x, p.y - point.y))
-        }
-        return best
-    }
-
-    private func averageWidth(of stroke: PKStroke) -> CGFloat {
-        let path = stroke.path
-        guard path.count > 0 else { return 4 }
-        let step = max(1, path.count / 16)
-        var total: CGFloat = 0
-        var count: CGFloat = 0
-        for i in stride(from: 0, to: path.count, by: step) {
-            total += path[i].size.width
-            count += 1
-        }
-        return total / max(count, 1)
-    }
-
-    /// PencilKit stores light-variant colors; report what's actually on screen.
-    private func displayHex(for ink: PKInk) -> String {
-        var color = ink.color
-        if traitCollection.userInterfaceStyle == .dark {
-            color = PKInkingTool.convertColor(color, from: .light, to: .dark)
-        }
-        return color.hexString
-    }
-
 
     /// Paste the in-app stroke clipboard. With a page point (finger-tap paste) the
     /// clipboard is centred there; otherwise it's nudged off the original. Returns
