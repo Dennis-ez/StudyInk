@@ -95,10 +95,18 @@ struct ToolState: Codable, Equatable {
         case .highlighter:
             return VectorToolConfig(tool: .pen, color: canonical.withAlphaComponent(min(opacity, 0.4)),
                                     width: width * 2.2, draws: true)
-        case .ballpoint, .fountain, .monoline, .pencil:
-            // Our pen is constant-width like monoline, which reads heavier than PK's
-            // tapered pens — scale down to match (mirrors penWeight in the converter).
+        // Distinct pens (the engine is constant-width, so differentiate by weight +
+        // opacity rather than taper): ballpoint fine & crisp, monoline medium-uniform,
+        // fountain the boldest, pencil a soft translucent graphite.
+        case .ballpoint:
+            return VectorToolConfig(tool: .pen, color: canonical, width: width * 0.5, draws: true)
+        case .monoline:
             return VectorToolConfig(tool: .pen, color: canonical, width: width * 0.6, draws: true)
+        case .fountain:
+            return VectorToolConfig(tool: .pen, color: canonical, width: width * 0.78, draws: true)
+        case .pencil:
+            return VectorToolConfig(tool: .pen, color: canonical.withAlphaComponent(min(opacity, 0.8)),
+                                    width: width * 0.62, draws: true)
         }
     }
 }
