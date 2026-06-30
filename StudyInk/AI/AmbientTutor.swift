@@ -538,7 +538,9 @@ final class AmbientTutorController: ObservableObject {
             blocks.append(.text("Also include \"steps\": the ordered sub-steps that lead to this next line (at most 5). Format EACH step as: what you do, then ' → ', then the RESULT after that step (in $...$ where the content is math, plain words otherwise) — so the student sees the output at each stage. Write \"why\" and \"steps\" in \(SystemPrompt.languageTarget)."))
             // Headroom for Gemini 2.5 thinking tokens (which count against the cap)
             // so the {next,why} JSON isn't truncated mid-string.
-            let raw = try await AIService.send(system: Self.ghostSystem, messages: [.user(blocks)], maxTokens: 1500)
+            // Headroom for Gemini 2.5 thinking tokens + the "steps" array, so the
+            // {next,why,steps} JSON isn't truncated (which dropped the steps).
+            let raw = try await AIService.send(system: Self.ghostSystem, messages: [.user(blocks)], maxTokens: 2200)
             let (nextRaw, why, steps) = Self.parseGhost(raw)
             let text = Self.cleanGhost(nextRaw)
             guard !text.isEmpty, text.count < 140 else { return }
@@ -585,7 +587,9 @@ final class AmbientTutorController: ObservableObject {
         let whyVal = firstCapture(#""why"\s*:\s*"((?:[^"\\]|\\.)*)""#, in: src).map(unescapeJSON)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         if let nextVal, !nextVal.isEmpty {
-            return (nextVal, (whyVal?.isEmpty == false) ? whyVal : nil, [])
+            // Recover steps too (path 1 returned them, but this fallback used to drop
+            // them — that's why the "?" sometimes showed a why with no steps).
+            return (nextVal, (whyVal?.isEmpty == false) ? whyVal : nil, recoverSteps(in: src))
         }
         // 3) It tried to be JSON but we couldn't recover a value → render nothing
         //    rather than spilling braces/keys onto the page.
@@ -630,6 +634,20 @@ final class AmbientTutorController: ObservableObject {
               let m = re.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)),
               m.numberOfRanges > 1, let r = Range(m.range(at: 1), in: s) else { return nil }
         return String(s[r])
+    }
+
+    /// Recover the "steps" array even from truncated/malformed JSON: take everything
+    /// after `"steps":[` (to the closing `]`, or the end if cut off) and pull out the
+    /// quoted string elements.
+    private static func recoverSteps(in s: String) -> [String] {
+        guard let start = s.range(of: #""steps"\s*:\s*\["#, options: .regularExpression) else { return [] }
+        let tail = s[start.upperBound...]
+        let body = String(tail.firstIndex(of: "]").map { tail[..<$0] } ?? tail)
+        guard let re = try? NSRegularExpression(pattern: #""((?:[^"\\]|\\.)*)""#, options: [.dotMatchesLineSeparators]) else { return [] }
+        return re.matches(in: body, range: NSRange(body.startIndex..., in: body)).compactMap { m in
+            guard m.numberOfRanges > 1, let r = Range(m.range(at: 1), in: body) else { return nil }
+            return unescapeJSON(String(body[r]))
+        }.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
     }
 
     /// Minimal JSON-string unescape: `\"`→`"`, `\\`→`\` (keeping LaTeX commands
