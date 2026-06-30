@@ -296,6 +296,7 @@ final class CanvasController: NSObject, ObservableObject {
             let cfg = toolState.vectorTool()
             v.tool = cfg.tool
             v.penWidth = cfg.width
+            v.widthVariation = cfg.widthVariation
             v.setColor(cfg.color)
             // Hand → let a finger pan the document instead of drawing.
             v.isUserInteractionEnabled = cfg.draws

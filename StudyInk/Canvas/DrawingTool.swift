@@ -81,6 +81,7 @@ struct ToolState: Codable, Equatable {
         var color: UIColor       // canonical
         var width: CGFloat
         var draws: Bool          // false for hand → mount disables ink capture
+        var widthVariation: CGFloat = 0   // 0 = constant; >0 = velocity/pressure taper (fountain)
     }
 
     func vectorTool() -> VectorToolConfig {
@@ -103,7 +104,9 @@ struct ToolState: Codable, Equatable {
         case .monoline:
             return VectorToolConfig(tool: .pen, color: canonical, width: width * 0.6, draws: true)
         case .fountain:
-            return VectorToolConfig(tool: .pen, color: canonical, width: width * 0.78, draws: true)
+            // The fountain pen tapers with speed + pressure (Notability-style); the
+            // others stay constant (widthVariation defaults to 0).
+            return VectorToolConfig(tool: .pen, color: canonical, width: width * 0.85, draws: true, widthVariation: 0.6)
         case .pencil:
             return VectorToolConfig(tool: .pen, color: canonical.withAlphaComponent(min(opacity, 0.8)),
                                     width: width * 0.62, draws: true)

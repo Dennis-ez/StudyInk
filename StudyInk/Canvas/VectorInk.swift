@@ -98,6 +98,47 @@ enum VectorInk {
         return path
     }
 
+    /// A FILLED outline whose half-width follows EACH sample's width — true
+    /// variable-width ink (pressure/velocity taper), versus stroking one avg width.
+    /// The centerline is assumed already smoothed (dense samples → smooth edges); the
+    /// two ends get round caps. Constant widths render as a constant band, so this is
+    /// safe for every pen — only the fountain feeds it varying widths.
+    static func variableWidthOutline(_ pts: [InkSample]) -> CGPath {
+        let path = CGMutablePath()
+        guard pts.count >= 2 else {
+            if let p = pts.first {
+                let w = max(0.4, p.width)
+                path.addEllipse(in: CGRect(x: p.location.x - w / 2, y: p.location.y - w / 2, width: w, height: w))
+            }
+            return path
+        }
+        func unitNormal(_ i: Int) -> (CGFloat, CGFloat) {
+            let a = pts[max(0, i - 1)].location, b = pts[min(pts.count - 1, i + 1)].location
+            let dx = b.x - a.x, dy = b.y - a.y
+            let len = hypot(dx, dy)
+            guard len > 0.0001 else { return (0, 0) }
+            return (-dy / len, dx / len)
+        }
+        var left = [CGPoint](), right = [CGPoint]()
+        left.reserveCapacity(pts.count); right.reserveCapacity(pts.count)
+        for i in pts.indices {
+            let p = pts[i].location, hw = max(0.2, pts[i].width / 2)
+            let (nx, ny) = unitNormal(i)
+            left.append(CGPoint(x: p.x + nx * hw, y: p.y + ny * hw))
+            right.append(CGPoint(x: p.x - nx * hw, y: p.y - ny * hw))
+        }
+        path.move(to: left[0])
+        for i in 1..<left.count { path.addLine(to: left[i]) }
+        for i in stride(from: right.count - 1, through: 0, by: -1) { path.addLine(to: right[i]) }
+        path.closeSubpath()
+        // Round caps as circles at the two ends, unioned with the band (.winding fill).
+        for end in [pts[0], pts[pts.count - 1]] {
+            let w = max(0.4, end.width)
+            path.addEllipse(in: CGRect(x: end.location.x - w / 2, y: end.location.y - w / 2, width: w, height: w))
+        }
+        return path
+    }
+
     static func drawStroke(_ pts: [InkSample], color: UIColor, in ctx: CGContext) {
         guard pts.count > 1 else {
             if let p = pts.first {
@@ -107,12 +148,9 @@ enum VectorInk {
             }
             return
         }
-        ctx.setStrokeColor(color.cgColor)
-        ctx.setLineCap(.round)
-        ctx.setLineJoin(.round)
-        ctx.setLineWidth(avgWidth(pts))
-        ctx.addPath(inkPath(pts))
-        ctx.strokePath()
+        ctx.setFillColor(color.cgColor)
+        ctx.addPath(variableWidthOutline(pts))
+        ctx.fillPath()
     }
 
     // MARK: PencilKit → vector strokes

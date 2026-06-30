@@ -28,6 +28,14 @@ struct InkWriterPreview: View {
                 }
 
                 Divider().padding(.vertical, 8)
+                Text("Ink: variable-width (Notability taper) — verify smooth, no notches")
+                    .font(.headline)
+                HStack(alignment: .top, spacing: 20) {
+                    cell("tapered (thin→thick→thin)", Self.variableWidthTest(tapered: true))
+                    cell("constant width", Self.variableWidthTest(tapered: false))
+                }
+
+                Divider().padding(.vertical, 8)
                 Text("Page render for OCR / AI vision — full page vs. clean recognition")
                     .font(.headline)
                 if let snap = Self.firstPageSnapshot() {
@@ -87,6 +95,22 @@ struct InkWriterPreview: View {
         guard !vec.isEmpty else { return nil }
         let b = vec.dropFirst().reduce(vec[0].bbox) { $0.union($1.bbox) }
         return VectorInk.image(vec, size: CGSize(width: b.maxX + 16, height: b.maxY + 16), scale: 2)
+    }
+
+    /// A smooth S-curve stroke rendered with VectorInk's variable-width outline, to
+    /// verify the taper renders smoothly (no notches at the bends).
+    static func variableWidthTest(tapered: Bool) -> UIImage? {
+        var samples: [InkSample] = []
+        let n = 70
+        for i in 0..<n {
+            let t = CGFloat(i) / CGFloat(n - 1)
+            let x = 24 + t * 252
+            let y = 60 + sin(t * .pi * 2) * 34
+            let w: CGFloat = tapered ? (1.4 + sin(t * .pi) * 8) : 3.5   // thin→thick→thin vs flat
+            samples.append(InkSample(location: CGPoint(x: x, y: y), width: w))
+        }
+        let stroke = VectorInk.Stroke(color: UIColor(red: 0.04, green: 0.2, blue: 0.45, alpha: 1), samples: samples)
+        return VectorInk.image([stroke], size: CGSize(width: 300, height: 120), scale: 3)
     }
 
     @MainActor static func firstPageSnapshot() -> PageRenderer.Snapshot? {

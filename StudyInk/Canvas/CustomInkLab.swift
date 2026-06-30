@@ -244,6 +244,11 @@ final class VectorInkView: UIView {
     private func cellKey(_ col: Int, _ row: Int) -> Int { (col &+ 4096) &* 1_000_000 &+ (row &+ 4096) }
 
     var penWidth: CGFloat = 2.6
+    /// 0 = constant width; >0 = the stroke thins with speed and thickens with pressure
+    /// (the fountain pen). Set per tool from VectorToolConfig.widthVariation.
+    var widthVariation: CGFloat = 0
+    private var lastSampleLoc: CGPoint?
+    private var lastSampleTime: TimeInterval?
     var inkColor = UIColor(white: 0.08, alpha: 1)   // current pen colour (selectable)
 
     /// The in-progress "wet" stroke — instant, GPU-composited, never blocks.
@@ -340,11 +345,11 @@ final class VectorInkView: UIView {
         bridgeLayer.contentsScale = baseScale
         layer.addSublayer(bridgeLayer)
 
-        liveLayer.fillColor = nil
-        liveLayer.strokeColor = inkColor.cgColor
-        liveLayer.lineWidth = penWidth
-        liveLayer.lineCap = .round
-        liveLayer.lineJoin = .round
+        // The live stroke FILLS the variable-width outline (same as the bridge + tiles)
+        // so width is consistent the moment you draw, not just after commit.
+        liveLayer.fillColor = inkColor.cgColor
+        liveLayer.strokeColor = nil
+        liveLayer.lineWidth = 0
         liveLayer.frame = bounds
         liveLayer.contentsScale = baseScale
         layer.addSublayer(liveLayer)
@@ -500,7 +505,7 @@ final class VectorInkView: UIView {
 
     private func refreshPenDisplay() {
         let cg = Self.displayColor(inkColor, dark: displayDark).cgColor
-        liveLayer.strokeColor = cg
+        liveLayer.fillColor = cg   // live layer fills the variable-width outline now
         bridgeLayer.fillColor = cg
     }
 
@@ -525,10 +530,9 @@ final class VectorInkView: UIView {
 
     private func rebuildBridge() {
         let combined = CGMutablePath()
-        for s in bridgeStrokes {
-            combined.addPath(Self.inkPath(s).copy(strokingWithWidth: Self.avgWidth(s),
-                                                  lineCap: .round, lineJoin: .round, miterLimit: 10))
-        }
+        // Same variable-width outline the tiles (VectorInk.drawStroke) use, so a stroke
+        // doesn't change width when it hands off from the bridge to the tile.
+        for s in bridgeStrokes { combined.addPath(VectorInk.variableWidthOutline(s)) }
         CATransaction.begin(); CATransaction.setDisableActions(true)
         bridgeLayer.path = combined.isEmpty ? nil : combined
         CATransaction.commit()
@@ -1002,9 +1006,23 @@ final class VectorInkView: UIView {
     }
 
     private func sample(_ t: UITouch) -> InkSample {
+        let loc = t.location(in: self)
+        // Constant-width pens (everything but the fountain): exact width, no jitter.
+        guard widthVariation > 0 else {
+            lastSampleLoc = loc; lastSampleTime = t.timestamp
+            return InkSample(location: loc, width: penWidth)
+        }
+        // Fountain: speed thins the line (calligraphic), pencil pressure thickens it.
+        var speed: CGFloat = 0
+        if let pl = lastSampleLoc, let pt = lastSampleTime, t.timestamp > pt {
+            speed = hypot(loc.x - pl.x, loc.y - pl.y) / CGFloat(t.timestamp - pt)   // points/sec
+        }
+        lastSampleLoc = loc; lastSampleTime = t.timestamp
         let force = t.maximumPossibleForce > 0 ? t.force / t.maximumPossibleForce : 0
-        let pressure = force > 0 ? force : 0.5
-        return InkSample(location: t.location(in: self), width: penWidth * (0.55 + pressure))
+        let speedThin = min(0.55, speed / 5000)                  // fast → up to 55% thinner
+        let pressBoost = force > 0 ? (force - 0.5) * 0.6 : 0      // pencil pressure ±30%
+        let factor = 1 + widthVariation * (pressBoost - speedThin)
+        return InkSample(location: loc, width: max(penWidth * 0.3, penWidth * factor))
     }
 
     private func updateLiveLayer() {
@@ -1016,8 +1034,7 @@ final class VectorInkView: UIView {
         }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        liveLayer.lineWidth = Self.avgWidth(current)
-        liveLayer.path = Self.inkPath(current)
+        liveLayer.path = VectorInk.variableWidthOutline(current)
         CATransaction.commit()
     }
 
@@ -1203,7 +1220,14 @@ final class VectorInkView: UIView {
                               y: 0.25 * loc[i - 1].y + 0.5 * loc[i].y + 0.25 * loc[i + 1].y)
         }
         loc = next
-        return zip(s, loc).map { InkSample(location: $1, width: $0.width) }
+        // Smooth widths too (5-tap) so the fountain's velocity-derived width doesn't
+        // wobble the edges. No-op for constant-width pens (all widths equal).
+        let w = s.map(\.width)
+        let sw = w.indices.map { i -> CGFloat in
+            let lo = max(0, i - 2), hi = min(w.count - 1, i + 2)
+            return w[lo...hi].reduce(0, +) / CGFloat(hi - lo + 1)
+        }
+        return zip(loc, sw).map { InkSample(location: $0, width: $1) }
     }
 
     /// Midpoint-smoothed centerline. Static → also safe from the off-main tile render.
@@ -1235,19 +1259,8 @@ final class VectorInkView: UIView {
 
     /// Committed render: stroke the SAME centerline at the SAME width as the preview.
     private static func drawStroke(_ pts: [InkSample], color: UIColor, in ctx: CGContext) {
-        guard pts.count > 1 else {
-            if let p = pts.first {
-                ctx.setFillColor(color.cgColor)
-                ctx.fillEllipse(in: CGRect(x: p.location.x - p.width / 2, y: p.location.y - p.width / 2,
-                                           width: p.width, height: p.width))
-            }
-            return
-        }
-        ctx.setStrokeColor(color.cgColor)
-        ctx.setLineCap(.round)
-        ctx.setLineJoin(.round)
-        ctx.setLineWidth(avgWidth(pts))
-        ctx.addPath(inkPath(pts))
-        ctx.strokePath()
+        // Delegate to the shared variable-width renderer so every surface (live, bridge,
+        // tiles, selection, thumbnails) draws identical ink.
+        VectorInk.drawStroke(pts, color: color, in: ctx)
     }
 }
