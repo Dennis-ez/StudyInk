@@ -254,6 +254,14 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         redoTap.delegate = self
         addGestureRecognizer(redoTap)
         undoTap.require(toFail: redoTap)
+        // A two-finger PINCH (zoom) or PAN (scroll) must never be mistaken for the
+        // two-finger undo tap — make the taps wait for those to fail first.
+        if let pinch = pinchGestureRecognizer {
+            undoTap.require(toFail: pinch)
+            redoTap.require(toFail: pinch)
+        }
+        undoTap.require(toFail: panGestureRecognizer)
+        redoTap.require(toFail: panGestureRecognizer)
 
         // Eraser cursor: ride along with the system drawing gesture so the
         // circle tracks exactly where erasing happens, sized like the eraser.
