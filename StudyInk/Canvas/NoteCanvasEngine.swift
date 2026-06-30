@@ -1108,10 +1108,11 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
                 container.setNeedsDisplay()
             }
         }
-        // The vector ink IS safe to re-rasterize (our CATiledLayer, not PencilKit): bump
-        // the live canvas's tiles to the settled zoom so zoomed-in ink is crisp (capped
-        // at 3× for memory; tiles keep it bounded). Reset toward base when back near 1×.
-        vectorCanvas.setRenderScale(vectorCanvas.baseRenderScale * min(max(zoomScale, 1), 8))
+        // NOTE: do NOT bump the ink's contentsScale per zoom. The tiled ink layer is
+        // 2× supersampled with levelsOfDetailBias = 4, so CATiledLayer already draws
+        // crisp tiles up to ~16× as you zoom — automatically, no re-raster. Changing
+        // contentsScale on zoom forced a full re-tile that snapped the ink (the
+        // "repositions/resizes" glitch). Leaving it at base keeps it stable + crisp.
 
         // Active page's TEMPLATE / PDF background: re-rasterize at the settled zoom so the
         // ruled lines / grid / imported PDF stay crisp when zoomed (Notability-style),
