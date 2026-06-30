@@ -272,7 +272,12 @@ final class AmbientTutorController: ObservableObject {
         // own work (everything outside the media).
         let problem = allOCR.filter(inMedia).map(\.text).joined(separator: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        let lines = Self.mergeRows(allOCR.filter { !inMedia($0) })
+        var lines = Self.mergeRows(allOCR.filter { !inMedia($0) })
+        // OCR found no text (a diagram, or handwriting it can't read) — if there IS
+        // ink, grade the whole inked area as one region rather than refusing.
+        if lines.isEmpty, let inkRect = Self.inkBounds(of: page) {
+            lines = [OCRLine(text: "", rect: inkRect, confidence: 0)]
+        }
         lastLineRects = lines.map(\.rect)
         guard !lines.isEmpty else {
             showNotice(String(localized: "ambient.notice.empty"))
@@ -495,10 +500,22 @@ final class AmbientTutorController: ObservableObject {
         let lowestShortIncomplete = lowest.map {
             $0.text.filter({ !$0.isWhitespace }).count <= 4
         } ?? false
-        let target: OCRLine? = openLine ?? ((auto && !lowestShortIncomplete) ? nil : lowest)
-        guard let last = target,
-              !last.text.trimmingCharacters(in: .whitespaces).isEmpty,
-              last.text != lastGhostSourceLine else { return }
+        var target: OCRLine? = openLine ?? ((auto && !lowestShortIncomplete) ? nil : lowest)
+        // No OCR'd line but there IS ink (a diagram, or handwriting OCR can't read) —
+        // anchor to the last written row and let the model read it from the image,
+        // rather than giving up with "no next step".
+        var fromImage = false
+        if target == nil, !auto, let row = Self.lastInkRow(of: page) {
+            target = OCRLine(text: "", rect: row, confidence: 0)
+            fromImage = true
+        }
+        guard let last = target else { return }
+        // OCR'd lines must be non-empty and not a repeat; the image-anchored fallback
+        // has no text to dedupe on, so it proceeds.
+        if !fromImage {
+            guard !last.text.trimmingCharacters(in: .whitespaces).isEmpty,
+                  last.text != lastGhostSourceLine else { return }
+        }
         let isOpen = openLine != nil || lowestShortIncomplete
 
         if !auto { isSuggesting = true }
@@ -509,9 +526,14 @@ final class AmbientTutorController: ObservableObject {
             // Anchor the model to the student's ACTUAL last line so it continues
             // from there (not back at the top of the page).
             let lastText = last.text.trimmingCharacters(in: .whitespaces)
+            // When OCR gave us the text, quote it; otherwise tell the model to read
+            // the last line straight off the page image.
+            let lineRef = lastText.isEmpty
+                ? "The student's LAST handwritten line — READ it from the page image (OCR couldn't)"
+                : "The student's LAST handwritten line reads roughly: \"\(lastText)\""
             let instruction = isOpen
-                ? "The student's LAST handwritten line reads roughly: \"\(lastText)\" and is UNFINISHED. Continue from THERE — give the single next line that directly follows it, completing what they started. For math: do the algebra and write the COMPLETE result that belongs after the '=' (e.g. '2x =' → the value of x; a derivative → the fully simplified form combining ALL factors). For an essay or any other subject: finish that sentence/point correctly. Never restate the left side, never jump back to an earlier step, never a partial fragment. Use LaTeX for math (\\frac{num}{den} NOT a/b, x^{2}, x_{0}, \\sqrt{...}, · for multiply); plain words for non-math. Output ONLY that line — no $ delimiters. If you genuinely can't, output nothing."
-                : "The student's LAST handwritten line reads roughly: \"\(lastText)\". Give the SINGLE most useful next line toward completing the task — continue from there, do NOT jump back to an earlier step. Use LaTeX for math (\\frac{num}{den}, x^{2}, \\sqrt{...}, · for multiply); plain words for non-math. Output ONLY the line — no $ delimiters. ALWAYS give your best next step; output nothing ONLY if the page is blank or truly unreadable."
+                ? "\(lineRef) and it is UNFINISHED. Continue from THERE — give the single next line that directly follows it, completing what they started. For math: do the algebra and write the COMPLETE result that belongs after the '=' (e.g. '2x =' → the value of x; a derivative → the fully simplified form combining ALL factors). For an essay or any other subject: finish that sentence/point correctly. Never restate the left side, never jump back to an earlier step, never a partial fragment. Use LaTeX for math (\\frac{num}{den} NOT a/b, x^{2}, x_{0}, \\sqrt{...}, · for multiply); plain words for non-math. Output ONLY that line — no $ delimiters. If you genuinely can't, output nothing."
+                : "\(lineRef). Give the SINGLE most useful next line toward completing the task — continue from there, do NOT jump back to an earlier step. Use LaTeX for math (\\frac{num}{den}, x^{2}, \\sqrt{...}, · for multiply); plain words for non-math. Output ONLY the line — no $ delimiters. ALWAYS give your best next step; output nothing ONLY if the page is blank or truly unreadable."
             blocks.append(.text(instruction))
             blocks.append(.text("Also include \"steps\": the ordered sub-steps that lead to this next line (at most 5). Format EACH step as: what you do, then ' → ', then the RESULT after that step (in $...$ where the content is math, plain words otherwise) — so the student sees the output at each stage. Write \"why\" and \"steps\" in \(SystemPrompt.languageTarget)."))
             // Headroom for Gemini 2.5 thinking tokens (which count against the cap)
@@ -649,6 +671,31 @@ final class AmbientTutorController: ObservableObject {
     /// a copy of the line it's completing?).
     private static func mathKey(_ s: String) -> String {
         String(s.lowercased().unicodeScalars.filter(CharacterSet.alphanumerics.contains))
+    }
+
+    // MARK: Ink fallbacks — when OCR reads nothing but the page DOES have ink, the
+    // tutor anchors to stroke geometry instead of refusing ("nothing to check" /
+    // "no next step"). The model reads the actual content from the page image.
+
+    private static func pageStrokes(_ page: Page) -> [VectorInk.Stroke] {
+        page.vectorInkData.flatMap { VectorInk.decode($0) } ?? []
+    }
+
+    /// Bounding box of all the page's vector ink (nil if the page is blank).
+    private static func inkBounds(of page: Page) -> CGRect? {
+        let s = pageStrokes(page)
+        guard let first = s.first else { return nil }
+        return s.dropFirst().reduce(first.bbox) { $0.union($1.bbox) }
+    }
+
+    /// Bounding box of the lowest row of ink — the "last handwritten line".
+    private static func lastInkRow(of page: Page) -> CGRect? {
+        let s = pageStrokes(page)
+        guard !s.isEmpty else { return nil }
+        let maxY = s.map { $0.bbox.maxY }.max() ?? 0
+        let row = s.filter { $0.bbox.maxY >= maxY - 46 }   // ~one line height
+        guard let first = row.first else { return inkBounds(of: page) }
+        return row.dropFirst().reduce(first.bbox) { $0.union($1.bbox) }
     }
 
     static func isOpenLine(_ text: String) -> Bool {

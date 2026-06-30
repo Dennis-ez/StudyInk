@@ -184,13 +184,18 @@ enum NoteContextBuilder {
         return nil
     }
 
-    /// Fresh OCR lines for the current page, used to resolve annotation targets.
+    /// Fresh OCR lines for the current page — region anchors for the AI tutor
+    /// (check-my-work / suggest-next / annotations). No confidence floor here: the
+    /// 0.3 floor (good for SEARCH text) drops most handwriting, leaving the tutor
+    /// with zero regions → "nothing to check" on a full page. Vision still localizes
+    /// these regions reliably (their RECTS are good); the model reads the actual
+    /// content from the page image, so a rough/low-confidence transcript is fine.
     @MainActor
     static func ocrLines(for page: Page) async -> [OCRLine] {
         let snapshot = PageRenderer.Snapshot(page: page)
         return await Task.detached(priority: .userInitiated) {
             let image = PageRenderer.recognitionImage(snapshot, scale: 3)
-            return await OCRService.recognize(image: image, pageSize: snapshot.pageSize)
+            return await OCRService.recognize(image: image, pageSize: snapshot.pageSize, minConfidence: 0)
         }.value
     }
 }
