@@ -396,6 +396,11 @@ private struct InkOptionsStrip: View {
         layout {
             ScrollView(horizontal ? .horizontal : .vertical, showsIndicators: false) {
                 dotsLayout {
+                    // Recently-used colours first (Notability-style), then the presets.
+                    ForEach(controller.recentColors, id: \.self) { hex in
+                        colorDot(hex)
+                    }
+                    if !controller.recentColors.isEmpty { stripDivider }
                     ForEach(Self.presets, id: \.self) { hex in
                         colorDot(hex)
                     }
@@ -407,13 +412,17 @@ private struct InkOptionsStrip: View {
                 .labelsHidden()
                 .frame(width: 30)
                 .onChange(of: customColor) { _, newValue in
-                    controller.toolState.colorHex = UIColor(newValue).hexString
+                    let hex = UIColor(newValue).hexString
+                    controller.toolState.colorHex = hex
+                    controller.recordRecentColor(hex)
                 }
 
             stripDivider
 
-            ForEach(Self.widths, id: \.self) { width in
-                widthDot(width)
+            widthControl
+
+            if controller.toolState.kind == .highlighter {
+                opacityControl
             }
 
             if controller.toolState.kind == .ballpoint || controller.toolState.kind == .fountain {
@@ -456,6 +465,7 @@ private struct InkOptionsStrip: View {
         Button {
             Haptics.selection()
             controller.toolState.colorHex = hex
+            controller.recordRecentColor(hex)
         } label: {
             Circle()
                 .fill(Color(hex: hex) ?? .black)
@@ -470,6 +480,31 @@ private struct InkOptionsStrip: View {
                 }
         }
         .buttonStyle(.plain)
+    }
+
+    /// Continuous width slider with a live size preview (replaces the fixed dots).
+    private var widthControl: some View {
+        HStack(spacing: 8) {
+            let d = max(3, min(22, CGFloat(controller.toolState.width) + 1))
+            Circle().fill(Color.primary.opacity(0.75))
+                .frame(width: d, height: d)
+                .frame(width: 22, height: 22)
+            Slider(value: $controller.toolState.width, in: 1...20)
+                .frame(width: horizontal ? 120 : 90)
+        }
+        .accessibilityLabel(Text("tool.width"))
+        .accessibilityValue(Text("\(Int(controller.toolState.width))"))
+    }
+
+    /// Opacity slider — shown for the highlighter (Notability exposes it there).
+    private var opacityControl: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "circle.lefthalf.filled")
+                .font(.system(size: 13)).foregroundStyle(.secondary)
+            Slider(value: $controller.toolState.opacity, in: 0.1...1)
+                .frame(width: horizontal ? 100 : 80)
+        }
+        .accessibilityLabel(Text("tool.opacity"))
     }
 
     private func widthDot(_ width: Double) -> some View {

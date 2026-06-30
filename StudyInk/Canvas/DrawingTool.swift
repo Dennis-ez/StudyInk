@@ -94,7 +94,9 @@ struct ToolState: Codable, Equatable {
         case .hand:
             return VectorToolConfig(tool: .pen, color: canonical, width: width, draws: false)
         case .highlighter:
-            return VectorToolConfig(tool: .pen, color: canonical.withAlphaComponent(min(opacity, 0.4)),
+            // Opacity is user-controlled (the InkOptionsStrip slider), capped so it
+            // stays a see-through highlight, never a solid fill.
+            return VectorToolConfig(tool: .pen, color: canonical.withAlphaComponent(min(opacity, 0.6)),
                                     width: width * 2.2, draws: true)
         // Distinct pens (the engine is constant-width, so differentiate by weight +
         // opacity rather than taper): ballpoint fine & crisp, monoline medium-uniform,

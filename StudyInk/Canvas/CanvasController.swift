@@ -57,6 +57,17 @@ final class CanvasController: NSObject, ObservableObject {
     }
     @Published private(set) var canUndo = false
     @Published private(set) var canRedo = false
+
+    /// The colours the user has recently picked (most-recent first), for a Notability-
+    /// style "recents" row in the colour options. Persisted across launches.
+    @Published private(set) var recentColors: [String] =
+        (UserDefaults.standard.array(forKey: "tools.recentColors") as? [String]) ?? []
+    func recordRecentColor(_ hex: String) {
+        var r = recentColors.filter { $0.caseInsensitiveCompare(hex) != .orderedSame }
+        r.insert(hex, at: 0)
+        recentColors = Array(r.prefix(8))
+        UserDefaults.standard.set(recentColors, forKey: "tools.recentColors")
+    }
     /// Snap hand-drawn shapes (line/circle/rectangle/…) shortly after pen-up.
     @Published var autoShapes: Bool = (UserDefaults.standard.object(forKey: "settings.autoShapes") as? Bool) ?? true {
         didSet { UserDefaults.standard.set(autoShapes, forKey: "settings.autoShapes"); applyTool() }
