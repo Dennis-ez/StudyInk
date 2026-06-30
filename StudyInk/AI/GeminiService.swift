@@ -81,6 +81,54 @@ enum GeminiService {
         return text
     }
 
+    /// Structured-output send (handoff §6): forces `responseMimeType: application/json`
+    /// and a Gemini `responseSchema` (OpenAPI subset, passed as a plain dictionary) so
+    /// the reply can't be malformed. Built via JSONSerialization because the schema is
+    /// dynamic per intent. Returns the raw JSON text for `AIClient` to decode.
+    static func sendStructured(system: String, messages: [AIMessage], schema: [String: Any],
+                               maxTokens: Int = 1200, temperature: Double = 0.2) async throws -> String {
+        guard let apiKey = AIConfig.geminiKey else { throw AIServiceError.missingKey(.gemini) }
+        let model = AIConfig.model(for: .gemini)
+        let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent")!
+
+        func partDict(_ content: AIContent) -> [String: Any] {
+            switch content {
+            case .text(let value): return ["text": value]
+            case .imagePNG(let data): return ["inline_data": ["mime_type": "image/png", "data": data.base64EncodedString()]]
+            }
+        }
+        let contents: [[String: Any]] = messages.map { message in
+            ["role": message.role == .assistant ? "model" : "user", "parts": message.content.map(partDict)]
+        }
+        let body: [String: Any] = [
+            "system_instruction": ["parts": [["text": system]]],
+            "contents": contents,
+            "generationConfig": [
+                "maxOutputTokens": maxTokens,
+                "temperature": temperature,
+                "responseMimeType": "application/json",
+                "responseSchema": schema
+            ]
+        ]
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 90
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let data = try await perform(request)
+        let decoded = try JSONDecoder().decode(ResponseBody.self, from: data)
+        let text = (decoded.candidates ?? [])
+            .compactMap { $0.content?.parts }
+            .flatMap { $0 }
+            .compactMap(\.text)
+            .joined(separator: "\n")
+        guard !text.isEmpty else { throw AIServiceError.badResponse(200, "empty Gemini response") }
+        return text
+    }
+
     /// GET /v1beta/models — only models that support generateContent.
     static func listModels() async throws -> [String] {
         guard let apiKey = AIConfig.geminiKey else { throw AIServiceError.missingKey(.gemini) }
