@@ -1162,7 +1162,10 @@ struct NoteEditorView: View {
     }
 
     private func croppedImage(of region: CGRect, page: Page) -> UIImage? {
-        let full = PageRenderer.image(for: page, darkMode: colorScheme == .dark)
+        // The AI focuses ONLY on this crop, so render it the way a vision model reads best:
+        // clean white paper, no ruled-line noise, dark ink on white, high-res — regardless
+        // of the user's dark mode.
+        let full = PageRenderer.recognitionImage(PageRenderer.Snapshot(page: page), scale: 3)
         guard let cg = full.cgImage else { return nil }
         let pixelScale = CGFloat(cg.width) / max(full.size.width, 1)
         let pixelRect = CGRect(
