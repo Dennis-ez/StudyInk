@@ -1195,18 +1195,24 @@ struct NoteEditorView: View {
         guard !strokes.isEmpty else { return false }
         let tapR: CGFloat = 24
         func area(_ r: CGRect) -> CGFloat { max(r.width, 1) * max(r.height, 1) }
+        // ONLY shapes are tap-selectable, never handwriting. Detect shape-ness
+        // GEOMETRICALLY (not a stored tag — that would be lost on transform): a
+        // snapped line/circle/rectangle is clean enough that ShapeRecognizer
+        // re-recognises it; messy writing isn't. minDiagonal mirrors the auto-shape
+        // floor so handwriting-sized marks don't count.
+        func isShape(_ s: VectorInk.Stroke) -> Bool { ShapeRecognizer.recognize(s, minDiagonal: 60) != nil }
         // Prefer strokes whose INK is under the finger (tapping on the line); fall
         // back to strokes whose bounds enclose the tap (tapping inside a closed shape).
         var hits = strokes.filter { s in
-            s.bbox.insetBy(dx: -tapR, dy: -tapR).contains(point)
+            isShape(s) && s.bbox.insetBy(dx: -tapR, dy: -tapR).contains(point)
                 && s.samples.contains { hypot($0.location.x - point.x, $0.location.y - point.y) <= tapR + $0.width }
         }
-        if hits.isEmpty { hits = strokes.filter { $0.bbox.contains(point) } }
-        // Most specific = smallest bounds; then grow to the connected shape (strokes
-        // whose bounds overlap it — e.g. the 4 sides of a drawn rectangle).
+        if hits.isEmpty { hits = strokes.filter { isShape($0) && $0.bbox.contains(point) } }
+        // Most specific = smallest bounds; then grow to the connected shape (other
+        // SHAPE strokes whose bounds overlap it — e.g. the 4 sides of a rectangle).
         guard let primary = hits.min(by: { area($0.bbox) < area($1.bbox) }) else { return false }
         var bounds = primary.bbox
-        for s in strokes where s.bbox.intersects(primary.bbox.insetBy(dx: -2, dy: -2)) {
+        for s in strokes where isShape(s) && s.bbox.intersects(primary.bbox.insetBy(dx: -2, dy: -2)) {
             bounds = bounds.union(s.bbox)
         }
         let r = bounds.insetBy(dx: -1, dy: -1)
