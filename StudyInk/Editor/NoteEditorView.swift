@@ -1737,7 +1737,11 @@ extension NoteEditorView {
         gradePromptTask?.cancel()
         ambient.invalidateGhost()
         ambient.clearGradePrompt()
-        guard ambient.sensitivity != .off, !distractionFree else { return }
+        // Guided mode is its OWN proactive watcher (strokeOccurred → checkPage). When
+        // it's on, don't also run the ambient idle ghost/grade — otherwise every
+        // pen-pause fires two AI calls and shows two competing surfaces. Manual
+        // check-my-work / suggest-next buttons still work.
+        guard ambient.sensitivity != .off, !distractionFree, !guidedMode.isEnabled else { return }
         ghostIdleTask = Task {
             try? await Task.sleep(nanoseconds: 3_900_000_000)
             // Doodle / diagram line → the tutor stays silent (intent: sketching).
