@@ -419,7 +419,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         // While a stroke is in flight, leave the document exactly where it is — a
         // re-inset/recenter here slides the page out from under the pen (and snaps
         // back on lift). The lift triggers a settling layout.
-        guard !strokeInFlight else { publishGeometry(); return }
+        guard !vectorCanvas.isDrawing else { publishGeometry(); return }
         let top = safeAreaInsets.top + topGutter
         if abs(contentInset.top - top) > 0.5 {
             let restingAtTop = contentOffset.y <= -contentInset.top + 1
@@ -902,9 +902,9 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         unfreezeInkAfterScroll()
         publishGeometry(sync: true)   // exact final overlay positions (the scroll throttle may skip the last frame)
         guard !isZooming, !isZoomBouncing else { return }
-        // Don't steal the live canvas while the pen is on the page.
-        let drawingState = canvas.drawingGestureRecognizer.state
-        guard drawingState != .began, drawingState != .changed else { return }
+        // Don't steal the live canvas while the pen is on the page (would re-mount it
+        // mid-stroke). Check the REAL ink surface — the vector canvas.
+        guard !vectorCanvas.isDrawing else { return }
         let nearest = nearestPageToCenter()
         if nearest != activeIndex { activatePage(nearest) }
         if controller.currentPageIndex != nearest || controller.visiblePageIndex != nearest {

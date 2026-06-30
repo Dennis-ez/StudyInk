@@ -301,6 +301,9 @@ final class VectorInkView: UIView {
 
     var onChange: (() -> Void)?
     var strokeCount: Int { strokes.count }
+    /// True while a pen stroke is mid-flight (touch down, not yet lifted). The engine
+    /// uses it to avoid re-laying-out / re-mounting the page under the pen.
+    var isDrawing: Bool { !current.isEmpty }
 
     /// When true, a deliberately-drawn shape (line/circle/box, larger than handwriting)
     /// is snapped to clean geometry on lift while inking — the editor's "auto-shapes".
