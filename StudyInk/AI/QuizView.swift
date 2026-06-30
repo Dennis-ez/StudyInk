@@ -44,7 +44,7 @@ final class QuizController: ObservableObject {
             """))
 
             let raw = try await AIService.send(
-                system: SystemPrompt.tutor(subjectContext: note.subjectContext ?? "calculus1"),
+                system: SystemPrompt.tutor(subjectContext: note.subjectContext ?? "general"),
                 messages: [.user(blocks)],
                 maxTokens: 2000
             )

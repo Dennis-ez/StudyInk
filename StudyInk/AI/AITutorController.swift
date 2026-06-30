@@ -86,7 +86,7 @@ final class AITutorController: ObservableObject {
             if let systemHint { blocks.append(.text(systemHint)) }
 
             let raw = try await AIService.send(
-                system: SystemPrompt.tutor(subjectContext: note.subjectContext ?? "calculus1"),
+                system: SystemPrompt.tutor(subjectContext: note.subjectContext ?? "general"),
                 messages: [.user(blocks)],
                 maxTokens: 2400   // room for a full worked explanation (was truncating mid-$…$)
             )
@@ -126,7 +126,7 @@ final class AITutorController: ObservableObject {
             }
 
             let raw = try await AIService.send(
-                system: SystemPrompt.tutor(subjectContext: note.subjectContext ?? "calculus1"),
+                system: SystemPrompt.tutor(subjectContext: note.subjectContext ?? "general"),
                 messages: messages,
                 maxTokens: 2400
             )
