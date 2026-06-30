@@ -11,8 +11,15 @@ struct AIAnnotationModel: Codable, Equatable, Identifiable {
 
     var id = UUID()
     var kind: Kind
-    /// OCR string the annotation targets (resolved to a rect against OCR lines).
+    /// OCR string the annotation targets (fallback resolution against OCR lines).
     var matchString: String?
+    /// Normalized [x,y,w,h] (0–1) region in the page IMAGE the model saw — the
+    /// PREFERRED target (the model sees the image). Resolved + snapped to strokes.
+    /// Optional so persisted (pre-box) bubbles still decode.
+    var box: [Double]?
+    /// True once the rect was snapped to actual vector strokes — it tracks those,
+    /// so erasing the ink clears the mark. Optional for decode compatibility.
+    var strokeAnchored: Bool?
     /// Resolved target rect in page coordinates; nil until matched.
     var rectX: Double?
     var rectY: Double?

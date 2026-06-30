@@ -9,6 +9,7 @@ enum AIResponseParser {
             let target: String?
             let match_string: String?
             let color: String?
+            let box: [Double]?
         }
         let annotations: [Annotation]?
         let chips: [String]?
@@ -27,6 +28,7 @@ enum AIResponseParser {
             annotations = (payload.annotations ?? []).compactMap { item in
                 guard let kind = AIAnnotationModel.Kind(rawValue: item.type) else { return nil }
                 var annotation = AIAnnotationModel(kind: kind, matchString: item.match_string, colorToken: item.color ?? "")
+                annotation.box = item.box
                 if annotation.colorToken.isEmpty { annotation.colorToken = annotation.defaultToken }
                 return annotation
             }
@@ -79,32 +81,65 @@ enum AIResponseParser {
         return (String(raw[..<index]), candidate)
     }
 
-    /// Resolves text_match annotations to page rects using OCR line boxes.
-    /// Partial matches slice the line box proportionally to the matched range.
-    static func resolve(annotations: [AIAnnotationModel], against lines: [OCRLine]) -> [AIAnnotationModel] {
+    /// Resolves each annotation to a precise page rect: prefer the model's normalized
+    /// `box` (it SEES the image) mapped through the same content-crop the image used,
+    /// else fall back to OCR-line text matching. Either candidate is then SNAPPED to the
+    /// actual vector strokes under it — so the mark lands on the handwriting, not a loose
+    /// region, and tracks those strokes (erasing the ink clears the mark).
+    /// `imageCrop` is the page-space rect the AI's image covered (contentBounds, or the
+    /// full page when uncropped). `strokes` are the page's vector strokes, page space.
+    static func resolve(annotations: [AIAnnotationModel], lines: [OCRLine],
+                        strokes: [VectorInk.Stroke], imageCrop: CGRect) -> [AIAnnotationModel] {
         annotations.map { annotation in
-            guard annotation.rect == nil, let target = annotation.matchString?.normalizedForMatch, !target.isEmpty else {
-                return annotation
-            }
+            guard annotation.rect == nil else { return annotation }
             var resolved = annotation
-            for line in lines {
-                let haystack = line.text.normalizedForMatch
-                guard let range = haystack.range(of: target) else { continue }
-                let start = haystack.distance(from: haystack.startIndex, to: range.lowerBound)
-                let length = haystack.distance(from: range.lowerBound, to: range.upperBound)
-                let total = max(haystack.count, 1)
-                let fractionStart = CGFloat(start) / CGFloat(total)
-                let fractionWidth = CGFloat(length) / CGFloat(total)
-                resolved.rect = CGRect(
-                    x: line.rect.minX + line.rect.width * fractionStart,
-                    y: line.rect.minY,
-                    width: max(line.rect.width * fractionWidth, 24),
-                    height: line.rect.height
+            // 1) Candidate region.
+            var candidate: CGRect?
+            if let b = annotation.box, b.count == 4, imageCrop.width > 0, imageCrop.height > 0 {
+                candidate = CGRect(
+                    x: imageCrop.minX + CGFloat(b[0]) * imageCrop.width,
+                    y: imageCrop.minY + CGFloat(b[1]) * imageCrop.height,
+                    width: max(CGFloat(b[2]) * imageCrop.width, 8),
+                    height: max(CGFloat(b[3]) * imageCrop.height, 8)
                 )
-                break
+            } else if let target = annotation.matchString?.normalizedForMatch, !target.isEmpty {
+                candidate = ocrRect(for: target, in: lines)
+            }
+            guard let rect = candidate else { return resolved }
+            // 2) Snap to the ink under the candidate (tight union of intersecting strokes).
+            let hits = strokes.filter { $0.bbox.intersects(rect) }
+            if !hits.isEmpty {
+                resolved.rect = hits.dropFirst().reduce(hits[0].bbox) { $0.union($1.bbox) }
+                resolved.strokeAnchored = true
+            } else {
+                resolved.rect = rect
             }
             return resolved
         }
+    }
+
+    /// OCR-only convenience (no stroke snapping / box) for callers without page
+    /// context. A zero crop disables the box path, so this is pure OCR resolution.
+    static func resolve(annotations: [AIAnnotationModel], against lines: [OCRLine]) -> [AIAnnotationModel] {
+        resolve(annotations: annotations, lines: lines, strokes: [], imageCrop: .zero)
+    }
+
+    /// OCR-line text match → a proportional slice of the line box (page space).
+    private static func ocrRect(for target: String, in lines: [OCRLine]) -> CGRect? {
+        for line in lines {
+            let haystack = line.text.normalizedForMatch
+            guard let range = haystack.range(of: target) else { continue }
+            let start = haystack.distance(from: haystack.startIndex, to: range.lowerBound)
+            let length = haystack.distance(from: range.lowerBound, to: range.upperBound)
+            let total = max(haystack.count, 1)
+            return CGRect(
+                x: line.rect.minX + line.rect.width * CGFloat(start) / CGFloat(total),
+                y: line.rect.minY,
+                width: max(line.rect.width * CGFloat(length) / CGFloat(total), 24),
+                height: line.rect.height
+            )
+        }
+        return nil
     }
 }
 

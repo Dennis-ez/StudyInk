@@ -2065,6 +2065,8 @@ extension NoteEditorView {
             // settles. This save just persists the ink.
             PersistenceController.shared.save()
             scheduleOCR(for: pages[index])
+            // Erasing ink should clear any AI mark that pointed at it.
+            tutor.pruneAnnotations(onPage: index, strokes: strokes)
         }
     }
 

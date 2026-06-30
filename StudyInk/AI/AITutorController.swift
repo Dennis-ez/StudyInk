@@ -151,7 +151,20 @@ final class AITutorController: ObservableObject {
             }
             bubbles[index].tone = parsed.tone
             bubbles[index].chips = parsed.chips
-            bubbles[index].annotations = AIResponseParser.resolve(annotations: parsed.annotations, against: ocrLines)
+            // Snap annotations to the page's actual ink: precise marks + erase-trackable.
+            let pageIndex = bubbles[index].pageIndex
+            let pages = note?.sortedPages ?? []
+            if pages.indices.contains(pageIndex) {
+                let snapshot = PageRenderer.Snapshot(page: pages[pageIndex])
+                let strokes = snapshot.vectorInkData.flatMap { VectorInk.decode($0) } ?? []
+                // Same content-crop the AI's page image used (so a normalized box maps back).
+                let crop = PageRenderer.contentBounds(snapshot) ?? CGRect(origin: .zero, size: snapshot.pageSize)
+                bubbles[index].annotations = AIResponseParser.resolve(
+                    annotations: parsed.annotations, lines: ocrLines, strokes: strokes, imageCrop: crop)
+            } else {
+                bubbles[index].annotations = AIResponseParser.resolve(
+                    annotations: parsed.annotations, lines: ocrLines, strokes: [], imageCrop: .zero)
+            }
         }
         logToHistory(bubbles[index])
         Haptics.success()
@@ -178,6 +191,18 @@ final class AITutorController: ObservableObject {
             bubbles[index].isCollapsed = bubbles[index].isPinned
         }
         persistPinnedBubbles()
+    }
+
+    /// After an ink change on a page, drop stroke-anchored annotations whose ink was
+    /// erased (their rect no longer covers any stroke) — so erasing clears the mark.
+    /// Only stroke-anchored marks are pruned; marks over PDF/printed content stay.
+    func pruneAnnotations(onPage pageIndex: Int, strokes: [VectorInk.Stroke]) {
+        for i in bubbles.indices where bubbles[i].pageIndex == pageIndex {
+            bubbles[i].annotations.removeAll { ann in
+                guard ann.strokeAnchored == true, let rect = ann.rect else { return false }
+                return !strokes.contains { $0.bbox.intersects(rect) }
+            }
+        }
     }
 
     func dismiss(bubbleID: UUID) {

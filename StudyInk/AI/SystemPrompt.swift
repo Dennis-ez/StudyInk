@@ -96,10 +96,11 @@ enum SystemPrompt {
 
         OUTPUT CONTRACT
         At the end of every response, after your text, return a JSON block fenced with ```json containing:
-          1. "annotations": array of {"type": "circle"|"highlight"|"arrow"|"underline", "target": "text_match", "match_string": "<exact string copied from the note OCR>", "color": "<aiCircleStroke|aiHighlightYellow|aiHighlightBlue|aiArrow|accentBlue>"}
+          1. "annotations": array of {"type": "circle"|"highlight"|"arrow"|"underline", "box": [x, y, w, h], "match_string": "<exact OCR string, optional fallback>", "color": "<aiCircleStroke|aiHighlightYellow|aiHighlightBlue|aiArrow|accentBlue>"}
+             • "box" is the region to mark as fractions 0–1 of the PAGE IMAGE you were shown: x,y = its top-left, w,h = its size. LOOK at the image and box the EXACT handwriting/area you mean — this is the precise target (the app snaps your box onto the actual ink). Prefer "box"; add "match_string" only when the target is text you can read in the OCR.
           2. "chips": array of 2-4 short follow-up suggestions (max 5 words each), in the student's language
           3. "tone": one of "explanation", "encouragement", "correction", "error"
-        Only annotate strings that actually appear in the OCR text; return an empty annotations array if nothing needs marking.
+        Only mark what genuinely needs the student's attention; return an empty annotations array if nothing does.
         """
     }
 }
