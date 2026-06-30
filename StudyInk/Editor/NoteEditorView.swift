@@ -82,7 +82,6 @@ struct NoteEditorView: View {
     /// An ink-free lassoed region (image of a PDF/printed chunk) awaiting a
     /// copy / duplicate / delete choice from the pill.
     @State private var regionSelection: RegionSelection?
-    @State private var editingShape: EditingShape?
     @State private var circleAskRegion: CGRect?
     /// Tap-to-define: cached OCR lines (page coords) for the current page, and the
     /// concept the student tapped (Lagrange, L'Hôpital, …) with its definition.
@@ -179,7 +178,7 @@ struct NoteEditorView: View {
             // gesture for the lasso tool, and the pencil is caught by the overlay
             // before it reaches the canvas. Only a committed selection / media /
             // shape edit takes the canvas out of play.
-            .allowsHitTesting(selectedMediaID == nil && strokeSelection == nil && editingShape == nil)
+            .allowsHitTesting(selectedMediaID == nil && strokeSelection == nil)
 
             // Loader over the canvas until the page's content (ink/PDF) is up — but
             // only after a short delay (loaderArmed), so a fast note switch doesn't
@@ -570,35 +569,6 @@ struct NoteEditorView: View {
                 }
             }
 
-            // Node editing for freshly created shapes.
-            if editingShape != nil {
-                ShapeNodeOverlay(
-                    editing: Binding(
-                        get: { editingShape! },
-                        set: { editingShape = $0 }
-                    ),
-                    transform: canvasController.canvasTransform(forPage: editingShape!.pageIndex),
-                    snap: snapMetrics.map { SnapMetrics(stepX: $0.stepX.map { $0 * canvasController.inkScale },
-                                                        stepY: $0.stepY.map { $0 * canvasController.inkScale }) },
-                    onChange: { _ in
-                        // No engine write during the drag — the stroke is lifted
-                        // out of the ink and the overlay preview is the only
-                        // live copy, so there's no async PencilKit lag.
-                    },
-                    onDone: {
-                        if let editing = editingShape {
-                            let stroke = ShapeRecognizer.idealStroke(
-                                for: editing.shape,
-                                ink: editing.ink,
-                                width: CGFloat(editing.width)
-                            )
-                            canvasController.engine?.endStrokeEdit(with: stroke)
-                        }
-                        editingShape = nil
-                        Haptics.tap()
-                    }
-                )
-            }
 
             if let selection = strokeSelection {
                 StrokeTransformOverlay(
@@ -1008,25 +978,6 @@ struct NoteEditorView: View {
                 // new loop is visible while it's drawn.
                 rearmLassoIfActive()
             }
-            // Fresh shapes commit clean and stay unselected — node editing
-            // only opens when the user taps a shape with a finger.
-            canvasController.onShapeTapped = { pageIndex, strokeIndex, shape, ink, width, colorHex in
-                // Commit any shape already being edited before lifting the new one.
-                if let editing = editingShape {
-                    let stroke = ShapeRecognizer.idealStroke(for: editing.shape, ink: editing.ink, width: CGFloat(editing.width))
-                    canvasController.engine?.endStrokeEdit(with: stroke)
-                    editingShape = nil
-                }
-                canvasController.engine?.beginStrokeEdit(at: strokeIndex)
-                editingShape = EditingShape(
-                    pageIndex: pageIndex,
-                    strokeIndex: strokeIndex,
-                    shape: shape,
-                    ink: ink,
-                    colorHex: colorHex,
-                    width: width
-                )
-            }
             canvasController.onAddPage = { [weak note] in
                 guard let note else { return }
                 note.addPage()
@@ -1039,10 +990,8 @@ struct NoteEditorView: View {
         }
         .onChange(of: colorScheme) { tutor.isDarkMode = colorScheme == .dark }
         .onChange(of: pageIndex) { oldIndex, newIndex in
-            // An open shape edit or lasso selection holds strokes OUT of the ink —
-            // restore/commit them before the page (and its drawing) is saved and
-            // swapped, so nothing is lost.
-            commitOpenShapeEdit()
+            // A lasso selection holds strokes OUT of the ink — commit it before the
+            // page (and its drawing) is saved and swapped, so nothing is lost.
             if strokeSelection != nil {
                 applyStrokeTransform()
                 strokeSelection = nil
@@ -1083,7 +1032,6 @@ struct NoteEditorView: View {
             // (committing any in-progress move first), so you can't draw with a
             // stray selection still active.
             if strokeSelection != nil { applyStrokeTransform() }
-            commitOpenShapeEdit()
             if regionSelection != nil { withAnimation { regionSelection = nil } }
             selectedMediaID = nil
             editingBoxID = nil
@@ -1096,7 +1044,6 @@ struct NoteEditorView: View {
         .onChange(of: textBoxes) { scheduleOverlaySave() }
         .onChange(of: mediaItems) { scheduleOverlaySave() }
         .onDisappear {
-            commitOpenShapeEdit()
             persistOverlays()
             if audio.isRecording { audio.stopRecording() }
             audio.stopPlayback()
@@ -2055,14 +2002,6 @@ extension NoteEditorView {
     }
 
     /// Commits an in-progress shape edit (its stroke is lifted out of the ink
-    /// while the node overlay is up) so navigation can't persist the page
-    /// without it.
-    private func commitOpenShapeEdit() {
-        guard let editing = editingShape else { return }
-        let stroke = ShapeRecognizer.idealStroke(for: editing.shape, ink: editing.ink, width: CGFloat(editing.width))
-        canvasController.engine?.endStrokeEdit(with: stroke)
-        editingShape = nil
-    }
 
     private func wireCanvasSave() {
         canvasController.onDrawingChanged = { [weak note] index, strokes in

@@ -321,7 +321,6 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         // canvas's ink onto whatever page just moved into our slot (ink
         // duplication on one page, loss on the other). Page mutations commit
         // up front instead (see PageNavigatorStrip / commitPendingInk).
-        abortStrokeEditIfNeeded()
         let samePageAtActiveIndex = pageID(at: activeIndex, in: layoutSignature) == pageID(at: activeIndex, in: signature)
         if !containers.isEmpty, samePageAtActiveIndex { flushPendingSave() }
         saveWorkItem?.cancel()
@@ -552,7 +551,6 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
 
     private func activatePage(_ index: Int) {
         guard index != activeIndex, containers.indices.contains(index) else { return }
-        abortStrokeEditIfNeeded()
         flushPendingSave()
         let oldIndex = activeIndex
         if containers.indices.contains(oldIndex) {
@@ -1298,54 +1296,6 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         return color.hexString
     }
 
-    // MARK: - Node editing of created shapes
-
-    private var editSession: (index: Int, originalDrawing: PKDrawing)?
-
-    /// Starts a shape-edit session by LIFTING the stroke out of the ink: the
-    /// overlay's instant preview is the only visible copy while dragging, so
-    /// there's no async-PencilKit lag ghosting behind the nodes.
-    func beginStrokeEdit(at index: Int) {
-        guard editSession == nil, canvas.drawing.strokes.indices.contains(index) else { return }
-        let original = canvas.drawing
-        editSession = (index, original)
-        var lifted = original
-        lifted.strokes.remove(at: index)
-        isProgrammaticChange = true
-        canvas.drawing = lifted
-        isProgrammaticChange = false
-    }
-
-    /// A shape edit lifts its stroke OUT of the ink — if the page is about to
-    /// be saved/switched/rebuilt mid-session, put the original stroke back
-    /// first or the lifted state gets persisted and the shape "disappears".
-    private func abortStrokeEditIfNeeded() {
-        guard let session = editSession else { return }
-        editSession = nil
-        isProgrammaticChange = true
-        canvas.drawing = session.originalDrawing
-        isProgrammaticChange = false
-        lastStrokeCount = canvas.drawing.strokes.count
-    }
-
-    /// Commits the edited shape back into the ink — one drawing write, one undo.
-    /// The editor works in the canvas's coordinate space (via canvasTransform),
-    /// so `stroke` is already in canvas coordinates.
-    func endStrokeEdit(with stroke: PKStroke) {
-        guard let session = editSession else { return }
-        editSession = nil
-        var drawing = canvas.drawing
-        drawing.strokes.insert(stroke, at: min(session.index, drawing.strokes.count))
-        canvas.undoManager?.registerUndo(withTarget: canvas) { target in
-            target.drawing = session.originalDrawing
-        }
-        isProgrammaticChange = true
-        canvas.drawing = drawing
-        isProgrammaticChange = false
-        lastStrokeCount = drawing.strokes.count
-        persist(drawing, at: activeIndex)
-        DispatchQueue.main.async { [controller] in controller.refreshUndoState() }
-    }
 
     /// Paste the in-app stroke clipboard. With a page point (finger-tap paste) the
     /// clipboard is centred there; otherwise it's nudged off the original. Returns
