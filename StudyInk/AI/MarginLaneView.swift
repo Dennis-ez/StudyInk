@@ -18,6 +18,10 @@ struct MarginLaneView: View {
     /// The student tapped the "grade my answer" glyph.
     var onGrade: () -> Void = {}
 
+    /// True while the ghost's why/steps detail is open — drives the matching
+    /// color-coded highlights over the student's ink on the canvas.
+    @State private var ghostDetailShown = false
+
     /// Smallest page-space x a glyph may sit at (keeps it on the page for a
     /// left-margin question); right-column questions sit beside their own line.
     private let minGlyphPageX: CGFloat = 30
@@ -82,14 +86,26 @@ struct MarginLaneView: View {
                     .transition(.scale(scale: 0.92, anchor: .topTrailing).combined(with: .opacity))
                 }
 
+                // Color-coded highlights over the student's own work — the params the
+                // tutor used — shown WHILE the why/steps detail is open, matching the
+                // chip colors in the card.
+                if let g = ambient.ghost, g.pageIndex == pageIndex, ghostDetailShown, !g.highlights.isEmpty {
+                    InkHighlightOverlay(highlights: g.highlights, transform: transform)
+                }
+                if let ex = ambient.explanation, ex.pageIndex == pageIndex, !ex.highlights.isEmpty {
+                    InkHighlightOverlay(highlights: ex.highlights, transform: transform)
+                }
+
                 // Ghost next-step suggestion, faint amber ahead of the pen.
                 if let g = ambient.ghost, g.pageIndex == pageIndex {
                     GhostInkLayer(
                         ghost: g,
                         transform: transform,
                         onAccept: { onAcceptGhost(g) },
-                        onDismiss: { ambient.dismissGhost() }
+                        onDismiss: { ambient.dismissGhost() },
+                        onDetailChanged: { ghostDetailShown = $0 }
                     )
+                    .onDisappear { ghostDetailShown = false }
                 }
 
                 // "Grade my answer" glyph — parks in the trailing margin at the
@@ -109,6 +125,7 @@ struct MarginLaneView: View {
                 if let ex = ambient.explanation, ex.pageIndex == pageIndex {
                     let p = transform.toScreen(ex.anchor)
                     StepDetailCard(why: ex.why, steps: ex.steps, isLoading: ex.isLoading,
+                                   highlights: ex.highlights,
                                    onDismiss: { ambient.dismissExplanation() })
                         .position(
                             x: min(max(p.x, 180), geo.size.width - 170 - trailingInset),
@@ -118,6 +135,38 @@ struct MarginLaneView: View {
                 }
             }
         }
+    }
+}
+
+/// Translucent color-coded boxes drawn over the student's OWN ink at the spots the
+/// tutor used to derive its step — each box's color matches its chip in the why/steps
+/// card. Never intercepts touches; the ink stays readable through the wash.
+struct InkHighlightOverlay: View {
+    let highlights: [AIHighlight]
+    let transform: CanvasTransform
+    @State private var appeared = false
+
+    var body: some View {
+        ZStack {
+            ForEach(highlights) { h in
+                if let rect = h.rect {
+                    let r = transform.toScreen(rect)
+                    let color = AIHighlightPalette.color(h.colorIndex)
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .fill(color.opacity(0.20))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                .strokeBorder(color.opacity(0.55), lineWidth: 1.5)
+                        )
+                        .frame(width: r.width + 10, height: r.height + 8)
+                        .position(x: r.midX, y: r.midY)
+                        .opacity(appeared ? 1 : 0)
+                        .scaleEffect(appeared ? 1 : 0.92)
+                }
+            }
+        }
+        .allowsHitTesting(false)
+        .onAppear { withAnimation(.spring(response: 0.32, dampingFraction: 0.75)) { appeared = true } }
     }
 }
 
@@ -131,6 +180,9 @@ struct GhostInkLayer: View {
     let transform: CanvasTransform
     var onAccept: () -> Void
     var onDismiss: () -> Void
+    /// Fired when the why/steps detail is revealed/hidden, so the editor can show
+    /// the matching color-coded highlights over the student's ink on the canvas.
+    var onDetailChanged: (Bool) -> Void = { _ in }
     @State private var showDetail = false
     @State private var preview: PreviewState = .rendering
 
@@ -145,6 +197,7 @@ struct GhostInkLayer: View {
             }
         }
         .task(id: ghost.text) { await renderPreview() }
+        .onChange(of: showDetail) { onDetailChanged(showDetail) }
     }
 
     /// The handwriting strokes drawn as vectors, sized + placed to match writeInk.
@@ -179,7 +232,10 @@ struct GhostInkLayer: View {
             // STATIC (no pulse: §7 "at most one breathing element on screen").
             .opacity(0.30)
             .contentShape(Rectangle())
-            .onTapGesture { onAccept() }
+            // Tap the ink → reveal HOW it got there (why + steps), not a silent accept
+            // (a spoiler some students don't want). Accept stays on the "Keep" button +
+            // the flick-right.
+            .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { showDetail.toggle() } }
             whyButton.offset(x: 18, y: -14)
             dismissButton.offset(x: 18, y: 14)
         }
@@ -197,7 +253,8 @@ struct GhostInkLayer: View {
         let p = transform.toScreen(ghost.anchor)
         return HStack(alignment: .center, spacing: 7) {
             AIInkMath(latex: ghost.text, color: AppTheme.current.aiAccent, fontSize: 20)
-                .opacity(0.7).contentShape(Rectangle()).onTapGesture { onAccept() }
+                .opacity(0.7).contentShape(Rectangle())
+                .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { showDetail.toggle() } }
             whyButton
             dismissButton
         }
@@ -279,7 +336,12 @@ struct GhostInkLayer: View {
                 lines.append(pts)
             }
             guard maxX > minX, maxY > minY else { return nil }
-            return (lines, CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY))
+            // Pad by the stroke width: the bounds are the CENTERLINE, but the ink is
+            // stroked ±strokeWidth/2 beyond it, so a tight frame clipped the edges
+            // (the "looks cropped" report). A full-strokeWidth margin clears it.
+            let pad = max(2.4, fontSize * 0.135) + 1
+            return (lines, CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+                .insetBy(dx: -pad, dy: -pad))
         }.value
         if let (lines, bounds) = result {
             withAnimation(.easeIn(duration: 0.2)) { preview = .ready(lines, bounds) }
@@ -292,7 +354,7 @@ struct GhostInkLayer: View {
     /// why + worked steps. Keep = tap the ink or flick right; dismiss = flick left.
     private var ghostSteps: some View {
         VStack(alignment: .leading, spacing: 6) {
-            StepDetailCard(why: ghost.why, steps: ghost.steps,
+            StepDetailCard(why: ghost.why, steps: ghost.steps, highlights: ghost.highlights,
                            onDismiss: { withAnimation(.easeOut(duration: 0.2)) { showDetail = false } })
             // Keep — write the suggestion in as real ink (the step card has no verb).
             Button(action: onAccept) {
@@ -383,6 +445,9 @@ struct StepDetailCard: View {
     let why: String?
     let steps: [String]
     var isLoading: Bool = false
+    /// The params/terms the tutor used, color-coded — each chip's color matches the
+    /// highlight drawn over that term on the canvas.
+    var highlights: [AIHighlight] = []
     var onDismiss: () -> Void
 
     private var rtl: Bool { (why?.isMostlyRTL ?? false) || (steps.first?.isMostlyRTL ?? false) }
@@ -405,6 +470,7 @@ struct StepDetailCard: View {
                 }
             } else {
                 if let why, !why.isEmpty { AIRichText(content: why).font(.system(size: 12)) }
+                if !highlights.isEmpty { consideredChips }
                 ForEach(Array(steps.enumerated()), id: \.offset) { i, step in
                     HStack(alignment: .top, spacing: 8) {
                         Text(verbatim: "\(i + 1)")
@@ -425,6 +491,31 @@ struct StepDetailCard: View {
         .shadow(color: AppTheme.current.aiAccent.opacity(0.14), radius: 16, y: 6)
         // Hebrew reason/steps read right-to-left (number badge on the right).
         .environment(\.layoutDirection, rtl ? .rightToLeft : .leftToRight)
+    }
+
+    /// The color-coded terms the tutor drew on — each chip's color matches the
+    /// highlight over that term on the canvas, so the student can connect "this
+    /// piece of my work" to "this color in the explanation".
+    private var consideredChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(highlights) { h in
+                    HStack(spacing: 4) {
+                        Circle().fill(AIHighlightPalette.color(h.colorIndex)).frame(width: 6, height: 6)
+                        Text(h.label.mathToUnicode())
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(AIHighlightPalette.color(h.colorIndex))
+                            .lineLimit(1)
+                    }
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(AIHighlightPalette.color(h.colorIndex).opacity(0.13), in: Capsule())
+                    .overlay(Capsule().strokeBorder(AIHighlightPalette.color(h.colorIndex).opacity(0.3)))
+                }
+            }
+            .padding(.vertical, 1)
+        }
+        // Chips read left-to-right even in an RTL card (the math/labels are LTR).
+        .environment(\.layoutDirection, .leftToRight)
     }
 }
 

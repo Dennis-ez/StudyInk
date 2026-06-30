@@ -78,6 +78,38 @@ struct StepExplanation: Equatable {
     var why: String?
     var steps: [String]
     var isLoading: Bool
+    /// The params/terms from the student's own work the tutor used — color-coded
+    /// as chips here and as matching highlights over their ink on the canvas.
+    var highlights: [AIHighlight] = []
+}
+
+/// One thing the tutor "took into consideration": a term/value/param read off the
+/// student's work. Shown as a colored chip in the why/steps card and, when it has a
+/// location, as a matching-colored highlight over that spot on the canvas — so the
+/// student sees WHICH part of their work fed the explanation. Subject-agnostic.
+struct AIHighlight: Equatable, Identifiable {
+    let id = UUID()
+    /// The term as written (e.g. "(x-1)²", "valence electrons", "1789").
+    var label: String
+    /// Page-space rect over the student's ink, or nil when it can't be located.
+    var rect: CGRect?
+    /// Index into AIHighlightPalette — the chip + the on-ink box share this color.
+    var colorIndex: Int
+
+    static func == (a: AIHighlight, b: AIHighlight) -> Bool {
+        a.label == b.label && a.rect == b.rect && a.colorIndex == b.colorIndex
+    }
+}
+
+/// A small fixed set of distinct, legible accents used to color-code the tutor's
+/// considered params across the bubble (chips) and the canvas (ink highlights).
+enum AIHighlightPalette {
+    /// Canonical (light) hexes; the on-ink box uses a translucent fill so dark
+    /// ink stays readable through it.
+    static let hexes = ["#2E7DF6", "#8B5CF6", "#0F9D8C", "#E0529C", "#E08A1E"]
+    static func color(_ i: Int) -> Color { Color(hex: hexes[wrap(i)]) ?? .blue }
+    static func uiColor(_ i: Int) -> UIColor { UIColor(hex: hexes[wrap(i)]) ?? .systemBlue }
+    private static func wrap(_ i: Int) -> Int { ((i % hexes.count) + hexes.count) % hexes.count }
 }
 
 struct GhostSuggestion {
@@ -93,6 +125,9 @@ struct GhostSuggestion {
     var steps: [String] = []
     /// True when completing the current line (after '='), false for a new line.
     var inline: Bool = false
+    /// The params/terms from the student's work this step builds on — color-coded
+    /// as chips in the why/steps card and as matching highlights on the canvas.
+    var highlights: [AIHighlight] = []
 
     var hasDetail: Bool { (why?.isEmpty == false) || !steps.isEmpty }
 }
@@ -449,13 +484,17 @@ final class AmbientTutorController: ObservableObject {
         do {
             let context = await NoteContextBuilder.build(note: note, currentPageIndex: pageIndex, darkMode: darkMode)
             var blocks = context.blocks
-            blocks.append(.text("The student wants to understand this point in their work: \"\(focus)\". Explain it as a short ordered sequence of WORKED steps that follow from / correct their actual work on the page. Output JSON ONLY: {\"why\":\"<ONE short sentence, in the student's WRITTEN language, saying which rule/operation and on what>\",\"steps\":[\"<each step: what you do, then ' → ', then the RESULTING expression in $...$; at most 5>\"]}. Write \"why\" and \"steps\" in \(SystemPrompt.languageTarget)."))
+            blocks.append(.text("The student wants to understand this point in their work: \"\(focus)\". Explain it as a short ordered sequence of WORKED steps that follow from / correct their actual work on the page. Output JSON ONLY: {\"why\":\"<ONE short sentence, in the student's WRITTEN language, saying which rule/operation and on what>\",\"steps\":[\"<each step: what you do, then ' → ', then the RESULTING expression in $...$; at most 5>\"],\"highlights\":[{\"label\":\"<a param/term/value FROM THE STUDENT'S OWN WORK you used — any subject>\",\"box\":[x,y,w,h]}]}. In \"highlights\" box = the term's location in the page image as fractions 0–1 (top-left x,y + size w,h); at most 4, only terms actually on the page, omit any you can't locate. Write \"why\" and \"steps\" in \(SystemPrompt.languageTarget)."))
             let raw = try await AIService.send(system: Self.explainSystem, messages: [.user(blocks)], maxTokens: 1200)
-            let (why, steps) = Self.parseSteps(raw)
+            let (why, steps, rawHighlights) = Self.parseSteps(raw)
             // Don't clobber a newer request.
             guard explanation?.anchor == anchor, explanation?.isLoading == true else { return }
+            let pageSize = note.sortedPages.indices.contains(pageIndex)
+                ? note.sortedPages[pageIndex].canvasSize : .zero
+            let highlights = Self.resolveHighlights(rawHighlights, pageSize: pageSize)
             withAnimation(.easeOut(duration: 0.2)) {
-                explanation = StepExplanation(pageIndex: pageIndex, anchor: anchor, why: why, steps: steps, isLoading: false)
+                explanation = StepExplanation(pageIndex: pageIndex, anchor: anchor, why: why, steps: steps,
+                                              isLoading: false, highlights: highlights)
             }
         } catch {
             if explanation?.anchor == anchor { explanation = nil }
@@ -535,35 +574,37 @@ final class AmbientTutorController: ObservableObject {
                 ? "\(lineRef) and it is UNFINISHED. Continue from THERE — give the single next line that directly follows it, completing what they started. For math: do the algebra and write the COMPLETE result that belongs after the '=' (e.g. '2x =' → the value of x; a derivative → the fully simplified form combining ALL factors). For an essay or any other subject: finish that sentence/point correctly. Never restate the left side, never jump back to an earlier step, never a partial fragment. Use LaTeX for math (\\frac{num}{den} NOT a/b, x^{2}, x_{0}, \\sqrt{...}, · for multiply); plain words for non-math. Output ONLY that line — no $ delimiters. If you genuinely can't, output nothing."
                 : "\(lineRef). Give the SINGLE most useful next line toward completing the task — continue from there, do NOT jump back to an earlier step. Use LaTeX for math (\\frac{num}{den}, x^{2}, \\sqrt{...}, · for multiply); plain words for non-math. Output ONLY the line — no $ delimiters. ALWAYS give your best next step; output nothing ONLY if the page is blank or truly unreadable."
             blocks.append(.text(instruction))
-            blocks.append(.text("Also include \"steps\": the ordered sub-steps that lead to this next line (at most 5). Format EACH step as: what you do, then ' → ', then the RESULT after that step (in $...$ where the content is math, plain words otherwise) — so the student sees the output at each stage. Write \"why\" and \"steps\" in \(SystemPrompt.languageTarget)."))
+            blocks.append(.text("Also include \"steps\": the ordered sub-steps that lead to this next line (at most 5). Format EACH step as: what you do, then ' → ', then the RESULT after that step (in $...$ where the content is math, plain words otherwise) — so the student sees the output at each stage. Write \"why\" and \"steps\" in \(SystemPrompt.languageTarget). Also include \"highlights\": the specific params/terms/values FROM THE STUDENT'S OWN WORK that you used to derive this step (e.g. a factor, a coefficient, a given quantity, a named term — for ANY subject, not just math), at most 4, ONLY ones actually written on the page. Each is {\"label\":\"<the term EXACTLY as it appears>\",\"box\":[x,y,w,h]} where box is the term's location in the page image as fractions 0–1 (x,y = top-left, w,h = size). Omit highlights you can't locate; never invent a box."))
             // Headroom for Gemini 2.5 thinking tokens (which count against the cap)
             // so the {next,why} JSON isn't truncated mid-string.
             // Headroom for Gemini 2.5 thinking tokens + the "steps" array, so the
             // {next,why,steps} JSON isn't truncated (which dropped the steps).
             let raw = try await AIService.send(system: Self.ghostSystem, messages: [.user(blocks)], maxTokens: 2200)
-            let (nextRaw, why, steps) = Self.parseGhost(raw)
+            let (nextRaw, why, steps, rawHighlights) = Self.parseGhost(raw)
             let text = Self.cleanGhost(nextRaw)
             guard !text.isEmpty, text.count < 140 else { return }
             // Drop a suggestion that just echoes the line it's completing.
             let a = Self.mathKey(text), b = Self.mathKey(last.text)
             guard a.count >= 1, a != b, !b.contains(a) else { return }
             lastGhostSourceLine = last.text
+            let highlights = Self.resolveHighlights(rawHighlights, pageSize: page.canvasSize)
             let anchor = isOpen
                 ? CGPoint(x: last.rect.maxX + 14, y: last.rect.midY)                    // inline, centred on the line
                 : CGPoint(x: last.rect.minX, y: last.rect.maxY + last.rect.height * 0.7) // new line below, clearing a fraction
             withAnimation(.easeIn(duration: 0.25)) {
-                ghost = GhostSuggestion(pageIndex: pageIndex, anchor: anchor, text: text, why: why, steps: steps, inline: isOpen)
+                ghost = GhostSuggestion(pageIndex: pageIndex, anchor: anchor, text: text, why: why,
+                                        steps: steps, inline: isOpen, highlights: highlights)
             }
         } catch { }
     }
 
-    private static let ghostSystem = "You are an expert tutor giving a student the next step of their work. The subject may be anything — math, science, a language, an essay — so adapt; NEVER assume math. READ their handwriting from the attached page image (OCR misreads math, diagrams, and non-Latin scripts — trust the image). FIRST read any problem statement on the page — typed, printed, or a pasted screenshot/photo, possibly in another language (e.g. Hebrew) — that defines the task. Then actually WORK IT OUT yourself: the genuine next step toward completing THAT task (for math: simplify/factor/take the limit and give the worked result; for an essay or other subject: the next sentence, point, or step) — never just re-copy what the student already wrote, never a half-answer. Output a JSON object: {\"next\":\"<that one line — as LaTeX for math (\\\\frac{num}{den}, x^{2}, \\\\sqrt{...}, · for multiply; no $ delimiters); as plain words for non-math; no extra words>\",\"why\":\"<ONE short sentence, in the student's language, explaining WHY this is the next step>\",\"steps\":[\"<ordered sub-steps leading to <next>, each one short line, LaTeX in $...$ only where the content is math, at most 5>\"]}. If you can't produce a correct, useful next step, output {}."
+    private static let ghostSystem = "You are an expert tutor giving a student the next step of their work. The subject may be anything — math, science, a language, an essay — so adapt; NEVER assume math. READ their handwriting from the attached page image (OCR misreads math, diagrams, and non-Latin scripts — trust the image). FIRST read any problem statement on the page — typed, printed, or a pasted screenshot/photo, possibly in another language (e.g. Hebrew) — that defines the task. Then actually WORK IT OUT yourself: the genuine next step toward completing THAT task (for math: simplify/factor/take the limit and give the worked result; for an essay or other subject: the next sentence, point, or step) — never just re-copy what the student already wrote, never a half-answer. Output a JSON object: {\"next\":\"<that one line — as LaTeX for math (\\\\frac{num}{den}, x^{2}, \\\\sqrt{...}, · for multiply; no $ delimiters); as plain words for non-math; no extra words>\",\"why\":\"<ONE short sentence, in the student's language, explaining WHY this is the next step>\",\"steps\":[\"<ordered sub-steps leading to <next>, each one short line, LaTeX in $...$ only where the content is math, at most 5>\"],\"highlights\":[{\"label\":\"<a param/term/value FROM THE STUDENT'S OWN WORK you used to get <next> — any subject>\",\"box\":[x,y,w,h]}]}. In \"highlights\" the box is the term's location in the page image as fractions 0–1 (top-left x,y + size w,h); include at most 4, only terms actually on the page, and omit any you can't locate. If you can't produce a correct, useful next step, output {}."
 
     /// Pulls the {next, why} out of the ghost response (tolerates fences / prose /
     /// truncation). Critically, it NEVER falls back to dumping the raw string: a
     /// response that looks like JSON but won't parse returns empty, so we never
     /// write `{"next":"…` braces onto the page as ink.
-    private static func parseGhost(_ raw: String) -> (String, String?, [String]) {
+    private static func parseGhost(_ raw: String) -> (String, String?, [String], [RawHighlight]) {
         var src = raw
         if let f = raw.range(of: "```json", options: .caseInsensitive),
            let c = raw.range(of: "```", range: f.upperBound..<raw.endIndex) {
@@ -579,37 +620,65 @@ final class AmbientTutorController: ObservableObject {
            let next = obj["next"] as? String {
             let why = (obj["why"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
             let steps = (obj["steps"] as? [String])?.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty } ?? []
-            return (next, (why?.isEmpty == false) ? why : nil, steps)
+            return (next, (why?.isEmpty == false) ? why : nil, steps, parseHighlights(obj))
         }
         // 2) Regex-extract the string values — survives truncation (a cut-off
-        //    response with no closing brace) and stray escaping.
+        //    response with no closing brace) and stray escaping. Highlights are a
+        //    nice-to-have, so the truncation path simply omits them.
         let nextVal = firstCapture(#""next"\s*:\s*"((?:[^"\\]|\\.)*)""#, in: src).map(unescapeJSON)
         let whyVal = firstCapture(#""why"\s*:\s*"((?:[^"\\]|\\.)*)""#, in: src).map(unescapeJSON)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         if let nextVal, !nextVal.isEmpty {
             // Recover steps too (path 1 returned them, but this fallback used to drop
             // them — that's why the "?" sometimes showed a why with no steps).
-            return (nextVal, (whyVal?.isEmpty == false) ? whyVal : nil, recoverSteps(in: src))
+            return (nextVal, (whyVal?.isEmpty == false) ? whyVal : nil, recoverSteps(in: src), [])
         }
         // 3) It tried to be JSON but we couldn't recover a value → render nothing
         //    rather than spilling braces/keys onto the page.
         if src.contains("\"next\"") || src.contains("\"why\"") || src.contains("{") {
-            return ("", nil, [])
+            return ("", nil, [], [])
         }
         // 4) Genuinely plain text — treat the whole thing as the next line.
-        return (raw, nil, [])
+        return (raw, nil, [], [])
+    }
+
+    /// One un-resolved highlight as the model returned it: the term it used + the
+    /// normalized [x,y,w,h] box (0–1, page-image space) where it sits in the work.
+    struct RawHighlight { let label: String; let box: [Double]? }
+
+    /// Pull the optional "highlights" array out of a parsed JSON object.
+    private static func parseHighlights(_ obj: [String: Any]) -> [RawHighlight] {
+        guard let arr = obj["highlights"] as? [[String: Any]] else { return [] }
+        return arr.prefix(4).compactMap { h in
+            guard let label = (h["label"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !label.isEmpty else { return nil }
+            let box = (h["box"] as? [Any])?.compactMap { ($0 as? NSNumber)?.doubleValue }
+            return RawHighlight(label: label, box: (box?.count == 4) ? box : nil)
+        }
+    }
+
+    /// Resolve raw highlights to canvas-space: each normalized box → a page rect,
+    /// each gets the next palette color (so chip ↔ on-ink box match by index).
+    static func resolveHighlights(_ raw: [RawHighlight], pageSize: CGSize) -> [AIHighlight] {
+        raw.enumerated().map { i, h in
+            let rect: CGRect? = h.box.map { b in
+                CGRect(x: b[0] * pageSize.width, y: b[1] * pageSize.height,
+                       width: max(10, b[2] * pageSize.width), height: max(10, b[3] * pageSize.height))
+            }
+            return AIHighlight(label: h.label, rect: rect, colorIndex: i)
+        }
     }
 
     /// Parse {"why","steps"} for the inline explanation (no "next" field, so the
     /// ghost parser — which requires "next" — can't be reused).
-    private static func parseSteps(_ raw: String) -> (String?, [String]) {
+    private static func parseSteps(_ raw: String) -> (String?, [String], [RawHighlight]) {
         let src = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if let s = src.firstIndex(of: "{"), let e = src.lastIndex(of: "}"),
            let data = String(src[s...e]).data(using: .utf8),
            let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             let why = (obj["why"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
             let steps = (obj["steps"] as? [String])?.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty } ?? []
-            return ((why?.isEmpty == false) ? why : nil, steps)
+            return ((why?.isEmpty == false) ? why : nil, steps, parseHighlights(obj))
         }
         // Regex fallback (truncation / stray escaping): the why, then each quoted
         // string inside the steps array.
@@ -625,7 +694,7 @@ final class AmbientTutorController: ObservableObject {
                 }
             }
         }
-        return ((why?.isEmpty == false) ? why : nil, steps)
+        return ((why?.isEmpty == false) ? why : nil, steps, [])
     }
 
     /// First capture group of `pattern` in `s`, or nil.
