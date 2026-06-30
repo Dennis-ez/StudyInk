@@ -203,6 +203,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         vectorCanvas.backgroundColor = .clear
         canvas.vectorCanvas = vectorCanvas   // AI ink routes through the inert canvas → here
         vectorCanvas.onChange = { [weak self] in self?.vectorCanvasChanged() }
+        vectorCanvas.onDrawWillBegin = { [weak self] in self?.revealActiveCanvasNow() }
         // The editor's TransformLassoOverlay owns selection — the engine just captures
         // the loop and reports it (in canvas/inkScale space, matching the projection the
         // existing lasso pipeline reads).
@@ -513,13 +514,28 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
                 }
                 await MainActor.run { [weak self] in
                     guard let self, self.activeIndex == index else { return }
-                    self.lastStrokes[index] = converted
+                    // The loader no longer blocks touches, so the user may have started
+                    // drawing during this async decode. Keep those strokes on top of the
+                    // page's existing ink instead of replacing them (which lost them).
+                    let drawn = self.vectorCanvas.currentStrokes()
+                    let merged = drawn.isEmpty ? converted : converted + drawn
+                    self.lastStrokes[index] = merged
                     self.isProgrammaticChange = true
-                    self.vectorCanvas.loadStrokes(converted)
+                    self.vectorCanvas.loadStrokes(merged)
                     self.isProgrammaticChange = false
-                    self.bridgeActiveReveal(index: index)
+                    // If the user already started drawing the canvas was force-revealed
+                    // (alpha 1); running the bridge here would blink it back to alpha 0.
+                    if self.vectorCanvas.alpha < 1 {
+                        self.bridgeActiveReveal(index: index)
+                    }
                 }
             }
+        }
+        // Pre-render the immediate neighbors at high priority so swiping to them
+        // shows their ink instantly, instead of popping it in after the on-demand
+        // render lands (the "ink glitching in" on swipe). Far pages stay deferred.
+        for n in [index - 1, index + 1] where containers.indices.contains(n) {
+            if containers[n].imageView.image == nil { renderImage(for: n, priority: .userInitiated) }
         }
         shapeWorkItem?.cancel()
         DispatchQueue.main.async { [controller] in controller.refreshUndoState() }
@@ -553,6 +569,25 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
                 container?.imageView.isHidden = true
                 container?.setNeedsDisplay()
             }
+        }
+    }
+
+    /// A touch landed while the active canvas was still held transparent by the
+    /// open/swipe bridge — reveal it NOW so the first stroke shows instantly,
+    /// cancelling the pending bridge reveal (its token) and keeping the cached
+    /// image under the live canvas a beat to back any ink still loading.
+    private func revealActiveCanvasNow() {
+        guard vectorCanvas.alpha < 1 else { return }
+        revealToken += 1
+        let token = revealToken
+        vectorCanvas.alpha = 1
+        if PerfMonitor.shared.activity == "page-mount" { PerfMonitor.shared.setActivity("idle") }
+        let index = activeIndex
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
+            guard let self, self.activeIndex == index, self.revealToken == token,
+                  self.containers.indices.contains(index) else { return }
+            self.containers[index].imageView.isHidden = true
+            self.containers[index].setNeedsDisplay()
         }
     }
 

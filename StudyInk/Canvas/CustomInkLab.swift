@@ -300,6 +300,10 @@ final class VectorInkView: UIView {
     private var baseScale: CGFloat { UIScreen.main.scale * oversample }
 
     var onChange: (() -> Void)?
+    /// Fired the instant a touch lands, so the engine can reveal this canvas even
+    /// mid page-open "bridge" (when it's held transparent) — otherwise the first
+    /// stroke after entering a note is invisible until the bridge finishes.
+    var onDrawWillBegin: (() -> Void)?
     var strokeCount: Int { strokes.count }
     /// True while a pen stroke is mid-flight (touch down, not yet lifted). The engine
     /// uses it to avoid re-laying-out / re-mounting the page under the pen.
@@ -586,6 +590,10 @@ final class VectorInkView: UIView {
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let t = touches.first else { return }
+        // Reveal this canvas immediately if it's mid page-open bridge (transparent),
+        // so the very first stroke shows at once. Cheap — the engine no-ops unless
+        // the canvas is actually hidden.
+        onDrawWillBegin?()
         if tool == .eraser {
             erasedThisGesture = false
             let dirty = eraseAt(t.location(in: self))
