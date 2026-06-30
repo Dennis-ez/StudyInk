@@ -287,7 +287,10 @@ extension AITutorController {
         // undoable and auto-persists the projection (so OCR / export / AI-vision see it).
         guard let vector else { return }
         let dark = vector.traitCollection.userInterfaceStyle == .dark
-        let vec = VectorInk.strokes(from: PKDrawing(strokes: strokes)).map { s in
+        // Give the AI ink a natural pen taper (thin where the pen lands/lifts) so it reads
+        // hand-drawn rather than a blunt constant-width trace — our vector engine lets us
+        // shape per-sample width, which PencilKit's projection couldn't.
+        let vec = VectorInk.tapered(VectorInk.strokes(from: PKDrawing(strokes: strokes))).map { s in
             VectorInk.Stroke(color: InkColorAdapter.storageColor(s.color, darkMode: dark), samples: s.samples)
         }
         vector.insert(vec)

@@ -164,6 +164,31 @@ enum VectorInk {
         return PKDrawing(strokes: pk)
     }
 
+    /// Give strokes a natural pen taper — thin at the ends (where a real pen lands and
+    /// lifts), full width through the middle. Used for AI-written ink so it reads
+    /// hand-drawn rather than a blunt constant-width trace. Closed loops (o, 0, circles)
+    /// are left alone so the join doesn't pinch.
+    static func tapered(_ strokes: [Stroke]) -> [Stroke] {
+        strokes.map { s in
+            let n = s.samples.count
+            guard n >= 5 else { return s }
+            let first = s.samples[0].location, last = s.samples[n - 1].location
+            let endGap = hypot(first.x - last.x, first.y - last.y)
+            // Closed if the trace returns near its start (relative to its own extent).
+            let extent = max(s.bbox.width, s.bbox.height)
+            if endGap < extent * 0.22 { return s }
+            let ramp: CGFloat = 0.16   // taper over the first/last 16% of the stroke
+            let floor: CGFloat = 0.42  // never thinner than 42% of full width
+            let samples = s.samples.enumerated().map { i, k -> InkSample in
+                let t = CGFloat(i) / CGFloat(n - 1)
+                let edge = min(t, 1 - t)
+                let f = max(floor, min(1, edge / ramp))
+                return InkSample(location: k.location, width: k.width * f)
+            }
+            return Stroke(color: s.color, samples: samples)
+        }
+    }
+
     // MARK: Rasterise
 
     /// Render strokes to a transparent image of `size` at `scale`. Safe OFF the main

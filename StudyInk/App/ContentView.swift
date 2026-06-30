@@ -4,6 +4,14 @@ struct ContentView: View {
     @State private var showSplash = true
 
     var body: some View {
+        // DEV: launch with INK_PREVIEW=1 to eyeball AI handwriting (no API needed).
+        if ProcessInfo.processInfo.environment["INK_PREVIEW"] != nil {
+            return AnyView(InkWriterPreview())
+        }
+        return AnyView(library)
+    }
+
+    private var library: some View {
         LibraryView()
             .overlay {
                 if showSplash {
