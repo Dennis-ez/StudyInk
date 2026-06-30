@@ -948,6 +948,9 @@ struct NoteEditorView: View {
                     Haptics.selection()
                     selectedMediaID = hit.id
                     pastePoint = nil
+                } else if tapSelectStrokes(at: point) {
+                    // Tapped on ink → select that shape/cluster for move/resize/rotate.
+                    selectedMediaID = nil
                 } else {
                     selectedMediaID = nil
                     if pastePoint != nil {
@@ -1184,6 +1187,36 @@ struct NoteEditorView: View {
     }
 
     /// Lasso completed: capture the strokes under the loop for move+rotate.
+    /// Tap-to-select a shape: find the ink under the finger and hand it to the same
+    /// transform pipeline the lasso uses (move/resize/rotate). Returns true if it
+    /// selected something. `point` is in canvas/page space (same as the strokes).
+    private func tapSelectStrokes(at point: CGPoint) -> Bool {
+        let strokes = canvasController.vectorCanvas?.currentStrokes() ?? []
+        guard !strokes.isEmpty else { return false }
+        let tapR: CGFloat = 24
+        func area(_ r: CGRect) -> CGFloat { max(r.width, 1) * max(r.height, 1) }
+        // Prefer strokes whose INK is under the finger (tapping on the line); fall
+        // back to strokes whose bounds enclose the tap (tapping inside a closed shape).
+        var hits = strokes.filter { s in
+            s.bbox.insetBy(dx: -tapR, dy: -tapR).contains(point)
+                && s.samples.contains { hypot($0.location.x - point.x, $0.location.y - point.y) <= tapR + $0.width }
+        }
+        if hits.isEmpty { hits = strokes.filter { $0.bbox.contains(point) } }
+        // Most specific = smallest bounds; then grow to the connected shape (strokes
+        // whose bounds overlap it — e.g. the 4 sides of a drawn rectangle).
+        guard let primary = hits.min(by: { area($0.bbox) < area($1.bbox) }) else { return false }
+        var bounds = primary.bbox
+        for s in strokes where s.bbox.intersects(primary.bbox.insetBy(dx: -2, dy: -2)) {
+            bounds = bounds.union(s.bbox)
+        }
+        let r = bounds.insetBy(dx: -1, dy: -1)
+        beginStrokeTransform(with: [
+            CGPoint(x: r.minX, y: r.minY), CGPoint(x: r.maxX, y: r.minY),
+            CGPoint(x: r.maxX, y: r.maxY), CGPoint(x: r.minX, y: r.maxY)
+        ])
+        return strokeSelection != nil
+    }
+
     private func beginStrokeTransform(with polygon: [CGPoint]) {
         let strokes = canvasController.vectorCanvas?.currentStrokes() ?? []
         strokeRotation = 0
