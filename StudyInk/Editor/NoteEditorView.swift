@@ -272,7 +272,7 @@ struct NoteEditorView: View {
                             fontSize: fontSize,
                             colorHex: ambientInkHex,
                             avoid: ambient.lastLineRects,
-                            on: canvasController.canvasView
+                            on: canvasController.vectorCanvas
                         )
                     }
                 },
@@ -300,7 +300,7 @@ struct NoteEditorView: View {
                         colorHex: ambientInkHex,
                         avoid: g.inline ? [] : ambient.lastLineRects,
                         center: g.inline,
-                        on: canvasController.canvasView
+                        on: canvasController.vectorCanvas
                     )
                     ambient.invalidateGhost()
                 },
@@ -809,7 +809,7 @@ struct NoteEditorView: View {
                 Task {
                     await tutor.answerInInk(
                         request: request,
-                        on: canvasController.canvasView,
+                        on: canvasController.vectorCanvas,
                         colorHex: canvasController.toolState.colorHex,
                         penWidth: canvasController.toolState.width
                     )
@@ -822,7 +822,7 @@ struct NoteEditorView: View {
             Button("ai.sketch.go") {
                 let request = aiSketchText.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !request.isEmpty else { return }
-                Task { await tutor.drawSketch(request: request, on: canvasController.canvasView) }
+                Task { await tutor.drawSketch(request: request, on: canvasController.vectorCanvas) }
             }
         }
         .statusBarHidden(distractionFree)
@@ -868,7 +868,7 @@ struct NoteEditorView: View {
                 // and firing on the wrong context. The single arbiter (armed on
                 // drawingGestureBeganToken) is now the sole proactive source.
                 // Erasing fires this too: drop any glyph whose ink is now gone.
-                let inkRects = (canvasController.canvasView?.drawing.strokes ?? []).map(\.renderBounds)
+                let inkRects = (canvasController.vectorCanvas?.currentStrokes() ?? []).map(\.bbox)
                 ambient.pruneGlyphs(pageIndex: index, inkRects: inkRects)
                 // Editing a graded line (a new stroke ON it) resolves its glyph.
                 ambient.resolveGlyphs(pageIndex: index, editedBy: stroke.renderBounds)

@@ -24,7 +24,7 @@ extension AITutorController {
 
     /// Asks the model for a simple polyline sketch and inks it onto the live
     /// canvas as real strokes (erasable, lassoable, undoable like handwriting).
-    func drawSketch(request: String, on canvas: PKCanvasView?) async {
+    func drawSketch(request: String, on canvas: VectorInkView?) async {
         guard let page = currentPage, let canvas else { return }
         let pageSize = page.canvasSize
         beginTask(); defer { endTask() }
@@ -97,7 +97,7 @@ extension AITutorController {
     /// Apple-Notes-Math style "Answer in Ink": works out the answer to a
     /// question in the note and writes it next to that question as handwritten
     /// strokes (hand-style font → real PencilKit ink via InkWriter).
-    func answerInInk(request: String, on canvas: PKCanvasView?, colorHex: String, penWidth: Double) async {
+    func answerInInk(request: String, on canvas: VectorInkView?, colorHex: String, penWidth: Double) async {
         guard let note, let page = currentPage, let canvas else { return }
         let pageSize = page.canvasSize
         beginTask(); defer { endTask() }
@@ -162,7 +162,7 @@ extension AITutorController {
             let lineCount = max(1, answer.components(separatedBy: "\n").count)
             let blockSize = CGSize(width: textWidth, height: InkWriter.lineHeight(fontSize: fontSize) * CGFloat(lineCount))
             topLeft = clearSpot(near: topLeft, size: blockSize,
-                                avoiding: canvas.drawing.strokes.map(\.renderBounds),
+                                avoiding: canvas.currentStrokes().map(\.bbox),
                                 pageSize: pageSize, margin: margin)
 
             // Adapt the colour the same way the pen does (iOS 26 renders ink
@@ -197,7 +197,7 @@ extension AITutorController {
     /// by the ambient tutor, where the caller already knows exactly where the
     /// ink goes (the glyph's line rect / the ghost's anchor) — so there's no AI
     /// round-trip and no OCR anchor-matching to land it in the wrong place.
-    func writeInk(text: String, at pagePoint: CGPoint, fontSize: CGFloat = 22, colorHex: String, avoid: [CGRect] = [], center: Bool = false, on canvas: PKCanvasView?) {
+    func writeInk(text: String, at pagePoint: CGPoint, fontSize: CGFloat = 22, colorHex: String, avoid: [CGRect] = [], center: Bool = false, on canvas: VectorInkView?) {
         guard let canvas, let page = currentPage else { return }
         let pageSize = page.canvasSize
         let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -227,7 +227,7 @@ extension AITutorController {
         // column-aware (needs x-overlap too). Inline completions (center) sit on
         // their line on purpose, so they skip this.
         if !center {
-            let occupied = avoid + canvas.drawing.strokes.map(\.renderBounds)
+            let occupied = avoid + canvas.currentStrokes().map(\.bbox)
             var guardCount = 0
             while guardCount < 24 {
                 let block = CGRect(x: topLeft.x, y: topLeft.y, width: max(textWidth, 8), height: blockH)
@@ -279,43 +279,18 @@ extension AITutorController {
         return CGPoint(x: topLeft.x, y: min(topLeft.y, maxY))                 // give up
     }
 
-    /// Appends AI strokes to the canvas as a single undoable (and redoable) edit,
-    /// so the undo/redo buttons remove/restore the AI's writing like any stroke.
-    func appendInkUndoably(_ strokes: [PKStroke], to canvas: PKCanvasView) {
-        // The live canvas is the vector engine. Convert the page-space AI strokes to
-        // CANONICAL vector colour (the generated colour is display-mapped; the engine
-        // re-adapts at render) and insert — this is undoable and auto-persists the PK
-        // projection (so OCR / export / AI-vision still see the ink).
-        if let vector = (canvas as? InkCanvasView)?.vectorCanvas {
-            let dark = vector.traitCollection.userInterfaceStyle == .dark
-            let vec = VectorInk.strokes(from: PKDrawing(strokes: strokes)).map { s in
-                VectorInk.Stroke(color: InkColorAdapter.storageColor(s.color, darkMode: dark), samples: s.samples)
-            }
-            vector.insert(vec)
-            return
+    /// Appends AI strokes to the live vector canvas as a single undoable edit, so the
+    /// undo/redo buttons remove/restore the AI's writing like any stroke.
+    func appendInkUndoably(_ strokes: [PKStroke], to vector: VectorInkView?) {
+        // Convert the page-space AI strokes to CANONICAL vector colour (the generated
+        // colour is display-mapped; the engine re-adapts at render) and insert — this is
+        // undoable and auto-persists the projection (so OCR / export / AI-vision see it).
+        guard let vector else { return }
+        let dark = vector.traitCollection.userInterfaceStyle == .dark
+        let vec = VectorInk.strokes(from: PKDrawing(strokes: strokes)).map { s in
+            VectorInk.Stroke(color: InkColorAdapter.storageColor(s.color, darkMode: dark), samples: s.samples)
         }
-        let before = canvas.drawing
-        registerInkUndo(restoring: before, on: canvas)
-        // The live canvas may be supersampled for native-sharp zoom (it carries a
-        // 1/inkScale transform); strokes are generated in page coordinates, so
-        // scale them up into the canvas's coordinate space. No-op (×1) when the
-        // canvas is at identity.
-        var added = PKDrawing(strokes: strokes)
-        let inv = canvas.transform.a
-        if inv > 0, abs(inv - 1) > 0.0001 {
-            added.transform(using: CGAffineTransform(scaleX: 1 / inv, y: 1 / inv))
-        }
-        canvas.drawing = before.appending(added)
-    }
-
-    /// Registers an undo that restores `drawing`; performing it re-registers the
-    /// inverse, so the manager's redo brings the AI ink back.
-    private func registerInkUndo(restoring drawing: PKDrawing, on canvas: PKCanvasView) {
-        canvas.undoManager?.registerUndo(withTarget: canvas) { [weak self] target in
-            let current = target.drawing
-            self?.registerInkUndo(restoring: current, on: target)
-            target.drawing = drawing
-        }
+        vector.insert(vec)
     }
 }
 
