@@ -6,6 +6,8 @@ import CoreData
 /// without an API key. Shown instead of the library when the app is launched with the
 /// env var INK_PREVIEW=1 (see ContentView).
 struct InkWriterPreview: View {
+    @State private var ocr: [OCRLine] = []
+    @State private var ocrRan = false
     private let samples: [(String, CGFloat)] = [
         ("f(x) = 2x + 3", 34),
         ("The derivative is correct", 26),
@@ -40,10 +42,32 @@ struct InkWriterPreview: View {
                 } else {
                     Text("(no note found to render)").font(.caption).foregroundStyle(.secondary)
                 }
+
+                Divider().padding(.vertical, 8)
+                Text("OCR result — Vision on the recognition render @3× (conf filter ≥0.3)")
+                    .font(.headline)
+                if !ocrRan {
+                    Text("running…").font(.caption).foregroundStyle(.secondary)
+                } else if ocr.isEmpty {
+                    Text("(no text recognized)").font(.caption).foregroundStyle(.secondary)
+                } else {
+                    VStack(alignment: .leading, spacing: 3) {
+                        ForEach(ocr.indices, id: \.self) { i in
+                            Text(verbatim: "• \(ocr[i].text)   [\(String(format: "%.2f", ocr[i].confidence))]")
+                                .font(.system(.caption, design: .monospaced))
+                        }
+                    }
+                }
             }
             .padding(28)
         }
         .background(Color.white)
+        .task {
+            guard !ocrRan, let snap = Self.firstPageSnapshot() else { return }
+            let img = PageRenderer.recognitionImage(snap, scale: 3)
+            ocr = await OCRService.recognize(image: img, pageSize: snap.pageSize)
+            ocrRan = true
+        }
     }
 
     private func cell(_ label: String, _ img: UIImage?) -> some View {
