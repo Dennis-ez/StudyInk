@@ -64,7 +64,9 @@ enum OCRService {
         let snapshot = PageRenderer.Snapshot(page: page)
         let pageSize = snapshot.pageSize
         let lines = await Task.detached(priority: .utility) {
-            let image = PageRenderer.render(snapshot, darkMode: false)
+            // Clean, high-res render (white paper, no ruled-line noise) → far better
+            // handwriting recognition than the old 1× full-page render.
+            let image = PageRenderer.recognitionImage(snapshot, scale: 3)
             return await recognize(image: image, pageSize: pageSize)
         }.value
         let text = lines.map(\.text).joined(separator: "\n")

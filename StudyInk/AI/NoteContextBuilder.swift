@@ -43,8 +43,11 @@ enum NoteContextBuilder {
         let images: [Int: UIImage] = await Task.detached(priority: .userInitiated) {
             var result: [Int: UIImage] = [:]
             for index in imageIndices where snapshots.indices.contains(index) {
-                result[index] = PageRenderer.render(snapshots[index], darkMode: darkMode,
-                                                    scale: index == currentPageIndex ? 2.0 : 0.5)
+                // Clean, ALWAYS-LIGHT recognition render (dark ink on white, no ruled-line
+                // noise) — far more legible to the vision model than the user's dark-mode
+                // page (light ink on dark). Current page big so handwriting reads.
+                result[index] = PageRenderer.recognitionImage(snapshots[index],
+                                                              scale: index == currentPageIndex ? 2.0 : 0.6)
             }
             return result
         }.value
@@ -178,7 +181,7 @@ enum NoteContextBuilder {
     static func ocrLines(for page: Page) async -> [OCRLine] {
         let snapshot = PageRenderer.Snapshot(page: page)
         return await Task.detached(priority: .userInitiated) {
-            let image = PageRenderer.render(snapshot, darkMode: false)
+            let image = PageRenderer.recognitionImage(snapshot, scale: 3)
             return await OCRService.recognize(image: image, pageSize: snapshot.pageSize)
         }.value
     }

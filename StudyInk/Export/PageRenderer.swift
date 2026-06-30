@@ -58,6 +58,24 @@ enum PageRenderer {
     /// The ink shrink-boost factor for a given render scale (see `render`).
     static func inkBoost(forScale scale: CGFloat) -> CGFloat { min(4, max(1, 0.5 / scale)) }
 
+    /// A clean, high-contrast render for handwriting OCR + AI vision: white paper, the
+    /// imported PDF (if any), media, and ink — but NO ruled/grid template lines (noise
+    /// for recognition) — always LIGHT so ink reads dark-on-white whatever the user's
+    /// appearance. Render at a generous scale for OCR; the vector engine strokes ink at
+    /// any resolution off-main.
+    static func recognitionImage(_ snapshot: Snapshot, scale: CGFloat) -> UIImage {
+        let format = UIGraphicsImageRendererFormat()
+        // Cap the long side (~3500px) so an unusually tall PDF page can't blow up the
+        // render buffer; normal letter pages render at the full requested scale.
+        let longSide = max(snapshot.pageSize.width, snapshot.pageSize.height)
+        format.scale = min(scale, 3500 / max(longSide, 1))
+        format.opaque = true
+        let renderer = UIGraphicsImageRenderer(size: snapshot.pageSize, format: format)
+        return renderer.image { ctx in
+            draw(snapshot, in: ctx.cgContext, darkMode: false, recognition: true)
+        }
+    }
+
     /// Legacy pre-rasterization hook. The custom engine now ALWAYS strokes the
     /// ink itself, off-main, inside `draw()` (no PencilKit `PKDrawing.image()` —
     /// which had to run on the main thread). Kept returning nil so existing callers
@@ -120,17 +138,20 @@ enum PageRenderer {
 
     /// Paper + template/PDF only — shared by full renders and the live page
     /// container (which layers the live canvas and SwiftUI overlays on top).
-    static func drawBackground(_ snapshot: Snapshot, in cg: CGContext, darkMode: Bool) {
+    /// `recognition` = render for OCR / AI vision: white paper, no ruled/grid template
+    /// (those lines are noise for text recognition), but keep an imported PDF (it carries
+    /// the printed problem).
+    static func drawBackground(_ snapshot: Snapshot, in cg: CGContext, darkMode: Bool, recognition: Bool = false) {
         let pageRect = CGRect(origin: .zero, size: snapshot.pageSize)
 
-        cg.setFillColor(backgroundColor(darkMode: darkMode).cgColor)
+        cg.setFillColor((recognition ? UIColor.white : backgroundColor(darkMode: darkMode)).cgColor)
         cg.fill(pageRect)
 
         // Rasterize the PDF at the destination's actual pixel scale (capped to
         // bound memory) so it stays sharp at retina + zoom, not a soft 2x.
         let pixelScale = min(max(abs(cg.ctm.a), 2), 4)
         if snapshot.template == .customPDF, let data = snapshot.customTemplatePDF,
-           let pdfImage = PDFTemplateRenderer.image(from: data, targetWidth: snapshot.pageSize.width * pixelScale, darkMode: darkMode) {
+           let pdfImage = PDFTemplateRenderer.image(from: data, targetWidth: snapshot.pageSize.width * pixelScale, darkMode: recognition ? false : darkMode) {
             // Aspect-fit: a PDF must never run wider (or taller) than the page.
             let imageSize = pdfImage.size
             let fit = min(pageRect.width / max(imageSize.width, 1), pageRect.height / max(imageSize.height, 1))
@@ -141,7 +162,7 @@ enum PageRenderer {
                 width: drawSize.width,
                 height: drawSize.height
             ))
-        } else {
+        } else if !recognition {
             let lineColor = darkMode
                 ? UIColor(red: 0.227, green: 0.227, blue: 0.235, alpha: 1)
                 : UIColor(red: 0.82, green: 0.82, blue: 0.839, alpha: 1)
@@ -152,10 +173,10 @@ enum PageRenderer {
         }
     }
 
-    private static func draw(_ snapshot: Snapshot, in cg: CGContext, darkMode: Bool, inkBoost: CGFloat = 1, inkLayer: UIImage? = nil) {
+    private static func draw(_ snapshot: Snapshot, in cg: CGContext, darkMode: Bool, inkBoost: CGFloat = 1, inkLayer: UIImage? = nil, recognition: Bool = false) {
         let pageRect = CGRect(origin: .zero, size: snapshot.pageSize)
 
-        drawBackground(snapshot, in: cg, darkMode: darkMode)
+        drawBackground(snapshot, in: cg, darkMode: darkMode, recognition: recognition)
 
         // Media below ink, matching the editor's layer order.
         for item in snapshot.mediaItems {
