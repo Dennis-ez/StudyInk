@@ -266,7 +266,7 @@ struct PageThumbnailView: View {
     private func renderThumbnail() {
         // Full-page snapshot: template/PDF + media + ink + text, like export.
         let snapshot = PageRenderer.Snapshot(page: page)
-        guard snapshot.drawingData != nil || !snapshot.mediaItems.isEmpty || !snapshot.textBoxes.isEmpty else {
+        guard snapshot.vectorInkData != nil || snapshot.drawingData != nil || !snapshot.mediaItems.isEmpty || !snapshot.textBoxes.isEmpty else {
             thumbnail = nil
             resolved = true   // empty page — show the template, never spin
             return

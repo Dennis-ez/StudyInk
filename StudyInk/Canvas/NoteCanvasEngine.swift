@@ -340,12 +340,17 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
 
         let docWidth = sizes.map(\.width).max() ?? 800
         var y: CGFloat = pageGap
+        // Only the page about to be shown gets its snapshot (and thus its ink/PDF
+        // blob reads) synchronously; the rest load lazily off the critical path so
+        // opening an N-page note doesn't block on N external-blob reads on the main
+        // thread. See scheduleInactiveRender().
+        let activeForBuild = min(activeIndex, max(0, sizes.count - 1))
         for (index, size) in sizes.enumerated() {
             let frame = CGRect(x: (docWidth - size.width) / 2, y: y, width: size.width, height: size.height)
             pageFrames.append(frame)
             let container = PageContainerView(pageIndex: index)
             container.frame = frame
-            container.snapshot = controller.snapshotProvider?(index)
+            if index == activeForBuild { container.snapshot = controller.snapshotProvider?(index) }
             documentView.addSubview(container)
             containers.append(container)
             y += size.height + pageGap
@@ -361,7 +366,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
 
         activeIndex = min(activeIndex, max(0, sizes.count - 1))
         mountCanvas(on: activeIndex)
-        refreshAllInactiveImages()
+        scheduleInactiveRender()
         setNeedsLayout()
         publishGeometry()
     }
@@ -371,13 +376,11 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     /// and the live canvas empty. Re-pull anything missing on each update.
     func ensureContent() {
         guard controller.snapshotProvider != nil else { return }
-        for (index, container) in containers.enumerated() where container.snapshot == nil {
-            container.snapshot = controller.snapshotProvider?(index)
-            container.setNeedsDisplay()
-            if index != activeIndex {
-                container.imageView.isHidden = false
-                renderImage(for: index)
-            }
+        // The ACTIVE page first and synchronously, so the note appears immediately;
+        // its ink/PDF blobs are the only disk reads on the critical path.
+        if containers.indices.contains(activeIndex), containers[activeIndex].snapshot == nil {
+            containers[activeIndex].snapshot = controller.snapshotProvider?(activeIndex)
+            containers[activeIndex].setNeedsDisplay()
         }
         if !seededActiveDrawing,
            canvas.drawing.strokes.isEmpty,
@@ -397,6 +400,8 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         if containers.indices.contains(activeIndex), containers[activeIndex].snapshot != nil {
             DispatchQueue.main.async { [controller] in controller.markReady() }
         }
+        // Everything else (snapshots + thumbnails) fills in off the critical path.
+        scheduleInactiveRender()
     }
 
     /// Re-render one page's cached image + template (after template/page edits).
@@ -766,10 +771,21 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     }
 
     private func renderImage(for index: Int, revealWhenReady: Bool = false, priority: TaskPriority = .utility) {
-        guard containers.indices.contains(index),
-              let snapshot = controller.snapshotProvider?(index) else { return }
-        let dark = traitCollection.userInterfaceStyle == .dark
+        guard containers.indices.contains(index) else { return }
         let container = containers[index]
+        // Reuse the snapshot already attached to the container; only build one (which
+        // faults the page's ink/PDF blobs off disk and re-sorts the page list) when
+        // it's genuinely missing. The build loop / chunked pass attach it first.
+        let snapshot: PageRenderer.Snapshot
+        if let existing = container.snapshot {
+            snapshot = existing
+        } else if let built = controller.snapshotProvider?(index) {
+            container.snapshot = built
+            snapshot = built
+        } else {
+            return
+        }
+        let dark = traitCollection.userInterfaceStyle == .dark
         let renderScale = imageRenderScale
         // Pre-rasterize ink on the main actor (we're already on main here), then
         // composite off-main with no main hop — the old main.sync inside the
@@ -788,18 +804,42 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         }
     }
 
-    private func refreshAllInactiveImages() {
-        for index in containers.indices where index != activeIndex {
+    private var inactiveRenderRunning = false
+
+    /// Renders the inactive pages' cached thumbnails a few per run-loop tick,
+    /// nearest-to-active first, so opening or re-themeing an N-page note never
+    /// blocks the main thread on a burst of blob reads + rasterizes. `renderImage`
+    /// builds each page's snapshot lazily the first time. `force` re-renders pages
+    /// that already have an image (used on a light/dark switch); otherwise only
+    /// pages still missing one are drawn. Pages scrolled to before the pass reaches
+    /// them render on demand in `mountCanvas`, so nothing is ever left blank.
+    private func scheduleInactiveRender(force: Bool = false) {
+        guard !inactiveRenderRunning else { return }
+        let pending = containers.indices
+            .filter { $0 != activeIndex && (force || containers[$0].imageView.image == nil) }
+            .sorted { abs($0 - activeIndex) < abs($1 - activeIndex) }
+        guard !pending.isEmpty else { return }
+        inactiveRenderRunning = true
+        renderInactiveChunk(pending, from: 0)
+    }
+
+    private func renderInactiveChunk(_ indices: [Int], from start: Int) {
+        guard start < indices.count else { inactiveRenderRunning = false; return }
+        let end = min(start + 3, indices.count)
+        for i in start..<end {
+            let index = indices[i]
+            guard containers.indices.contains(index), index != activeIndex else { continue }
             containers[index].imageView.isHidden = false
             renderImage(for: index)
         }
+        DispatchQueue.main.async { [weak self] in self?.renderInactiveChunk(indices, from: end) }
     }
 
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
         super.traitCollectionDidChange(previous)
         guard previous?.userInterfaceStyle != traitCollection.userInterfaceStyle else { return }
         containers.forEach { $0.setNeedsDisplay() }
-        refreshAllInactiveImages()
+        scheduleInactiveRender(force: true)
     }
 
     // MARK: - Scrolling & paging

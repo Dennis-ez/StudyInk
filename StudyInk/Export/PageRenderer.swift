@@ -27,8 +27,12 @@ enum PageRenderer {
             template = page.template
             templateSpacing = page.effectiveTemplateSpacing
             customTemplatePDF = page.customTemplatePDF
-            vectorInkData = page.vectorInkData
-            drawingData = page.drawingData
+            let vector = page.vectorInkData
+            vectorInkData = vector
+            // The renderer only falls back to the legacy PKDrawing blob when there's
+            // no vector ink (see `draw`/`hasInk`). Faulting that external blob in too
+            // would double the per-page disk read for every migrated note — skip it.
+            drawingData = vector == nil ? page.drawingData : nil
             mediaItems = page.mediaItems
             textBoxes = page.textBoxes
         }
