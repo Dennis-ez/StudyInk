@@ -169,6 +169,19 @@ final class CanvasController: NSObject, ObservableObject {
     /// Eraser gesture lifted at this page-space point — feeds the stuck detector
     /// (repeated erasing in one region = the student is likely stuck there).
     var onEraseGesture: ((CGPoint) -> Void)?
+
+    // MARK: Shape editing (Notability-style tap → resize nodes)
+
+    /// Hit-test SHAPE strokes (only recognized geometry) at a page point.
+    func shapeHit(at pagePoint: CGPoint) -> (index: Int, shape: ShapeRecognizer.Shape, stroke: VectorInk.Stroke)? {
+        engine?.shapeStroke(at: pagePoint)
+    }
+    /// Lift the shape stroke for node editing (overlay renders it while lifted).
+    func liftShape(at index: Int) -> VectorInk.Stroke? { engine?.liftShapeStroke(at: index) }
+    /// Commit the reshaped stroke back (one undo step).
+    func commitShape(_ stroke: VectorInk.Stroke) { engine?.commitShapeStroke(stroke); refreshUndoState() }
+    /// Abort the edit and restore the original stroke.
+    func cancelShapeEdit() { engine?.cancelShapeStroke() }
     /// Bumped when a drawing gesture begins; observers (the toolbar's color
     /// strip) use it to dismiss themselves the moment writing starts.
     @Published private(set) var drawingGestureBeganToken = 0

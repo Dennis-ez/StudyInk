@@ -75,6 +75,9 @@ struct NoteEditorView: View {
     @State private var askLassoActive = false
     @State private var showGuidedLog = false
     @State private var transformLassoActive = false
+    /// Notability-style shape editing: the tapped shape, lifted off the page while
+    /// its resize nodes are up. Commit puts it back as ONE undo step.
+    @State private var shapeEdit: ShapeEditState?
     /// Page-space point of a pending finger-tap "Paste" affordance (ink clipboard).
     @State private var pastePoint: CGPoint?
     /// Armed after a short delay so the content loader only shows for a SLOW load —
@@ -361,6 +364,20 @@ struct NoteEditorView: View {
                     points: canvasController.lassoPoints,
                     onCancel: { canvasController.select(.ballpoint) }
                 )
+            }
+
+            // Notability-style shape editing: the lifted shape + its resize nodes.
+            GeometryGate(geometry: canvasController.geometry) {
+                ShapeNodeOverlay(edit: $shapeEdit, transform: transform) { state in
+                    canvasController.commitShape(VectorInk.Stroke(
+                        color: state.color,
+                        samples: ShapeRecognizer.strokeSamples(for: state.shape, width: state.width)))
+                }
+            }
+            .zIndex(44)
+            .onChange(of: pageIndex) { _, _ in
+                // Page changed mid-edit → restore the original stroke, drop the overlay.
+                if shapeEdit != nil { canvasController.cancelShapeEdit(); shapeEdit = nil }
             }
 
             // Tap-to-define a concept (Lagrange, L'Hôpital, …).
@@ -929,6 +946,18 @@ struct NoteEditorView: View {
                 if regionSelection != nil {
                     withAnimation { regionSelection = nil }
                     rearmLassoIfActive()
+                    return
+                }
+                // Tap a drawn SHAPE (recognized geometry only — never handwriting) →
+                // lift it and show Notability-style resize nodes.
+                if shapeEdit == nil, let hit = canvasController.shapeHit(at: point),
+                   let stroke = canvasController.liftShape(at: hit.index) {
+                    let widths = stroke.samples.map(\.width)
+                    let avg = widths.isEmpty ? 3 : widths.reduce(0, +) / CGFloat(widths.count)
+                    Haptics.selection()
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        shapeEdit = ShapeEditState(shape: hit.shape, color: stroke.color, width: avg)
+                    }
                     return
                 }
                 // Tap a recognised concept (Lagrange, L'Hôpital, …) → show its

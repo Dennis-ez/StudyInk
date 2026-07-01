@@ -759,6 +759,76 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         controller.refreshUndoState()
     }
 
+    // MARK: Shape editing (Notability-style tap → nodes)
+
+    private var shapeEditBefore: [VectorInk.Stroke]?
+
+    /// Hit-test a finger tap against SHAPE strokes only (strokes whose geometry
+    /// re-recognizes as a line/ellipse/polygon — handwriting never qualifies).
+    /// Returns the stroke index, its shape, and the stroke itself.
+    func shapeStroke(at pagePoint: CGPoint) -> (index: Int, shape: ShapeRecognizer.Shape, stroke: VectorInk.Stroke)? {
+        let strokes = vectorCanvas.currentStrokes()
+        // Topmost first so overlapping shapes pick the most recent.
+        for (i, s) in strokes.enumerated().reversed() {
+            guard s.bbox.insetBy(dx: -16, dy: -16).contains(pagePoint) else { continue }
+            // Near the PATH, not just inside the box (an ellipse's empty middle
+            // shouldn't select — Notability selects on the outline).
+            let nearPath = s.samples.contains {
+                hypot($0.location.x - pagePoint.x, $0.location.y - pagePoint.y) < max(16, $0.width * 2)
+            }
+            // For a 2-sample line the segment between the endpoints counts too.
+            let nearLine: Bool = {
+                guard s.samples.count == 2 else { return false }
+                let a = s.samples[0].location, b = s.samples[1].location
+                let ab = CGPoint(x: b.x - a.x, y: b.y - a.y)
+                let len2 = max(ab.x * ab.x + ab.y * ab.y, 0.001)
+                let t = max(0, min(1, ((pagePoint.x - a.x) * ab.x + (pagePoint.y - a.y) * ab.y) / len2))
+                let p = CGPoint(x: a.x + ab.x * t, y: a.y + ab.y * t)
+                return hypot(p.x - pagePoint.x, p.y - pagePoint.y) < 16
+            }()
+            guard nearPath || nearLine else { continue }
+            // A committed shape is perfect geometry, so re-recognition is reliable;
+            // a 2-sample stroke IS a line even below the recognizer's point floor.
+            if s.samples.count == 2 {
+                return (i, .line(from: s.samples[0].location, to: s.samples[1].location), s)
+            }
+            if let shape = ShapeRecognizer.recognize(s, minDiagonal: 24) {
+                return (i, shape, s)
+            }
+        }
+        return nil
+    }
+
+    /// Lift the shape stroke off the page for node editing (the overlay renders it).
+    func liftShapeStroke(at index: Int) -> VectorInk.Stroke? {
+        guard shapeEditBefore == nil else { return nil }
+        let all = vectorCanvas.currentStrokes()
+        guard all.indices.contains(index) else { return nil }
+        shapeEditBefore = all
+        var remaining = all
+        let s = remaining.remove(at: index)
+        vectorCanvas.setStrokesPreservingHistory(remaining)
+        lastStrokes[activeIndex] = remaining
+        return s
+    }
+
+    /// Put the (reshaped) stroke back — ONE shared-history undo step for the edit.
+    func commitShapeStroke(_ stroke: VectorInk.Stroke) {
+        guard let before = shapeEditBefore else { return }
+        shapeEditBefore = nil
+        var after = vectorCanvas.currentStrokes()
+        after.append(stroke)
+        finishVectorSelection(before: before, after: after)
+    }
+
+    /// Abort the edit (page change / tool switch) — restore exactly as it was.
+    func cancelShapeStroke() {
+        guard let before = shapeEditBefore else { return }
+        shapeEditBefore = nil
+        vectorCanvas.setStrokesPreservingHistory(before)
+        lastStrokes[activeIndex] = before
+    }
+
     private func applyNoteHistory(index: Int, strokes: [VectorInk.Stroke]) {
         lastStrokes[index] = strokes
         controller.onDrawingChanged?(index, strokes)   // persist
