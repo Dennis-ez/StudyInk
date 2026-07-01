@@ -747,9 +747,12 @@ final class AmbientTutorController: ObservableObject {
         var target: OCRLine? = openLine ?? lowest
         // No OCR'd line but there IS ink (a diagram, or handwriting OCR can't read) —
         // anchor to the last written row and let the model read it from the image,
-        // rather than giving up with "no next step".
+        // rather than giving up with "no next step". This applies to the IDLE (auto)
+        // path too: math handwriting fails OCR constantly, so without this the ambient
+        // ghost silently never fired ("stop writing and nothing shows up") while the
+        // manual button — which always had this fallback — worked.
         var fromImage = false
-        if target == nil, !auto, let row = Self.lastInkRow(of: page) {
+        if target == nil, let row = Self.lastInkRow(of: page) {
             target = OCRLine(text: "", rect: row, confidence: 0)
             fromImage = true
         }
@@ -793,7 +796,11 @@ final class AmbientTutorController: ObservableObject {
             // simplification/next step reuses tokens from the line above (that was
             // dropping real suggestions → "no next step"). Auto stays strict (no noise).
             let a = Self.mathKey(text), b = Self.mathKey(last.text)
-            let isEcho = auto ? (a == b || b.contains(a)) : (a == b)
+            // Reject only an EXACT echo of the line being continued (same rule for auto
+            // and manual now). The old auto-only `b.contains(a)` test threw away valid
+            // next steps that legitimately reuse a token from the current line — a big
+            // reason the idle ghost "never showed anything".
+            let isEcho = (a == b)
             guard a.count >= 1, !isEcho else { return }
             lastGhostSourceLine = last.text
             let highlights = Self.resolveHighlights(rawHighlights, pageSize: page.canvasSize)
