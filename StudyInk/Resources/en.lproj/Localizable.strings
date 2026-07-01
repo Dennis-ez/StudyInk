@@ -237,7 +237,7 @@
 "ai.tutorRole" = "Study partner";
 "ambient.check" = "Check my work";
 "ambient.fixIt" = "Fix it for me";
-"ambient.flickAccept" = "flick to accept";
+"ambient.flickAccept" = "Tap to accept";
 "ambient.nextStep" = "Next step";
 "ambient.revealAnswer" = "Reveal answer";
 "ambient.suggest" = "Suggest next step";

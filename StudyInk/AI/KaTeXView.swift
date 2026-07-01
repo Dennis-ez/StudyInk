@@ -158,10 +158,19 @@ struct MathBlockView: UIViewRepresentable {
         if label.textAlignment != .left { label.textAlignment = .left }
     }
 
+    /// Memoized intrinsic size — SwiftUI calls sizeThatFits every scroll/zoom frame while
+    /// a bubble is open; re-measuring the typeset math each time was tanking the pan/zoom.
+    private static var sizeCache: [String: CGSize] = [:]
+
     func sizeThatFits(_ proposal: ProposedViewSize, uiView label: MTMathUILabel, context: Context) -> CGSize? {
+        let key = "\(latex)|\(fontSize)|\(display)"
+        if let cached = Self.sizeCache[key] { return cached }
         configure(label)
         let size = label.intrinsicContentSize
-        return CGSize(width: max(size.width, 1), height: max(size.height, fontSize))
+        let result = CGSize(width: max(size.width, 1), height: max(size.height, fontSize))
+        if Self.sizeCache.count > 400 { Self.sizeCache.removeAll() }
+        Self.sizeCache[key] = result
+        return result
     }
 }
 
@@ -199,7 +208,11 @@ struct AIRichText: View {
     let content: String
     @Environment(\.colorScheme) private var colorScheme
 
-    private var rtl: Bool { content.isMostlyRTL }
+    // Any Hebrew present ⇒ RTL. (isMostlyRTL is first-strong-char, so a Hebrew line
+    // that starts with a number/formula was wrongly read as LTR and left-aligned.)
+    private var rtl: Bool {
+        content.unicodeScalars.contains { (0x0590...0x05FF).contains($0.value) }
+    }
     private var mathColor: UIColor {
         UIColor.label.resolvedColor(with: UITraitCollection(userInterfaceStyle: colorScheme == .dark ? .dark : .light))
     }

@@ -17,6 +17,8 @@ struct MarginLaneView: View {
     var onAcceptGhost: (GhostSuggestion) -> Void = { _ in }
     /// The student tapped the "grade my answer" glyph.
     var onGrade: () -> Void = {}
+    /// The ghost's "?" asked for a full worked derivation (its own steps were sparse).
+    var onGhostRequestSteps: (GhostSuggestion) -> Void = { _ in }
     /// 3b diagnostic "Fix it" — write the fix as amber ink below the broken line.
     var onDiagnosticFix: (AIClient.CheckResult.FirstError, CGRect) -> Void = { _, _ in }
     /// 3b diagnostic "Show the rule" — open the worked explanation for the break.
@@ -104,6 +106,8 @@ struct MarginLaneView: View {
                         onAccept: { onAcceptGhost(g) },
                         onDismiss: { ambient.dismissGhost() },
                         onDetailChanged: { ghostDetailShown = $0 },
+                        explanation: ambient.explanation?.itemID == GhostSuggestion.explainItemID ? ambient.explanation : nil,
+                        onRequestSteps: { onGhostRequestSteps(g) },
                         // Subtle = no-spoiler: park a glyph, reveal the answer on request.
                         spoilerHidden: ambient.sensitivity == .subtle
                     )
@@ -225,6 +229,10 @@ struct GhostInkLayer: View {
     /// Fired when the why/steps detail is revealed/hidden, so the editor can show
     /// the matching color-coded highlights over the student's ink on the canvas.
     var onDetailChanged: (Bool) -> Void = { _ in }
+    /// A worked derivation fetched on demand for the "?" (when the ghost's own steps
+    /// are sparse) + the callback that requests it.
+    var explanation: StepExplanation? = nil
+    var onRequestSteps: () -> Void = {}
     /// No-spoiler mode (hardwired to the "subtle" sensitivity): park a glyph instead
     /// of writing the answer ahead of the pen. Tap → the HOW (why + steps); the
     /// answer ink only appears once the student taps "Reveal answer".
@@ -258,7 +266,11 @@ struct GhostInkLayer: View {
             }
         }
         .task(id: ghost.text) { await renderPreview() }
-        .onChange(of: showDetail) { onDetailChanged(showDetail) }
+        .onChange(of: showDetail) {
+            onDetailChanged(showDetail)
+            // Opening the "?" with no steps → fetch a full worked derivation on demand.
+            if showDetail && ghost.steps.isEmpty && explanation == nil { onRequestSteps() }
+        }
     }
 
     /// The 2a fill-in ghost (GhostTraceLayer) parked at the ghost anchor.
@@ -461,8 +473,13 @@ struct GhostInkLayer: View {
     /// Tapped-"?" detail: the SAME inline step UI the grade-note / hint use — the
     /// why + worked steps. Keep = tap the ink or flick right; dismiss = flick left.
     private var ghostSteps: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            StepDetailCard(why: ghost.why, steps: ghost.steps, highlights: ghost.highlights,
+        // Prefer the ghost's own why/steps; when they're sparse, fall back to the
+        // on-demand worked derivation fetched via "?".
+        let steps = ghost.steps.isEmpty ? (explanation?.steps ?? []) : ghost.steps
+        let why = (ghost.why?.isEmpty == false) ? ghost.why : explanation?.why
+        let loading = ghost.steps.isEmpty && (explanation?.isLoading ?? false)
+        return VStack(alignment: .leading, spacing: 6) {
+            StepDetailCard(why: why, steps: steps, isLoading: loading, highlights: ghost.highlights,
                            onDismiss: { withAnimation(.easeOut(duration: 0.2)) { showDetail = false } })
             // No-spoiler mode shows "Reveal answer" first (the card explained the HOW
             // without the answer); once revealed it becomes "Keep" — write it as ink.

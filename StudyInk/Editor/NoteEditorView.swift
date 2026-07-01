@@ -256,99 +256,7 @@ struct NoteEditorView: View {
 
             // The Ambient Tutor's margin lane: glyphs anchored to the lines of
             // work, and the note that unfolds from a tapped glyph.
-            GeometryGate(geometry: canvasController.geometry) {
-            MarginLaneView(
-                ambient: ambient,
-                pageIndex: pageIndex,
-                transform: transform,
-                // Keep the unfolded note card clear of the page strip on the right.
-                trailingInset: showPageStrip ? 110 : 0,
-                onFixIt: { item in
-                    // The "your-style amber ink" write-on is the deferred deep
-                    // feature; for now write the correction in amber ink right
-                    // beside the line it belongs to (we already know the rect,
-                    // so no AI/OCR round-trip to land it in the wrong place).
-                    ambient.dismiss()
-                    if let result = item.result {
-                        let rect = item.anchorRect
-                        // The line's rect HEIGHT is inflated by fractions (num+rule+
-                        // denom), so * 0.95 wrote huge ink. Match the student's glyph
-                        // size: a much smaller factor, capped ~handwriting size.
-                        let fontSize = max(15, min(24, rect.height * 0.42))
-                        // Write the corrected line just BELOW the student's line
-                        // (writing to the right overlaps their work), verbatim —
-                        // `result` is already the full corrected expression.
-                        let point = CGPoint(x: rect.minX, y: rect.maxY + 6)
-                        tutor.writeInk(
-                            text: result,
-                            at: point,
-                            fontSize: fontSize,
-                            colorHex: ambientInkHex,
-                            avoid: ambient.lastLineRects,
-                            on: canvasController.vectorCanvas
-                        )
-                    }
-                },
-                onShowWhy: { item in
-                    // Show the why INSIDE the note (keep it open); tagged with the item so
-                    // it renders inline in the bubble, not as a separate floating card. Ask
-                    // for the WORKED DERIVATION (not a restatement of the note above it).
-                    let correct = item.result.map { " The correct line is: \($0)." } ?? ""
-                    let focus = "The note already told the student: \"\(item.body)\".\(correct) Now show the WORKED STEPS that PROVE it — the actual derivation, step by step. Do NOT repeat the note; go deeper."
-                    let anchor = CGPoint(x: item.anchorRect.midX, y: item.anchorRect.maxY)
-                    Task { await ambient.explainSteps(focus: focus, anchor: anchor, pageIndex: pageIndex, note: note, darkMode: colorScheme == .dark, itemID: item.id) }
-                },
-                onOpenHint: { item in
-                    // A watcher's "?" — highlight the line it flagged RIGHT AWAY, then
-                    // show the worked steps inline (the step UI), NOT the chat bubble.
-                    ambient.focus(on: item)
-                    let anchor = CGPoint(x: item.anchorRect.midX, y: item.anchorRect.maxY)
-                    Task { await ambient.explainSteps(focus: item.body, anchor: anchor, pageIndex: pageIndex, note: note, darkMode: colorScheme == .dark) }
-                },
-                onAcceptGhost: { g in
-                    ambient.dismissGhost()
-                    // Write where the preview was. Inline completions centre on the
-                    // line (so a tall fraction straddles it); below-the-line ones
-                    // avoid existing work.
-                    tutor.writeInk(
-                        text: g.text,
-                        at: g.anchor,
-                        colorHex: ambientInkHex,
-                        avoid: g.inline ? [] : ambient.lastLineRects,
-                        center: g.inline,
-                        on: canvasController.vectorCanvas
-                    )
-                    ambient.invalidateGhost()
-                },
-                // The "✦ Find my mistake" pill — stream the ✓ / ~ verdict glyphs (marks
-                // where without spoiling the fix; tap a ~ for the note, "Fix it" to reveal).
-                onGrade: {
-                    ambient.clearGradePrompt()
-                    canvasController.commitPendingInk()
-                    Task { await ambient.checkWork(note: note, pageIndex: pageIndex, darkMode: colorScheme == .dark) }
-                },
-                // 3b "Fix it" — write the fix as amber ink just below the broken line.
-                onDiagnosticFix: { err, rect in
-                    ambient.dismissDiagnostic()
-                    let fontSize = max(15, min(24, rect.height * 0.42))
-                    let point = CGPoint(x: rect.minX, y: rect.maxY + 6)
-                    tutor.writeInk(
-                        text: err.fixLatex,
-                        at: point,
-                        fontSize: fontSize,
-                        colorHex: ambientInkHex,
-                        avoid: ambient.lastLineRects,
-                        on: canvasController.vectorCanvas
-                    )
-                },
-                // 3b "Show the rule" — worked steps for the break, in the inline step UI.
-                onDiagnosticShowRule: { err, rect in
-                    ambient.dismissDiagnostic()
-                    let anchor = CGPoint(x: rect.midX, y: rect.maxY)
-                    Task { await ambient.explainSteps(focus: err.why, anchor: anchor, pageIndex: pageIndex, note: note, darkMode: colorScheme == .dark) }
-                }
-            )
-            }
+            marginLaneLayer
 
             // Ambient tutor result banner ("looks all good" / error). Thinking
             // itself is the breathing corner badge below.
@@ -1287,6 +1195,82 @@ struct NoteEditorView: View {
                 if circleRail != nil { withAnimation(.easeOut(duration: 0.15)) { circleRail = nil }; circleAskText = "" }
             }
         }
+    }
+
+    /// The Ambient Tutor margin lane — extracted so the editor body type-checks in time.
+    @ViewBuilder private var marginLaneLayer: some View {
+        GeometryGate(geometry: canvasController.geometry) {
+            MarginLaneView(
+                ambient: ambient,
+                pageIndex: pageIndex,
+                transform: transform,
+                trailingInset: showPageStrip ? 110 : 0,
+                onFixIt: { fixMarginNote($0) },
+                onShowWhy: { requestShowWhy($0) },
+                onOpenHint: { openHint($0) },
+                onAcceptGhost: { acceptGhost($0) },
+                onGrade: { runCheck() },
+                onGhostRequestSteps: { requestGhostSteps($0) },
+                onDiagnosticFix: { fixDiagnostic($0, rect: $1) },
+                onDiagnosticShowRule: { showDiagnosticRule($0, rect: $1) }
+            )
+        }
+    }
+
+    /// "Fix it" on a check note → write the correction as amber ink below the line.
+    private func fixMarginNote(_ item: MarginItem) {
+        ambient.dismiss()
+        guard let result = item.result else { return }
+        let rect = item.anchorRect
+        let fontSize = max(15, min(24, rect.height * 0.42))
+        tutor.writeInk(text: result, at: CGPoint(x: rect.minX, y: rect.maxY + 6), fontSize: fontSize,
+                       colorHex: ambientInkHex, avoid: ambient.lastLineRects, on: canvasController.vectorCanvas)
+    }
+
+    private func openHint(_ item: MarginItem) {
+        ambient.focus(on: item)
+        let anchor = CGPoint(x: item.anchorRect.midX, y: item.anchorRect.maxY)
+        Task { await ambient.explainSteps(focus: item.body, anchor: anchor, pageIndex: pageIndex, note: note, darkMode: colorScheme == .dark) }
+    }
+
+    private func acceptGhost(_ g: GhostSuggestion) {
+        ambient.dismissGhost()
+        tutor.writeInk(text: g.text, at: g.anchor, colorHex: ambientInkHex,
+                       avoid: g.inline ? [] : ambient.lastLineRects, center: g.inline, on: canvasController.vectorCanvas)
+        ambient.invalidateGhost()
+    }
+
+    private func runCheck() {
+        ambient.clearGradePrompt()
+        canvasController.commitPendingInk()
+        Task { await ambient.checkWork(note: note, pageIndex: pageIndex, darkMode: colorScheme == .dark) }
+    }
+
+    private func fixDiagnostic(_ err: AIClient.CheckResult.FirstError, rect: CGRect) {
+        ambient.dismissDiagnostic()
+        let fontSize = max(15, min(24, rect.height * 0.42))
+        tutor.writeInk(text: err.fixLatex, at: CGPoint(x: rect.minX, y: rect.maxY + 6), fontSize: fontSize,
+                       colorHex: ambientInkHex, avoid: ambient.lastLineRects, on: canvasController.vectorCanvas)
+    }
+
+    private func showDiagnosticRule(_ err: AIClient.CheckResult.FirstError, rect: CGRect) {
+        ambient.dismissDiagnostic()
+        let anchor = CGPoint(x: rect.midX, y: rect.maxY)
+        Task { await ambient.explainSteps(focus: err.why, anchor: anchor, pageIndex: pageIndex, note: note, darkMode: colorScheme == .dark) }
+    }
+
+    /// A check note's "Show why" → the worked derivation, shown inline in the note.
+    private func requestShowWhy(_ item: MarginItem) {
+        let correct = item.result.map { " The correct line is: \($0)." } ?? ""
+        let focus = "The note already told the student: \"\(item.body)\".\(correct) Now show the WORKED STEPS that PROVE it — the actual derivation, step by step. Do NOT repeat the note; go deeper."
+        let anchor = CGPoint(x: item.anchorRect.midX, y: item.anchorRect.maxY)
+        Task { await ambient.explainSteps(focus: focus, anchor: anchor, pageIndex: pageIndex, note: note, darkMode: colorScheme == .dark, itemID: item.id) }
+    }
+
+    /// The ghost's "?" had no steps → fetch a full worked derivation on demand.
+    private func requestGhostSteps(_ g: GhostSuggestion) {
+        let focus = "Show the FULL worked steps that derive this next line: \"\(g.text)\" — from the student's last written line, step by step (at least 3 steps, each with its result)."
+        Task { await ambient.explainSteps(focus: focus, anchor: g.anchor, pageIndex: pageIndex, note: note, darkMode: colorScheme == .dark, itemID: GhostSuggestion.explainItemID) }
     }
 
     /// Ask a free-text question about the circled span → opens an anchored margin thread.

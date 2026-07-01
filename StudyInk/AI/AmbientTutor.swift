@@ -116,6 +116,9 @@ enum AIHighlightPalette {
 }
 
 struct GhostSuggestion {
+    /// Tags the explanation fetched for the ghost's "?" so it renders inside the ghost
+    /// card (not as a floating step card).
+    static let explainItemID = UUID()
     var pageIndex: Int
     /// Page-space anchor. For an inline completion it's the MIDDLE of the line
     /// (so a tall fraction straddles it); for a new line below it's the top-left.

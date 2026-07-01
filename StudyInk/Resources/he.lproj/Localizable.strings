@@ -237,7 +237,7 @@
 "ai.tutorRole" = "שותף ללמידה";
 "ambient.check" = "בדוק את העבודה שלי";
 "ambient.fixIt" = "תקן בשבילי";
-"ambient.flickAccept" = "החלק לאישור";
+"ambient.flickAccept" = "הקש לאישור";
 "ambient.nextStep" = "הצעד הבא";
 "ambient.revealAnswer" = "גלה את התשובה";
 "ambient.suggest" = "הצע צעד הבא";
