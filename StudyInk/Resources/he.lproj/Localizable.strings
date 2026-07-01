@@ -242,6 +242,7 @@
 "ambient.revealAnswer" = "גלה את התשובה";
 "ambient.suggest" = "הצע צעד הבא";
 "ambient.guidedHint" = "רמז מודרך";
+"ambient.off.notice" = "העזרה המודרכת כבויה — שום דבר לא יופיע.";
 // Conote AI handoff — tutor surfaces
 "ambient.ladder.stuckHint" = "עדיין תקוע — רמז לי";
 "ambient.ladder.showStep" = "הראה את הצעד";

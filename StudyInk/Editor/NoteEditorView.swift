@@ -1974,6 +1974,12 @@ extension NoteEditorView {
             } label: { Label("ambient.guidedHint", systemImage: "stairs") }
             Picker(selection: Binding(get: { ambient.sensitivity }, set: {
                 ambient.sensitivity = $0   // the arbiter reads this; guidedMode stays inert
+                // §4.1: Off makes the tutor fully silent — say so, and clear anything showing.
+                if $0 == .off {
+                    ambient.dismissGhost(); ambient.dismissLadder(); ambient.dismissDiagnostic()
+                    ambient.clearGradePrompt()
+                    ambient.showNotice(String(localized: "ambient.off.notice"))
+                }
             })) {
                 ForEach(AmbientSensitivity.allCases) { s in Text(s.labelKey).tag(s) }
             } label: { Label("ambient.sensitivity", systemImage: "dial.medium") }
