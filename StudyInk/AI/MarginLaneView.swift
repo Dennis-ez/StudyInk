@@ -476,7 +476,9 @@ struct GhostInkLayer: View {
         // on-demand worked derivation fetched via "?".
         let steps = ghost.steps.isEmpty ? (explanation?.steps ?? []) : ghost.steps
         let why = (ghost.why?.isEmpty == false) ? ghost.why : explanation?.why
-        let loading = ghost.steps.isEmpty && (explanation?.isLoading ?? false)
+        // Steps missing ⇒ a fetch is (or is about to be) in flight — keep the loading
+        // row up until it lands, so the card never flashes an empty/"no suggestion" state.
+        let loading = ghost.steps.isEmpty && (explanation?.isLoading ?? true)
         return VStack(alignment: .leading, spacing: 6) {
             StepDetailCard(why: why, steps: steps, isLoading: loading,
                            onDismiss: { withAnimation(.easeOut(duration: 0.2)) { showDetail = false } })
@@ -593,29 +595,26 @@ struct StepDetailCard: View {
             }
             .environment(\.layoutDirection, .leftToRight)
 
-            if isLoading {
+            // ONE fixed shape every time: the one-line "why" heading (when present),
+            // then the numbered worked steps. While the steps are still being fetched a
+            // loading row stands in for them — so the card is only ever "why + steps" or
+            // "why + loading", never a bare sentence, a collapsed step, or a chip row.
+            if let why, !why.isEmpty { AIRichText(content: why).font(.system(size: 12)) }
+            if isLoading || (steps.isEmpty && why?.isEmpty == false) {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
                     Text("ai.thinking").font(.caption).foregroundStyle(.secondary)
                 }
+            } else if steps.isEmpty {
+                Text("ambient.notice.noSuggestion").font(.caption).foregroundStyle(.secondary)
             } else {
-                // Always render as numbered worked steps (never a bare sentence or a row
-                // of unused chips): the one-line "why" heads the list only when there
-                // ARE discrete steps; when the model gave a why but no steps, that why
-                // becomes the single step, so the card looks consistent every time.
-                let renderSteps: [String] = steps.isEmpty ? [why].compactMap { $0?.isEmpty == false ? $0 : nil } : steps
-                let headWhy: String? = steps.isEmpty ? nil : why
-                if let headWhy, !headWhy.isEmpty { AIRichText(content: headWhy).font(.system(size: 12)) }
-                ForEach(Array(renderSteps.enumerated()), id: \.offset) { i, step in
+                ForEach(Array(steps.enumerated()), id: \.offset) { i, step in
                     HStack(alignment: .top, spacing: 8) {
                         Text(verbatim: "\(i + 1)")
                             .font(.caption2.weight(.bold).monospacedDigit()).foregroundStyle(.white)
                             .frame(width: 17, height: 17).background(AppTheme.current.aiAccent, in: Circle())
                         AIRichText(content: step).font(.system(size: 12))
                     }
-                }
-                if renderSteps.isEmpty {
-                    Text("ambient.notice.noSuggestion").font(.caption).foregroundStyle(.secondary)
                 }
             }
         }
