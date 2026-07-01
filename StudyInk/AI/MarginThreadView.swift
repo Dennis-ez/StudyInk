@@ -208,7 +208,7 @@ struct MarginThreadBubble: View {
     private var chip: some View {
         Button { tutor.toggleCollapsed(bubbleID: bubble.id) } label: {
             HStack(spacing: 7) {
-                Image(systemName: "sparkle").font(.system(size: 11, weight: .semibold)).foregroundStyle(AITokens.ai)
+                Image(systemName: bubble.isPinned ? "pin.fill" : "sparkle").font(.system(size: 11, weight: .semibold)).foregroundStyle(AITokens.ai)
                 Text("Thread").font(AITokens.mono(9)).tracking(0.4).foregroundStyle(AITokens.textFainter)
                 Text("· \(preview)").font(.system(size: 12)).foregroundStyle(AITokens.textMuted).lineLimit(1)
                 Text("\(bubble.thread.count) ›").font(.system(size: 11, weight: .bold)).foregroundStyle(AITokens.textFaint)
@@ -226,6 +226,11 @@ struct MarginThreadBubble: View {
                 Image(systemName: "line.3.horizontal").font(.system(size: 10)).foregroundStyle(AITokens.textFainter)
                 Text("Thread").font(AITokens.mono(9)).tracking(0.6).foregroundStyle(AITokens.textFainter)
                 Spacer()
+                // Pin to keep the thread anchored on the page (collapses to a small chip).
+                Button { tutor.pin(bubbleID: bubble.id) } label: {
+                    Image(systemName: bubble.isPinned ? "pin.fill" : "pin").font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(bubble.isPinned ? AITokens.ai : AITokens.textFaint)
+                }.buttonStyle(.plain)
                 Button { tutor.toggleCollapsed(bubbleID: bubble.id) } label: {
                     Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(AITokens.textFaint)
                 }.buttonStyle(.plain)

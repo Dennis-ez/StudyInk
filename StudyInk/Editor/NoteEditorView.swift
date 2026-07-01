@@ -1157,7 +1157,7 @@ struct NoteEditorView: View {
                     // The inline verb rail slides out beside it on the same line.
                     VStack(alignment: .leading, spacing: 6) {
                         SelectionRail(
-                            selected: rail.selected,
+                            selected: nil,
                             onVerb: { selectCircleVerb($0) },
                             onClose: { withAnimation(.easeOut(duration: 0.2)) { circleRail = nil; circleAskText = "" } })
                         // Ask in text about the circled span → opens a margin thread.
@@ -1178,14 +1178,8 @@ struct NoteEditorView: View {
                     .fixedSize()
                     .position(x: min(r.midX + pw / 2 + 96, geo.size.width - 130),
                               y: min(max(r.midY, 82), geo.size.height - 90))
-                    // The answer unfolds directly beneath the circled line.
-                    if let verb = rail.selected {
-                        CircleAnswerCard(verb: verb, result: rail.result, isLoading: rail.loading)
-                            .frame(width: 300)
-                            .position(x: min(max(r.midX, 170), geo.size.width - 170),
-                                      y: min(r.maxY + 100, geo.size.height - 120))
-                            .transition(.scale(scale: 0.94, anchor: .top).combined(with: .opacity))
-                    }
+                    // The answer now opens as an anchored CHAT thread (selectCircleVerb),
+                    // not a custom card.
                 }
             }
             .ignoresSafeArea()
@@ -1288,34 +1282,21 @@ struct NoteEditorView: View {
     }
 
     /// Fetch the circle answer for a tapped verb (once — all three come in one call).
+    /// A circle verb (Explain / Simpler) now opens the reliable CHAT bubble anchored to
+    /// the circled span (was a custom card that kept failing) — the thread can be pinned.
     private func selectCircleVerb(_ verb: CircleVerb) {
-        guard var rail = circleRail else { return }
-        let hadResult = rail.result != nil
-        rail.selected = verb
-        if !hadResult { rail.loading = true }
-        withAnimation(.easeOut(duration: 0.2)) { circleRail = rail }
-        guard !hadResult else { return }
-        let pageIndex = rail.pageIndex
+        guard let rail = circleRail else { return }
+        let resolved = resolveCirclePage(screenRect: rail.screenRect)
+        let anchor = CGPoint(x: resolved.pageRect.midX, y: resolved.pageRect.midY)
         let crop = rail.crop
-        let level = ambient.sensitivity.rawValue
-        Task {
-            let pages = note.sortedPages
-            guard pages.indices.contains(pageIndex) else { return }
-            let ocr = await NoteContextBuilder.ocrLines(for: pages[pageIndex])
-            let envelope = AIClient.buildEnvelope(
-                lines: ocr, focusLine: nil, guidedLevel: level, askDepth: 1)
-            let region = crop?.downsampled(maxDimension: 1024).pngData()
-            let result = try? await AIClient.call(
-                .circle, envelope: envelope, region: region,
-                extra: "The circled span is the attached image — answer about THAT span, with its surrounding context.",
-                as: AIClient.CircleResult.self)
-            await MainActor.run {
-                guard var current = circleRail else { return }
-                current.result = result
-                current.loading = false
-                withAnimation(.easeOut(duration: 0.2)) { circleRail = current }
-            }
+        let question: String
+        switch verb {
+        case .explain: question = "Explain what the circled item (the attached image) is and why it matters — clearly and concretely. Reply in the language of the circled content."
+        case .simpler: question = "Explain the circled item (the attached image) in the simplest everyday words. Reply in the language of the circled content."
         }
+        circleRail = nil; circleAskText = ""
+        tutor.currentPageIndex = resolved.index
+        Task { await tutor.ask(question: question, anchor: anchor, focusRegion: resolved.pageRect, focusImage: crop) }
     }
 
     /// Circle & Ask submit: crop the circled region from a fresh page render and
