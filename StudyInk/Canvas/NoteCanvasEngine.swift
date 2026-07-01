@@ -962,15 +962,27 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
     private func freezeInkForScroll() {
         // Only freeze near 1× — a frozen image pixelates when magnified. Zoomed in, let
         // the live tiled canvas re-render crisp (now cheap via the stroke spatial grid).
-        guard !scrollImageActive, !activeImageDirty, zoomScale <= 1.3,
+        guard !scrollImageActive, zoomScale <= 1.3,
               vectorCanvas.isUserInteractionEnabled,   // not mid lasso-selection
               !vectorCanvas.isHidden, vectorCanvas.alpha > 0,
               containers.indices.contains(activeIndex) else { return }
+        let container = containers[activeIndex]
+        // If ink was JUST drawn (cache stale), render a fresh image WITH the latest
+        // stroke before freezing — otherwise the just-drawn ink blanks during the swipe
+        // (the freeze was being skipped, and the live tiled layer re-renders under the
+        // pan). This render happens ONLY right after drawing (dirty), not on every slide.
+        if activeImageDirty {
+            flushPendingSave()   // persist the current live strokes now
+            guard let snapshot = controller.snapshotProvider?(activeIndex) else { return }
+            container.snapshot = snapshot
+            let dark = traitCollection.userInterfaceStyle == .dark
+            let ink = PageRenderer.inkLayer(for: snapshot, darkMode: dark, scale: imageRenderScale)
+            container.imageView.image = PageRenderer.render(snapshot, darkMode: dark, scale: imageRenderScale, inkLayer: ink)
+            activeImageDirty = false
+        }
+        guard container.imageView.image != nil else { return }
         scrollImageActive = true
-        // Show the page's already-cached image (kept fresh after each edit — see
-        // vectorCanvasChanged). NO render here: rendering on every drag-start made
-        // repeated slides fight the main thread (the scroll hitches + spikes).
-        containers[activeIndex].imageView.isHidden = false
+        container.imageView.isHidden = false
         vectorCanvas.isHidden = true
     }
     private func unfreezeInkAfterScroll() {
