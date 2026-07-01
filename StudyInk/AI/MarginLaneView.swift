@@ -214,7 +214,7 @@ struct InkHighlightOverlay: View {
             }
         }
         .allowsHitTesting(false)
-        .onAppear { withAnimation(.spring(response: 0.32, dampingFraction: 0.75)) { appeared = true } }
+        .onAppear { withAnimation(AITokens.Motion.unfold) { appeared = true } }
     }
 }
 
@@ -298,7 +298,7 @@ struct GhostInkLayer: View {
     private var spoilerGlyph: some View {
         let p = transform.toScreen(ghost.anchor)
         return ZStack(alignment: .topLeading) {
-            Button { withAnimation(.easeOut(duration: 0.2)) { showDetail.toggle() } } label: {
+            Button { withAnimation(AITokens.Motion.dismiss) { showDetail.toggle() } } label: {
                 HStack(spacing: 5) {
                     Lucide("sparkles", size: 13).foregroundStyle(AppTheme.current.aiAccent)
                     Text("ambient.nextStep").font(.caption2.weight(.semibold))
@@ -402,7 +402,7 @@ struct GhostInkLayer: View {
     /// toggles the inline why/steps card as before).
     private func openDetail() {
         if let onAskChat { onAskChat() }
-        else { withAnimation(.easeOut(duration: 0.2)) { showDetail.toggle() } }
+        else { withAnimation(AITokens.Motion.dismiss) { showDetail.toggle() } }
     }
 
     /// The "?" button — tap to open a chat thread about this step (was the inline card).
@@ -480,7 +480,7 @@ struct GhostInkLayer: View {
                 .insetBy(dx: -pad, dy: -pad))
         }.value
         if let (lines, bounds) = result {
-            withAnimation(.easeIn(duration: 0.2)) { preview = .ready(lines, bounds) }
+            withAnimation(AITokens.Motion.ghostAppear) { preview = .ready(lines, bounds) }
         } else {
             preview = .failed
         }
@@ -498,12 +498,12 @@ struct GhostInkLayer: View {
         let loading = ghost.steps.isEmpty && (explanation?.isLoading ?? true)
         return VStack(alignment: .leading, spacing: 6) {
             StepDetailCard(why: why, steps: steps, isLoading: loading,
-                           onDismiss: { withAnimation(.easeOut(duration: 0.2)) { showDetail = false } })
+                           onDismiss: { withAnimation(AITokens.Motion.dismiss) { showDetail = false } })
             // No-spoiler mode shows "Reveal answer" first (the card explained the HOW
             // without the answer); once revealed it becomes "Keep" — write it as ink.
             let needsReveal = spoilerHidden && !revealed
             Button(action: {
-                if needsReveal { withAnimation(.easeOut(duration: 0.25)) { revealed = true } }
+                if needsReveal { withAnimation(AITokens.Motion.dismiss) { revealed = true } }
                 else { onAccept() }
             }) {
                 HStack(spacing: 6) {
@@ -582,7 +582,7 @@ struct GradeGlyphView: View {
         .fixedSize()
         .onAppear {
             guard !reduceMotion else { return }
-            withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) { breathe = true }
+            withAnimation(.easeInOut(duration: AITokens.Motion.breatheDuration).repeatForever(autoreverses: true)) { breathe = true }
         }
     }
 }
@@ -782,7 +782,7 @@ struct MarginNoteView: View {
         .shadow(color: AppTheme.current.aiAccent.opacity(breathe ? 0.20 : 0.10), radius: breathe ? 30 : 22, y: 8)
         .onAppear {
             guard !reduceMotion else { return }
-            withAnimation(.easeInOut(duration: 1.7).repeatForever(autoreverses: true)) { breathe = true }
+            withAnimation(.easeInOut(duration: AITokens.Motion.breatheDuration).repeatForever(autoreverses: true)) { breathe = true }
         }
     }
 
@@ -812,7 +812,7 @@ struct AIThinkingBadge: View {
                     radius: breathe ? 18 : 7)
             .onAppear {
                 guard !reduceMotion else { return }
-                withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) { breathe = true }
+                withAnimation(.easeInOut(duration: AITokens.Motion.breatheDuration).repeatForever(autoreverses: true)) { breathe = true }
             }
             .transition(.scale(scale: 0.6).combined(with: .opacity))
             .accessibilityLabel(Text("ai.thinking"))

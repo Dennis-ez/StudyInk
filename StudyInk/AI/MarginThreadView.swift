@@ -204,7 +204,7 @@ struct MarginThreadBubble: View {
         .offset(dragOffset)
         .position(x: cx, y: cy)
         .animation(.easeOut(duration: 0.25), value: keyboardHeight)
-        .onAppear { withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { appeared = true } }
+        .onAppear { withAnimation(AITokens.Motion.unfold) { appeared = true } }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { note in
             if focused, let f = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect { keyboardHeight = f.height }
         }
@@ -281,9 +281,9 @@ struct MarginThreadBubble: View {
                     }
                 }
                 .frame(maxHeight: 260)
-                .onChange(of: rows.count) { _, _ in withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("threadBottom", anchor: .bottom) } }
-                .onChange(of: bubble.latestAnswer) { _, _ in withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("threadBottom", anchor: .bottom) } }
-                .onChange(of: isLoading) { _, _ in withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("threadBottom", anchor: .bottom) } }
+                .onChange(of: rows.count) { _, _ in withAnimation(AITokens.Motion.dismiss) { proxy.scrollTo("threadBottom", anchor: .bottom) } }
+                .onChange(of: bubble.latestAnswer) { _, _ in withAnimation(AITokens.Motion.dismiss) { proxy.scrollTo("threadBottom", anchor: .bottom) } }
+                .onChange(of: isLoading) { _, _ in withAnimation(AITokens.Motion.dismiss) { proxy.scrollTo("threadBottom", anchor: .bottom) } }
                 .onAppear { proxy.scrollTo("threadBottom", anchor: .bottom) }
             }
             if !bubble.chips.isEmpty && !isLoading {

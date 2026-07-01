@@ -67,7 +67,7 @@ struct GhostTraceLayer: View {
         }
         .onAppear {
             guard !reduceMotion else { return }
-            withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) { pulse = true }
+            withAnimation(.easeInOut(duration: AITokens.Motion.breatheDuration).repeatForever(autoreverses: true)) { pulse = true }
         }
     }
 
