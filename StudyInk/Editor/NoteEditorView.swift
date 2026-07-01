@@ -311,11 +311,31 @@ struct NoteEditorView: View {
                     )
                     ambient.invalidateGhost()
                 },
-                // The "grade my answer" glyph — grade the whole page.
+                // The "✦ Find my mistake" pill — run the 3b diagnostic on the page.
                 onGrade: {
                     ambient.clearGradePrompt()
                     canvasController.commitPendingInk()
-                    Task { await ambient.checkWork(note: note, pageIndex: pageIndex, darkMode: colorScheme == .dark) }
+                    Task { await ambient.runDiagnostic(note: note, pageIndex: pageIndex, darkMode: colorScheme == .dark) }
+                },
+                // 3b "Fix it" — write the fix as amber ink just below the broken line.
+                onDiagnosticFix: { err, rect in
+                    ambient.dismissDiagnostic()
+                    let fontSize = max(15, min(24, rect.height * 0.42))
+                    let point = CGPoint(x: rect.minX, y: rect.maxY + 6)
+                    tutor.writeInk(
+                        text: err.fixLatex,
+                        at: point,
+                        fontSize: fontSize,
+                        colorHex: ambientInkHex,
+                        avoid: ambient.lastLineRects,
+                        on: canvasController.vectorCanvas
+                    )
+                },
+                // 3b "Show the rule" — worked steps for the break, in the inline step UI.
+                onDiagnosticShowRule: { err, rect in
+                    ambient.dismissDiagnostic()
+                    let anchor = CGPoint(x: rect.midX, y: rect.maxY)
+                    Task { await ambient.explainSteps(focus: err.why, anchor: anchor, pageIndex: pageIndex, note: note, darkMode: colorScheme == .dark) }
                 }
             )
             }
@@ -860,6 +880,8 @@ struct NoteEditorView: View {
             canvasController.onStroke = { index, stroke in
                 let center = CGPoint(x: stroke.renderBounds.midX, y: stroke.renderBounds.midY)
                 if index == pageIndex { lastStrokeAnchor = center }
+                // Editing the page invalidates a shown diagnostic (§7 auto-resolve).
+                if ambient.diagnostic != nil { ambient.dismissDiagnostic() }
                 // Only a handwriting stroke should arm the proactive tutor. Two tells
                 // that a stroke is a DIAGRAM/doodle (axis, graph curve, underline,
                 // circle), not writing: it's big, OR it's a long near-straight line
@@ -1790,7 +1812,7 @@ extension NoteEditorView {
                     // PERSISTED page and misses everything just written — the
                     // check would then find no lines and silently do nothing.
                     canvasController.commitPendingInk()
-                    await ambient.checkWork(note: note, pageIndex: pageIndex, darkMode: colorScheme == .dark)
+                    await ambient.runDiagnostic(note: note, pageIndex: pageIndex, darkMode: colorScheme == .dark)
                 }
             } label: { Label("ambient.check", systemImage: "sparkles.rectangle.stack") }
             Button {

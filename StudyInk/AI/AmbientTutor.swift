@@ -132,6 +132,17 @@ struct GhostSuggestion {
     var hasDetail: Bool { (why?.isEmpty == false) || !steps.isEmpty }
 }
 
+/// The 3b "Check my work · straight to the break" result (handoff §4.3): a line-health
+/// map + the FIRST break with a precise fix. Built from the `check` Gemini call.
+struct DiagnosticState {
+    var pageIndex: Int
+    var ok: [Bool]                                  // per-line verdict (health map)
+    var brokenLine: Int?                            // firstError.line
+    var error: AIClient.CheckResult.FirstError?
+    var praise: String?
+    var lineRects: [CGRect]                          // page-space, for spotlight + fix anchor
+}
+
 enum AmbientSensitivity: String, CaseIterable, Identifiable {
     case off, subtle, helpful
     var id: String { rawValue }
@@ -156,6 +167,8 @@ final class AmbientTutorController: ObservableObject {
     @Published var notice: String?
     /// The next-step ghost suggestion, if any.
     @Published var ghost: GhostSuggestion?
+    /// The 3b diagnostic result (health map + first break), if a check is showing.
+    @Published var diagnostic: DiagnosticState?
     /// OCR line rects from the most recent check — used so AI ink (fix-it) lands
     /// in a clear gap instead of over the student's existing work.
     private(set) var lastLineRects: [CGRect] = []
@@ -394,6 +407,67 @@ final class AmbientTutorController: ObservableObject {
             if items(onPage: pageIndex).isEmpty {
                 showNotice(String(localized: "ambient.notice.allGood"))
             }
+        } catch {
+            Haptics.error()
+            showNotice(error.localizedDescription)
+        }
+    }
+
+    func dismissDiagnostic() {
+        if diagnostic != nil { withAnimation(.easeOut(duration: 0.2)) { diagnostic = nil } }
+    }
+
+    /// 3b "Check my work · straight to the break" (handoff §4.3): reads the page
+    /// on-device into a parsed line structure, runs the schema-constrained `check`
+    /// Gemini call, and surfaces the line-health map + the FIRST error's diagnostic.
+    /// Replaces the streaming verdict-glyph flow for the tutor's check surface.
+    func runDiagnostic(note: Note, pageIndex: Int, darkMode: Bool) async {
+        guard sensitivity != .off else { return }
+        let pages = note.sortedPages
+        guard pages.indices.contains(pageIndex) else { return }
+        let page = pages[pageIndex]
+
+        notice = nil; ghost = nil; clearGradePrompt(); dismissDiagnostic()
+        isChecking = true
+        defer { isChecking = false }
+
+        // Same on-device read as checkWork: merge OCR rows, drop the pasted question
+        // image's printed text, fall back to the whole inked area when OCR is blank.
+        let mediaFrames = page.mediaItems.map(\.frame)
+        let allOCR = await NoteContextBuilder.ocrLines(for: page)
+        let inMedia: (OCRLine) -> Bool = { line in mediaFrames.contains { $0.intersects(line.rect) } }
+        var lines = Self.mergeRows(allOCR.filter { !inMedia($0) })
+        if lines.isEmpty, let inkRect = Self.inkBounds(of: page) {
+            lines = [OCRLine(text: "", rect: inkRect, confidence: 0)]
+        }
+        guard !lines.isEmpty else { showNotice(String(localized: "ambient.notice.empty")); return }
+        let lineRects = lines.map(\.rect)
+        lastLineRects = lineRects
+
+        do {
+            let context = await NoteContextBuilder.build(note: note, currentPageIndex: pageIndex, darkMode: darkMode)
+            // The anchored region the model reads (the page render) rides alongside the
+            // parsed structure so it can trust the reconstructed order but still read ink.
+            let region = context.blocks.compactMap { block -> Data? in
+                if case let .imagePNG(data) = block { return data } else { return nil }
+            }.first
+            let envelope = AIClient.buildEnvelope(
+                lines: lines, focusLine: nil, locale: Locale.current.identifier,
+                guidedLevel: sensitivity.rawValue, askDepth: 1)
+            let result = try await AIClient.call(.check, envelope: envelope, region: region,
+                                                 maxTokens: 2000, as: AIClient.CheckResult.self)
+            guard let result else { showNotice(String(localized: "ambient.notice.unreadable")); return }
+
+            var ok = Array(repeating: true, count: lines.count)
+            for v in result.lines where lines.indices.contains(v.line) { ok[v.line] = v.ok }
+            let broken = result.firstError.flatMap { lines.indices.contains($0.line) ? $0.line : nil }
+            if let broken { ok[broken] = false }
+            withAnimation(.easeIn(duration: 0.3)) {
+                diagnostic = DiagnosticState(pageIndex: pageIndex, ok: ok, brokenLine: broken,
+                                             error: result.firstError, praise: result.praise, lineRects: lineRects)
+            }
+            if result.firstError == nil { showNotice(String(localized: "ambient.notice.allGood")) }
+            Haptics.selection()
         } catch {
             Haptics.error()
             showNotice(error.localizedDescription)

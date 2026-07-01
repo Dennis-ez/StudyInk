@@ -17,6 +17,10 @@ struct MarginLaneView: View {
     var onAcceptGhost: (GhostSuggestion) -> Void = { _ in }
     /// The student tapped the "grade my answer" glyph.
     var onGrade: () -> Void = {}
+    /// 3b diagnostic "Fix it" — write the fix as amber ink below the broken line.
+    var onDiagnosticFix: (AIClient.CheckResult.FirstError, CGRect) -> Void = { _, _ in }
+    /// 3b diagnostic "Show the rule" — open the worked explanation for the break.
+    var onDiagnosticShowRule: (AIClient.CheckResult.FirstError, CGRect) -> Void = { _, _ in }
 
     /// True while the ghost's why/steps detail is open — drives the matching
     /// color-coded highlights over the student's ink on the canvas.
@@ -110,16 +114,40 @@ struct MarginLaneView: View {
                     .onDisappear { ghostDetailShown = false }
                 }
 
-                // "Grade my answer" glyph — parks in the trailing margin at the
-                // student's last line; tap it to grade the page.
-                if let gp = ambient.gradePrompt, gp.pageIndex == pageIndex, !ambient.isChecking {
+                // 3b idle affordance — the breathing "✦ Find my mistake" pill parks in
+                // the trailing margin at the student's last line; tap it to run the check.
+                if let gp = ambient.gradePrompt, gp.pageIndex == pageIndex, !ambient.isChecking, ambient.diagnostic == nil {
                     let y = transform.toScreen(gp.anchor).y
-                    GradeGlyphView(onTap: onGrade, onDismiss: { ambient.clearGradePrompt() })
+                    FindMistakePill(onTap: onGrade)
                         .position(
-                            x: geo.size.width - 52 - trailingInset,
+                            x: geo.size.width - 92 - trailingInset,
                             y: min(max(y, 110), geo.size.height - 90)
                         )
                         .transition(.scale(scale: 0.5).combined(with: .opacity))
+                }
+
+                // 3b result — the line-health map (top), the in-place spotlight on the
+                // broken line, and the diagnostic card in the trailing margin.
+                if let d = ambient.diagnostic, d.pageIndex == pageIndex {
+                    LineHealthMap(ok: d.ok, brokenLine: d.brokenLine)
+                        .position(x: geo.size.width / 2, y: 64)
+                        .transition(.opacity)
+                    if let b = d.brokenLine, d.lineRects.indices.contains(b) {
+                        LineSpotlight(screenRect: transform.toScreen(d.lineRects[b]))
+                    }
+                    if let err = d.error {
+                        let rect = d.lineRects.indices.contains(err.line) ? d.lineRects[err.line] : .zero
+                        let y = transform.toScreen(CGPoint(x: rect.midX, y: rect.maxY)).y
+                        DiagnosticCard(
+                            error: err,
+                            onFixIt: { onDiagnosticFix(err, rect) },
+                            onShowRule: { onDiagnosticShowRule(err, rect) },
+                            onReplay: { ambient.dismissDiagnostic(); onGrade() })
+                            .position(
+                                x: geo.size.width - 170 - trailingInset,
+                                y: min(max(y + 40, 170), geo.size.height - 200))
+                            .transition(.scale(scale: 0.92, anchor: .topTrailing).combined(with: .opacity))
+                    }
                 }
 
                 // Inline "why" explanation as worked steps (the step UI), near the
