@@ -1203,6 +1203,7 @@ struct NoteEditorView: View {
                 onShowWhy: { requestShowWhy($0) },
                 onOpenHint: { openHint($0) },
                 onAcceptGhost: { acceptGhost($0) },
+                onAskGhostChat: { askGhostInChat($0) },
                 onGrade: { runCheck() },
                 onGhostRequestSteps: { requestGhostSteps($0) },
                 onDiagnosticFix: { fixDiagnostic($0, rect: $1) },
@@ -1259,6 +1260,18 @@ struct NoteEditorView: View {
         let focus = "The note already told the student: \"\(item.body)\".\(correct) Now show the WORKED STEPS that PROVE it — the actual derivation, step by step. Do NOT repeat the note; go deeper."
         let anchor = CGPoint(x: item.anchorRect.midX, y: item.anchorRect.maxY)
         Task { await ambient.explainSteps(focus: focus, anchor: anchor, pageIndex: pageIndex, note: note, darkMode: colorScheme == .dark, itemID: item.id) }
+    }
+
+    /// The ghost's "?" (or a tap on the ghost ink) opens a CHAT thread about the
+    /// suggested next step — the reliable, follow-up-able bubble (replaces the inline
+    /// why/steps card). The ghost stays on the page so it can still be accepted.
+    private func askGhostInChat(_ g: GhostSuggestion) {
+        let question = "Walk me through how you got this next step: \"\(g.text)\". Explain each step clearly."
+        let hint = "You previously suggested this as the student's next line: \"\(g.text)\"."
+            + (g.why.map { " Your stated reason was: \($0)" } ?? "")
+            + " Explain the derivation step by step; do not just restate it."
+        tutor.currentPageIndex = pageIndex
+        Task { await tutor.ask(question: question, anchor: g.anchor, systemHint: hint) }
     }
 
     /// The ghost's "?" had no steps → fetch a full worked derivation on demand.

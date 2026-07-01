@@ -12,6 +12,8 @@ struct GhostTraceLayer: View {
     let why: String?
     var onAccept: (String) -> Void
     var onDismiss: () -> Void
+    /// When set, the "?" opens a chat thread about this step instead of the inline why.
+    var onAsk: (() -> Void)? = nil
 
     enum GhostState { case scaffold, revealed, accepted }
     @State private var state: GhostState = .scaffold
@@ -113,7 +115,10 @@ struct GhostTraceLayer: View {
     // ? (toggle why) · fill the blank · trace to keep.
     private var actionCluster: some View {
         HStack(spacing: 6) {
-            Button { withAnimation(AITokens.Motion.dismiss) { showWhy.toggle() } } label: {
+            Button {
+                if let onAsk { onAsk() }
+                else { withAnimation(AITokens.Motion.dismiss) { showWhy.toggle() } }
+            } label: {
                 Image(systemName: "questionmark")
                     .font(.system(size: 11, weight: .bold)).foregroundStyle(AITokens.ai)
                     .frame(width: 24, height: 24)

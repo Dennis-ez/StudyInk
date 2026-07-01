@@ -15,6 +15,8 @@ struct MarginLaneView: View {
     var onShowWhy: (MarginItem) -> Void = { _ in }
     var onOpenHint: (MarginItem) -> Void = { _ in }
     var onAcceptGhost: (GhostSuggestion) -> Void = { _ in }
+    /// The ghost's "?" (or a tap on the ghost ink) → open a chat thread about the step.
+    var onAskGhostChat: (GhostSuggestion) -> Void = { _ in }
     /// The student tapped the "grade my answer" glyph.
     var onGrade: () -> Void = {}
     /// The ghost's "?" asked for a full worked derivation (its own steps were sparse).
@@ -105,6 +107,7 @@ struct MarginLaneView: View {
                         transform: transform,
                         onAccept: { onAcceptGhost(g) },
                         onDismiss: { ambient.dismissGhost() },
+                        onAskChat: { onAskGhostChat(g) },
                         onDetailChanged: { ghostDetailShown = $0 },
                         explanation: ambient.explanation?.itemID == GhostSuggestion.explainItemID ? ambient.explanation : nil,
                         onRequestSteps: { onGhostRequestSteps(g) },
@@ -225,6 +228,10 @@ struct GhostInkLayer: View {
     let transform: CanvasTransform
     var onAccept: () -> Void
     var onDismiss: () -> Void
+    /// The "?" (and tapping the ghost ink) now opens an interactive CHAT thread about
+    /// this step — anchored at the ghost, pinnable, supports follow-up questions —
+    /// instead of the inline why/steps card. `nil` falls back to the inline card.
+    var onAskChat: (() -> Void)? = nil
     /// Fired when the why/steps detail is revealed/hidden, so the editor can show
     /// the matching color-coded highlights over the student's ink on the canvas.
     var onDetailChanged: (Bool) -> Void = { _ in }
@@ -278,7 +285,8 @@ struct GhostInkLayer: View {
         return GhostTraceLayer(
             fullText: ghost.text, blankToken: blank, why: ghost.why,
             onAccept: { _ in onAccept() },
-            onDismiss: onDismiss)
+            onDismiss: onDismiss,
+            onAsk: onAskChat)
             .fixedSize()
             .position(x: p.x + 140, y: p.y)
             .transition(.opacity)
@@ -345,10 +353,10 @@ struct GhostInkLayer: View {
             // STATIC (no pulse: §7 "at most one breathing element on screen").
             .opacity(0.30)
             .contentShape(Rectangle())
-            // Tap the ink → reveal HOW it got there (why + steps), not a silent accept
-            // (a spoiler some students don't want). Accept stays on the "Keep" button +
-            // the flick-right.
-            .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { showDetail.toggle() } }
+            // Tap the ink → open a chat thread about HOW it got there (not a silent
+            // accept — a spoiler some students don't want). Accept stays on the "Keep"
+            // button + the flick-right.
+            .onTapGesture { openDetail() }
             whyButton.offset(x: 18, y: -14)
             dismissButton.offset(x: 18, y: 14)
         }
@@ -367,7 +375,7 @@ struct GhostInkLayer: View {
         return HStack(alignment: .center, spacing: 7) {
             AIInkMath(latex: ghost.text, color: AppTheme.current.aiAccent, fontSize: 20)
                 .opacity(0.7).contentShape(Rectangle())
-                .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { showDetail.toggle() } }
+                .onTapGesture { openDetail() }
             whyButton
             dismissButton
         }
@@ -390,9 +398,16 @@ struct GhostInkLayer: View {
         }
     }
 
-    /// The "?" why button — tap to explain WHY (steps) / dismiss.
+    /// The "?" opens the chat thread about this step (or, if no chat handler is wired,
+    /// toggles the inline why/steps card as before).
+    private func openDetail() {
+        if let onAskChat { onAskChat() }
+        else { withAnimation(.easeOut(duration: 0.2)) { showDetail.toggle() } }
+    }
+
+    /// The "?" button — tap to open a chat thread about this step (was the inline card).
     private var whyButton: some View {
-        Button { withAnimation(.easeOut(duration: 0.2)) { showDetail.toggle() } } label: {
+        Button { openDetail() } label: {
             Image(systemName: "questionmark")
                 .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(showDetail ? Color.white : AppTheme.current.aiAccent)
