@@ -6,20 +6,18 @@ import SwiftUI
 /// answer directly beneath the circled line. Question and answer stay attached on the page.
 
 enum CircleVerb: String, CaseIterable, Identifiable {
-    case explain, simpler, analogy
+    case explain, simpler
     var id: String { rawValue }
     var label: LocalizedStringKey {
         switch self {
         case .explain: return "ambient.circle.explain"
         case .simpler: return "ambient.circle.simpler"
-        case .analogy: return "ambient.circle.analogy"
         }
     }
     func answer(from r: AIClient.CircleResult) -> String {
         switch self {
         case .explain: return r.explain
         case .simpler: return r.simpler
-        case .analogy: return r.analogy
         }
     }
 }
@@ -93,7 +91,6 @@ struct CircleAnswerCard: View {
         switch verb {
         case .explain: return "explain"
         case .simpler: return "simpler"
-        case .analogy: return "analogy"
         }
     }
 }

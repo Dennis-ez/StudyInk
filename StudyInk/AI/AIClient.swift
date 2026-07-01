@@ -80,8 +80,11 @@ enum AIClient {
                 """
             case .circle:
                 return """
-                For the circled span (given with surrounding context), answer each verb in `locale`, ≤ 40 words each. \
-                Analogy must be concrete and everyday. quiz returns one short Q and its A.
+                The circled span is attached as an image, with its surrounding context. Reply IN `locale` — \
+                match the page's language EXACTLY (a Hebrew page → answer in Hebrew). \
+                "explain": a genuinely useful, concrete explanation of what this is and why it matters — specific, \
+                up to ~60 words, never vague or a restatement of the term. \
+                "simpler": the same idea in the plainest everyday words, ≤ 35 words.
                 """
             case .chat:
                 return """
@@ -125,8 +128,8 @@ enum AIClient {
             case .circle:
                 let quiz: [String: Any] = ["type": "OBJECT", "nullable": true,
                                            "properties": ["q": str, "a": str], "required": ["q", "a"]]
-                return obj(["intent": str, "explain": str, "simpler": str, "analogy": str, "quiz": quiz],
-                           required: ["explain", "simpler", "analogy"])
+                return obj(["intent": str, "explain": str, "simpler": str, "quiz": quiz],
+                           required: ["explain", "simpler"])
             case .chat:
                 let citeItem = obj(["col": str, "line": int], required: ["col", "line"])
                 return obj([
@@ -159,7 +162,7 @@ enum AIClient {
         struct Quiz: Decodable { var q: String; var a: String }
         var explain: String
         var simpler: String
-        var analogy: String
+        var analogy: String?
         var quiz: Quiz?
     }
     struct ChatResult: Decodable {

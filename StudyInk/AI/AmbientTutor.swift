@@ -464,29 +464,43 @@ final class AmbientTutorController: ObservableObject {
         let lineRects = lines.map(\.rect)
         lastLineRects = lineRects
 
+        // Grade with the PROVEN pipeline (reads the page IMAGE + the detailed rubric) —
+        // the schema-constrained `check` call was unreliable on real handwriting ("can't
+        // read the page"). Map its verdicts onto the 3b diagnostic surface, and reply in
+        // the PAGE's language (a Hebrew page gets a Hebrew note, not English).
+        let problem = allOCR.filter(inMedia).map(\.text).joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let pageIsRTL = lines.map(\.text).joined(separator: " ").isMostlyRTL
         do {
             let context = await NoteContextBuilder.build(note: note, currentPageIndex: pageIndex, darkMode: darkMode)
-            // The anchored region the model reads (the page render) rides alongside the
-            // parsed structure so it can trust the reconstructed order but still read ink.
-            let region = context.blocks.compactMap { block -> Data? in
-                if case let .imagePNG(data) = block { return data } else { return nil }
-            }.first
-            let envelope = AIClient.buildEnvelope(
-                lines: lines, focusLine: nil, locale: Locale.current.identifier,
-                guidedLevel: sensitivity.rawValue, askDepth: 1)
-            let result = try await AIClient.call(.check, envelope: envelope, region: region,
-                                                 maxTokens: 2000, as: AIClient.CheckResult.self)
-            guard let result else { showNotice(String(localized: "ambient.notice.unreadable")); return }
+            var blocks = context.blocks
+            blocks.append(.text(Self.checkInstruction(lines: lines, pageNumber: pageIndex + 1, problem: problem)))
+            if pageIsRTL {
+                blocks.append(.text("The page is in HEBREW — write every \"note\" (and any worded \"fix\") in HEBREW."))
+            }
+            let raw = try await AIService.send(system: Self.checkSystem, messages: [.user(blocks)], maxTokens: 4500, temperature: 0)
+            let verdicts = Self.parseVerdicts(raw)
+            guard !verdicts.isEmpty else { showNotice(String(localized: "ambient.notice.unreadable")); return }
 
             var ok = Array(repeating: true, count: lines.count)
-            for v in result.lines where lines.indices.contains(v.line) { ok[v.line] = v.ok }
-            let broken = result.firstError.flatMap { lines.indices.contains($0.line) ? $0.line : nil }
-            if let broken { ok[broken] = false }
-            withAnimation(.easeIn(duration: 0.3)) {
-                diagnostic = DiagnosticState(pageIndex: pageIndex, ok: ok, brokenLine: broken,
-                                             error: result.firstError, praise: result.praise, lineRects: lineRects)
+            for v in verdicts where lines.indices.contains(v.line) && !v.unfinished && !v.ignore {
+                ok[v.line] = v.ok
             }
-            if result.firstError == nil { showNotice(String(localized: "ambient.notice.allGood")) }
+            // The FIRST real error, top-down (§4.3 "straight to the break").
+            let firstWrong = verdicts
+                .filter { !$0.ok && !$0.unfinished && !$0.ignore }
+                .min(by: { $0.line < $1.line })
+            let error: AIClient.CheckResult.FirstError? = firstWrong.map { v in
+                AIClient.CheckResult.FirstError(
+                    line: v.line, why: v.note, fixLatex: v.fix ?? "",
+                    rubricTag: v.label.trimmingCharacters(in: .whitespaces))
+            }
+            if let e = error, lines.indices.contains(e.line) { ok[e.line] = false }
+            withAnimation(.easeIn(duration: 0.3)) {
+                diagnostic = DiagnosticState(pageIndex: pageIndex, ok: ok, brokenLine: error?.line,
+                                             error: error, praise: nil, lineRects: lineRects)
+            }
+            if error == nil { showNotice(String(localized: "ambient.notice.allGood")) }
             Haptics.selection()
         } catch {
             Haptics.error()

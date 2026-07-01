@@ -599,7 +599,7 @@ struct NoteEditorView: View {
                     let pages = note.sortedPages
                     let crop = pages.indices.contains(resolved.index)
                         ? croppedImage(of: resolved.pageRect, page: pages[resolved.index]) : nil
-                    circleRail = CircleRailState(pageIndex: resolved.index, pageRect: resolved.pageRect, crop: crop)
+                    circleRail = CircleRailState(screenRect: region, pageIndex: resolved.index, crop: crop)
                 }
             }
             circleRailLayer
@@ -896,9 +896,9 @@ struct NoteEditorView: View {
             if ProcessInfo.processInfo.environment["CONOTE_DEMO_CIRCLE"] != nil {
                 let size = pageSize
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                    let rect = CGRect(x: size.width * 0.12, y: size.height * 0.30, width: size.width * 0.5, height: size.height * 0.028)
+                    let rect = CGRect(x: 90, y: 300, width: 240, height: 30)
                     circleRail = CircleRailState(
-                        pageIndex: pageIndex, pageRect: rect, crop: nil, selected: .explain,
+                        screenRect: rect, pageIndex: pageIndex, crop: nil, selected: .explain,
                         result: AIClient.CircleResult(
                             explain: "A chain of proteins in the inner mitochondrial membrane. Electrons released from glucose hop down it; each hop pumps H⁺ out, building a gradient that drives ATP synthase.",
                             simpler: "A bucket brigade for electrons — each hand-off shoves a proton uphill, storing 'pressure' that later spins a turbine (ATP synthase).",
@@ -1173,30 +1173,32 @@ struct NoteEditorView: View {
         Binding(get: { circleAskRegion != nil }, set: { if !$0 { circleAskRegion = nil } })
     }
 
-    /// 4b Circle-to-ask state — the lassoed span (page-anchored so the rail + answer
-    /// stay glued to the content through scroll/zoom), and the fetched verbs.
+    /// 4b Circle-to-ask state — the lassoed span captured in SCREEN space (fixed where
+    /// you circled; it does NOT track the pan/scroll, which felt wrong), plus the crop
+    /// + page for the AI call and the fetched verbs.
     struct CircleRailState {
+        var screenRect: CGRect
         var pageIndex: Int
-        var pageRect: CGRect
         var crop: UIImage?
         var selected: CircleVerb?
         var result: AIClient.CircleResult?
         var loading = false
     }
 
-    /// The inline rail + pill + answer card, anchored to the circled span in page space.
+    /// The inline rail + pill + answer card, pinned to the fixed screen rect where the
+    /// span was circled (does not follow the pan).
     @ViewBuilder private var circleRailLayer: some View {
         if let rail = circleRail {
             GeometryReader { geo in
-                let t = canvasController.transform(forPage: rail.pageIndex)
-                let r = t.toScreen(rail.pageRect)
+                let r = rail.screenRect
+                // A soft pill that HUGS the content, pulled in from the loose lasso box.
+                let pw = max(30, r.width * 0.8), ph = max(20, min(r.height, 40))
                 ZStack(alignment: .topLeading) {
-                    // The circled span lifts into a soft amber pill in place.
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
                         .fill(AITokens.ai.opacity(0.10))
                         .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous)
                             .strokeBorder(AITokens.ai.opacity(0.40)))
-                        .frame(width: r.width + 10, height: r.height + 8)
+                        .frame(width: pw, height: ph)
                         .position(x: r.midX, y: r.midY)
                         .allowsHitTesting(false)
                     // The inline verb rail slides out beside it on the same line.
@@ -1205,14 +1207,14 @@ struct NoteEditorView: View {
                         onVerb: { selectCircleVerb($0) },
                         onClose: { withAnimation(.easeOut(duration: 0.2)) { circleRail = nil } })
                         .fixedSize()
-                        .position(x: min(r.maxX + 92, geo.size.width - 116),
+                        .position(x: min(r.midX + pw / 2 + 80, geo.size.width - 96),
                                   y: min(max(r.midY, 70), geo.size.height - 70))
                     // The answer unfolds directly beneath the circled line.
                     if let verb = rail.selected {
                         CircleAnswerCard(verb: verb, result: rail.result, isLoading: rail.loading)
                             .frame(width: 300)
                             .position(x: min(max(r.midX, 170), geo.size.width - 170),
-                                      y: min(r.maxY + 116, geo.size.height - 120))
+                                      y: min(r.maxY + 100, geo.size.height - 120))
                             .transition(.scale(scale: 0.94, anchor: .top).combined(with: .opacity))
                     }
                 }
@@ -1237,8 +1239,7 @@ struct NoteEditorView: View {
             guard pages.indices.contains(pageIndex) else { return }
             let ocr = await NoteContextBuilder.ocrLines(for: pages[pageIndex])
             let envelope = AIClient.buildEnvelope(
-                lines: ocr, focusLine: nil, locale: Locale.current.identifier,
-                guidedLevel: level, askDepth: 1)
+                lines: ocr, focusLine: nil, guidedLevel: level, askDepth: 1)
             let region = crop?.downsampled(maxDimension: 1024).pngData()
             let result = try? await AIClient.call(
                 .circle, envelope: envelope, region: region,

@@ -47,19 +47,38 @@ struct DiagnosticCard: View {
     var onShowRule: () -> Void
     var onReplay: () -> Void
 
+    private var title: String {
+        let tag = error.rubricTag
+        return tag.isEmpty ? "Line \(error.line + 1)" : "Line \(error.line + 1) — \(tag)"
+    }
+    /// A math fix (bare LaTeX / operators) renders as an LTR math island; a worded fix
+    /// (e.g. a Hebrew correction, a date, a translation) renders as plain text.
+    private var fixIsMath: Bool {
+        let f = error.fixLatex
+        if f.isMostlyRTL { return false }
+        return f.contains(where: { "\\^_{}√∫πΣ".contains($0) })
+            || f.range(of: #"[A-Za-z0-9)]\s*[=+\-·/*]"#, options: .regularExpression) != nil
+    }
+
     var body: some View {
         TutorCard(kicker: "found in \(String(format: "%.1f", foundIn))s",
-                  title: "Line \(error.line + 1) — \(error.rubricTag)",
-                  accent: .correction) {
+                  title: title, accent: .correction) {
             VStack(alignment: .leading, spacing: 10) {
                 Text(error.why).font(.system(size: 13.5)).foregroundStyle(AITokens.textMuted)
                     .fixedSize(horizontal: false, vertical: true)
-                // The worked fix in the student's own notation.
-                AIRichText(content: "$\(error.fixLatex)$").font(.system(size: 13))
+                // The worked fix, in the student's own notation (math ⇒ LTR island).
+                if !error.fixLatex.trimmingCharacters(in: .whitespaces).isEmpty {
+                    Group {
+                        if fixIsMath {
+                            AIRichText(content: "$\(error.fixLatex)$").environment(\.layoutDirection, .leftToRight)
+                        } else {
+                            Text(error.fixLatex).font(.system(size: 14, weight: .medium)).foregroundStyle(AITokens.textInk)
+                        }
+                    }
                     .padding(.horizontal, 12).padding(.vertical, 9)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(AITokens.workedBox, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-                    .environment(\.layoutDirection, .leftToRight)   // math is an LTR island
+                }
                 HStack(spacing: 8) {
                     TutorChip(title: "ambient.fixIt", systemImage: "checkmark",
                               accent: AITokens.success, action: onFixIt)

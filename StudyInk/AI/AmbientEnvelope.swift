@@ -47,11 +47,19 @@ extension AIClient {
     /// Page direction from its dominant script (drives lane mirroring + the reply language).
     static func direction(of text: String) -> String { text.isMostlyRTL ? "rtl" : "ltr" }
 
+    /// Reply language from the page's dominant script — a Hebrew page must get a Hebrew
+    /// reply (not the device language). Extend as more scripts are supported.
+    static func locale(for text: String) -> String {
+        for s in text.unicodeScalars where (0x0590...0x05FF).contains(s.value) { return "he-IL" }
+        return Locale.current.identifier
+    }
+
     /// Build the structured envelope from on-device OCR lines. Lines are ordered
     /// top→bottom and indexed within a single column "A" (v1); `focusLine` is the line
-    /// the surface is anchored to. Subject + direction are classified locally.
+    /// the surface is anchored to. Subject, direction, AND locale are classified locally
+    /// so the tutor speaks the page's language.
     static func buildEnvelope(
-        lines: [OCRLine], focusLine: Int?, locale: String, level: String = "high_school",
+        lines: [OCRLine], focusLine: Int?, level: String = "high_school",
         guidedLevel: String, askDepth: Int
     ) -> Envelope {
         let ordered = lines.sorted { $0.rect.minY < $1.rect.minY }
@@ -61,7 +69,7 @@ extension AIClient {
         let allText = ordered.map(\.text).joined(separator: " ")
         let focus = focusLine.map { Anchor(col: "A", line: $0) }
         return Envelope(
-            locale: locale,
+            locale: locale(for: allText),
             direction: direction(of: allText),
             subject: SubjectClassifier.classify(allText),
             level: level,
