@@ -71,16 +71,23 @@ struct CircleAnswerCard: View {
     var body: some View {
         TutorCard(kicker: kickerText, title: nil, accent: .ai) {
             VStack(alignment: .leading, spacing: 6) {
-                if isLoading || result == nil {
+                if isLoading {
                     HStack(spacing: 8) {
                         Image(systemName: "sparkle").font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(AITokens.ai).breathing()
                         Text("ai.thinking").font(.system(size: 12)).foregroundStyle(AITokens.textFaint)
                     }
                 } else if let result {
-                    Text(verb.answer(from: result))
+                    let answer = verb.answer(from: result)
+                    Text(answer)
                         .font(.system(size: 13.5)).foregroundStyle(AITokens.textMuted)
                         .fixedSize(horizontal: false, vertical: true)
+                        .multilineTextAlignment(answer.isMostlyRTL ? .trailing : .leading)
+                        .frame(maxWidth: .infinity, alignment: answer.isMostlyRTL ? .trailing : .leading)
+                        .environment(\.layoutDirection, answer.isMostlyRTL ? .rightToLeft : .leftToRight)
+                } else {
+                    // Load finished with no answer — don't hang on "thinking".
+                    Text("ai.error.retry").font(.system(size: 12.5)).foregroundStyle(AITokens.correction)
                 }
                 Text("— it threads right under the line you circled")
                     .font(AITokens.mono(9)).tracking(0.4).foregroundStyle(AITokens.textFainter)

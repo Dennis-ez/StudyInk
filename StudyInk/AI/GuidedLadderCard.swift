@@ -21,6 +21,9 @@ struct GuidedLadderCard: View {
                     if rung >= 3 { TutorGlyph(kind: .correct).frame(width: 22, height: 22) }
                     Text(bodyText).font(.system(size: 13.5)).foregroundStyle(AITokens.textMuted)
                         .fixedSize(horizontal: false, vertical: true)
+                        .multilineTextAlignment(bodyText.isMostlyRTL ? .trailing : .leading)
+                        .frame(maxWidth: .infinity, alignment: bodyText.isMostlyRTL ? .trailing : .leading)
+                        .environment(\.layoutDirection, bodyText.isMostlyRTL ? .rightToLeft : .leftToRight)
                 }
                 if rung == 2 { scaffoldBox }
                 DepthMeter(level: rung)

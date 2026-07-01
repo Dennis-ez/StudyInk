@@ -243,6 +243,7 @@
 "ambient.suggest" = "הצע צעד הבא";
 "ambient.guidedHint" = "רמז מודרך";
 "ambient.off.notice" = "העזרה המודרכת כבויה — שום דבר לא יופיע.";
+"ai.error.retry" = "לא הצלחתי להגיע למורה — הקש על פועל כדי לנסות שוב.";
 // Conote AI handoff — tutor surfaces
 "ambient.ladder.stuckHint" = "עדיין תקוע — רמז לי";
 "ambient.ladder.showStep" = "הראה את הצעד";
@@ -252,6 +253,7 @@
 "ambient.circle.explain" = "הסבר";
 "ambient.circle.simpler" = "פשוט יותר";
 "ambient.circle.analogy" = "אנלוגיה";
+"ambient.circle.ask" = "שאל על זה…";
 "ambient.chat.gotIt" = "הבנתי";
 "ambient.chat.showOnPage" = "הראה בדף";
 "ambient.chat.askAboutLine" = "שאל על השורה הזו";

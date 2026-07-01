@@ -243,6 +243,7 @@
 "ambient.suggest" = "Suggest next step";
 "ambient.guidedHint" = "Guided hint";
 "ambient.off.notice" = "Guided help is off — nothing will surface.";
+"ai.error.retry" = "Couldn't reach the tutor — tap a verb to retry.";
 // Conote AI handoff — tutor surfaces
 "ambient.ladder.stuckHint" = "Still stuck — hint me";
 "ambient.ladder.showStep" = "Show the step";
@@ -252,6 +253,7 @@
 "ambient.circle.explain" = "Explain";
 "ambient.circle.simpler" = "Simpler";
 "ambient.circle.analogy" = "Analogy";
+"ambient.circle.ask" = "Ask about this…";
 "ambient.chat.gotIt" = "got it";
 "ambient.chat.showOnPage" = "show on page";
 "ambient.chat.askAboutLine" = "ask about this line";

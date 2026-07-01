@@ -383,6 +383,7 @@ private struct InkOptionsStrip: View {
     @ObservedObject var controller: CanvasController
     var horizontal = true
     @State private var customColor: Color = .black
+    @Environment(\.colorScheme) private var colorScheme
 
     private static let presets = [
         "#000000", "#FFFFFF", "#0A84FF", "#FF453A", "#30D158",
@@ -462,20 +463,26 @@ private struct InkOptionsStrip: View {
     }
 
     private func colorDot(_ hex: String) -> some View {
-        Button {
+        // Preview the color AS IT WILL RENDER — in dark mode black ink shows near-white
+        // (InkColorAdapter), so the dot should too.
+        let ui = UIColor(hex: hex) ?? .black
+        let shown = InkColorAdapter.displayColor(ui, darkMode: colorScheme == .dark)
+        var white: CGFloat = 0; shown.getWhite(&white, alpha: nil)
+        let tickDark = white > 0.6
+        return Button {
             Haptics.selection()
             controller.toolState.colorHex = hex
             controller.recordRecentColor(hex)
         } label: {
             Circle()
-                .fill(Color(hex: hex) ?? .black)
+                .fill(Color(uiColor: shown))
                 .frame(width: 26, height: 26)
                 .overlay(Circle().strokeBorder(.quaternary))
                 .overlay {
                     if controller.toolState.colorHex == hex {
                         Image(systemName: "checkmark")
                             .font(.caption2.bold())
-                            .foregroundStyle((hex == "#FFFFFF" || hex == "#FFD60A") ? .black : .white)
+                            .foregroundStyle(tickDark ? .black : .white)
                     }
                 }
         }
@@ -483,20 +490,12 @@ private struct InkOptionsStrip: View {
     }
 
     /// Continuous width slider with a live size preview (replaces the fixed dots).
+    /// Size presets (dots), not a slider — narrower and matches the eraser strip.
     private var widthControl: some View {
-        let d = max(3, min(22, CGFloat(controller.toolState.width) + 1))
-        let dot = Circle().fill(Color.primary.opacity(0.75))
-            .frame(width: d, height: d).frame(width: 22, height: 22)
-        // A vertical dock stacks the preview over a short slider so the panel stays
-        // narrow (the horizontal 120pt slider was making it too wide).
-        let slider = Slider(value: $controller.toolState.width, in: 1...20)
-            .frame(width: horizontal ? 120 : 56)
-        return Group {
-            if horizontal { HStack(spacing: 8) { dot; slider } }
-            else { VStack(spacing: 4) { dot; slider } }
+        let layout = horizontal ? AnyLayout(HStackLayout(spacing: 6)) : AnyLayout(VStackLayout(spacing: 6))
+        return layout {
+            ForEach(Self.widths, id: \.self) { widthDot($0) }
         }
-        .accessibilityLabel(Text("tool.width"))
-        .accessibilityValue(Text("\(Int(controller.toolState.width))"))
     }
 
     /// Opacity slider — shown for the highlighter (Notability exposes it there).

@@ -738,7 +738,10 @@ final class AmbientTutorController: ObservableObject {
         let lowestShortIncomplete = lowest.map {
             $0.text.filter({ !$0.isWhitespace }).count <= 4
         } ?? false
-        var target: OCRLine? = openLine ?? ((auto && !lowestShortIncomplete) ? nil : lowest)
+        // Idle auto-suggest now targets the last line even when it looks "finished"
+        // (was returning nil → "doesn't suggest anything"); the model gives the next
+        // step below it. lastGhostSourceLine still dedupes repeats for the same line.
+        var target: OCRLine? = openLine ?? lowest
         // No OCR'd line but there IS ink (a diagram, or handwriting OCR can't read) —
         // anchor to the last written row and let the model read it from the image,
         // rather than giving up with "no next step".

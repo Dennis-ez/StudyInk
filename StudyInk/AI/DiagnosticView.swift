@@ -66,6 +66,9 @@ struct DiagnosticCard: View {
             VStack(alignment: .leading, spacing: 10) {
                 Text(error.why).font(.system(size: 13.5)).foregroundStyle(AITokens.textMuted)
                     .fixedSize(horizontal: false, vertical: true)
+                    .multilineTextAlignment(error.why.isMostlyRTL ? .trailing : .leading)
+                    .frame(maxWidth: .infinity, alignment: error.why.isMostlyRTL ? .trailing : .leading)
+                    .environment(\.layoutDirection, error.why.isMostlyRTL ? .rightToLeft : .leftToRight)
                 // The worked fix, in the student's own notation (math ⇒ LTR island).
                 if !error.fixLatex.trimmingCharacters(in: .whitespaces).isEmpty {
                     Group {

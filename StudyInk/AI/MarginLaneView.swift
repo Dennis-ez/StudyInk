@@ -373,8 +373,14 @@ struct GhostInkLayer: View {
     }
 
     private var flick: some Gesture {
-        DragGesture(minimumDistance: 28).onEnded { v in
-            if v.translation.width > 24 { onAccept() } else if v.translation.width < -24 { onDismiss() }
+        DragGesture(minimumDistance: 40).onEnded { v in
+            // Only a FAST, mostly-horizontal flick counts — a slow pan (to scroll the
+            // page / read a cut-off card) must NOT accept or dismiss (that was losing
+            // the steps bubble when panning, #6).
+            let fast = abs(v.velocity.width) > 700
+            let horizontal = abs(v.translation.width) > abs(v.translation.height) * 1.8
+            guard fast, horizontal else { return }
+            if v.translation.width > 30 { onAccept() } else if v.translation.width < -30 { onDismiss() }
         }
     }
 

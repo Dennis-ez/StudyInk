@@ -85,6 +85,9 @@ struct NoteEditorView: View {
     @State private var circleAskRegion: CGRect?
     /// 4b Circle-to-ask — the inline rail state (page-anchored so it stays glued).
     @State private var circleRail: CircleRailState?
+    /// Free-text "ask about this" typed into the circle rail.
+    @State private var circleAskText = ""
+    @FocusState private var circleAskFocused: Bool
     /// Tap-to-define: cached OCR lines (page coords) for the current page, and the
     /// concept the student tapped (Lagrange, L'Hôpital, …) with its definition.
     @State private var conceptOCRLines: [OCRLine] = []
@@ -1232,8 +1235,9 @@ struct NoteEditorView: View {
         if let rail = circleRail {
             GeometryReader { geo in
                 let r = rail.screenRect
-                // A soft pill that HUGS the content, pulled in from the loose lasso box.
-                let pw = max(30, r.width * 0.8), ph = max(20, min(r.height, 40))
+                // The pill matches the circled region (with a small inset so it hugs
+                // the span rather than the loose lasso).
+                let pw = max(30, r.width - 6), ph = max(20, r.height - 4)
                 ZStack(alignment: .topLeading) {
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
                         .fill(AITokens.ai.opacity(0.10))
@@ -1243,13 +1247,29 @@ struct NoteEditorView: View {
                         .position(x: r.midX, y: r.midY)
                         .allowsHitTesting(false)
                     // The inline verb rail slides out beside it on the same line.
-                    SelectionRail(
-                        selected: rail.selected,
-                        onVerb: { selectCircleVerb($0) },
-                        onClose: { withAnimation(.easeOut(duration: 0.2)) { circleRail = nil } })
-                        .fixedSize()
-                        .position(x: min(r.midX + pw / 2 + 80, geo.size.width - 96),
-                                  y: min(max(r.midY, 70), geo.size.height - 70))
+                    VStack(alignment: .leading, spacing: 6) {
+                        SelectionRail(
+                            selected: rail.selected,
+                            onVerb: { selectCircleVerb($0) },
+                            onClose: { withAnimation(.easeOut(duration: 0.2)) { circleRail = nil; circleAskText = "" } })
+                        // Ask in text about the circled span → opens a margin thread.
+                        HStack(spacing: 6) {
+                            TextField("ambient.circle.ask", text: $circleAskText, axis: .vertical)
+                                .font(.system(size: 12.5)).textFieldStyle(.plain).focused($circleAskFocused)
+                                .onSubmit(sendCircleTextAsk)
+                            Button(action: sendCircleTextAsk) {
+                                Image(systemName: "arrow.up.circle.fill").font(.system(size: 18))
+                                    .foregroundStyle(circleAskText.isEmpty ? AITokens.textFaint : AITokens.ai)
+                            }.buttonStyle(.plain).disabled(circleAskText.trimmingCharacters(in: .whitespaces).isEmpty)
+                        }
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .frame(maxWidth: 240)
+                        .background(AITokens.cardBg, in: Capsule())
+                        .overlay(Capsule().strokeBorder(AITokens.cardRing))
+                    }
+                    .fixedSize()
+                    .position(x: min(r.midX + pw / 2 + 96, geo.size.width - 130),
+                              y: min(max(r.midY, 82), geo.size.height - 90))
                     // The answer unfolds directly beneath the circled line.
                     if let verb = rail.selected {
                         CircleAnswerCard(verb: verb, result: rail.result, isLoading: rail.loading)
@@ -1262,6 +1282,20 @@ struct NoteEditorView: View {
             }
             .ignoresSafeArea()
         }
+    }
+
+    /// Ask a free-text question about the circled span → opens an anchored margin thread.
+    private func sendCircleTextAsk() {
+        guard let rail = circleRail else { return }
+        let q = circleAskText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { return }
+        circleAskText = ""; circleAskFocused = false
+        let resolved = resolveCirclePage(screenRect: rail.screenRect)
+        let anchor = CGPoint(x: resolved.pageRect.midX, y: resolved.pageRect.midY)
+        let crop = rail.crop
+        circleRail = nil
+        tutor.currentPageIndex = resolved.index
+        Task { await tutor.ask(question: q, anchor: anchor, focusRegion: resolved.pageRect, focusImage: crop) }
     }
 
     /// Fetch the circle answer for a tapped verb (once — all three come in one call).
@@ -1914,10 +1948,10 @@ extension NoteEditorView {
             guard !Task.isCancelled, lastStrokeIsWriting, !ambient.isChecking else { return }
             canvasController.commitPendingInk()
             let dark = colorScheme == .dark
-            // Helpful: try the next-step continuation first. suggestNext(auto) only
-            // fires on an UNFINISHED line (mid-derivation), so a finished line leaves
-            // ghost == nil → fall through to the grade offer. One surface, never two.
-            if ambient.sensitivity == .helpful {
+            // Idle → try a next-step suggestion (in Subtle it renders as the no-spoiler
+            // fill-in ghost; in Helpful as the full answer). Falls through to the grade
+            // offer only if nothing comes. One surface, never two.
+            if ambient.sensitivity != .off {
                 await ambient.suggestNext(note: note, pageIndex: pageIndex, darkMode: dark, auto: true)
             }
             guard !Task.isCancelled else { return }
