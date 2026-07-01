@@ -131,6 +131,9 @@ struct GhostSuggestion {
     /// The params/terms from the student's work this step builds on — color-coded
     /// as chips in the why/steps card and as matching highlights on the canvas.
     var highlights: [AIHighlight] = []
+    /// 2a fill-in ghost: the single insight-bearing token in `text` to mask first
+    /// (the substituted variable / key operand). Nil = show the whole line.
+    var blankToken: String? = nil
 
     var hasDetail: Bool { (why?.isEmpty == false) || !steps.isEmpty }
 }
@@ -695,7 +698,7 @@ final class AmbientTutorController: ObservableObject {
             // Headroom for Gemini 2.5 thinking tokens + the "steps" array, so the
             // {next,why,steps} JSON isn't truncated (which dropped the steps).
             let raw = try await AIService.send(system: Self.ghostSystem, messages: [.user(blocks)], maxTokens: 2200)
-            let (nextRaw, why, steps, rawHighlights) = Self.parseGhost(raw)
+            let (nextRaw, why, steps, rawHighlights, blankToken) = Self.parseGhost(raw)
             let text = Self.cleanGhost(nextRaw)
             guard !text.isEmpty, text.count < 140 else { return }
             // Drop a suggestion that just echoes the line it's completing. The MANUAL
@@ -712,18 +715,19 @@ final class AmbientTutorController: ObservableObject {
                 : CGPoint(x: last.rect.minX, y: last.rect.maxY + last.rect.height * 0.7) // new line below, clearing a fraction
             withAnimation(.easeIn(duration: 0.25)) {
                 ghost = GhostSuggestion(pageIndex: pageIndex, anchor: anchor, text: text, why: why,
-                                        steps: steps, inline: isOpen, highlights: highlights)
+                                        steps: steps, inline: isOpen, highlights: highlights,
+                                        blankToken: Self.cleanBlankToken(blankToken, in: text))
             }
         } catch { }
     }
 
-    private static let ghostSystem = "You are an expert tutor giving a student the next step of their work. The subject may be anything — math, science, a language, an essay — so adapt; NEVER assume math. READ their handwriting from the attached page image (OCR misreads math, diagrams, and non-Latin scripts — trust the image). FIRST read any problem statement on the page — typed, printed, or a pasted screenshot/photo, possibly in another language (e.g. Hebrew) — that defines the task. Then actually WORK IT OUT yourself: the genuine next step toward completing THAT task (for math: simplify/factor/take the limit and give the worked result; for an essay or other subject: the next sentence, point, or step) — never just re-copy what the student already wrote, never a half-answer. Output a JSON object: {\"next\":\"<that one line — as LaTeX for math (\\\\frac{num}{den}, x^{2}, \\\\sqrt{...}, · for multiply; no $ delimiters); as plain words for non-math; no extra words>\",\"why\":\"<ONE short sentence, in the student's language, explaining WHY this is the next step>\",\"steps\":[\"<ordered sub-steps leading to <next>, each one short line, LaTeX in $...$ only where the content is math, at most 5>\"],\"highlights\":[{\"label\":\"<a param/term/value FROM THE STUDENT'S OWN WORK you used to get <next> — any subject>\",\"box\":[x,y,w,h]}]}. In \"highlights\" the box is the term's location in the page image as fractions 0–1 (top-left x,y + size w,h); include at most 4, only terms actually on the page, and omit any you can't locate. If you can't produce a correct, useful next step, output {}."
+    private static let ghostSystem = "You are an expert tutor giving a student the next step of their work. The subject may be anything — math, science, a language, an essay — so adapt; NEVER assume math. READ their handwriting from the attached page image (OCR misreads math, diagrams, and non-Latin scripts — trust the image). FIRST read any problem statement on the page — typed, printed, or a pasted screenshot/photo, possibly in another language (e.g. Hebrew) — that defines the task. Then actually WORK IT OUT yourself: the genuine next step toward completing THAT task (for math: simplify/factor/take the limit and give the worked result; for an essay or other subject: the next sentence, point, or step) — never just re-copy what the student already wrote, never a half-answer. Output a JSON object: {\"next\":\"<that one line — as LaTeX for math (\\\\frac{num}{den}, x^{2}, \\\\sqrt{...}, · for multiply; no $ delimiters); as plain words for non-math; no extra words>\",\"why\":\"<ONE short sentence, in the student's language, explaining WHY this is the next step>\",\"steps\":[\"<ordered sub-steps leading to <next>, each one short line, LaTeX in $...$ only where the content is math, at most 5>\"],\"blankToken\":\"<the SINGLE token inside <next> that best proves understanding (the substituted variable / key operand) — it appears VERBATIM in <next> and will be masked first in the fill-in ghost; omit if nothing fits>\",\"highlights\":[{\"label\":\"<a param/term/value FROM THE STUDENT'S OWN WORK you used to get <next> — any subject>\",\"box\":[x,y,w,h]}]}. In \"highlights\" the box is the term's location in the page image as fractions 0–1 (top-left x,y + size w,h); include at most 4, only terms actually on the page, and omit any you can't locate. If you can't produce a correct, useful next step, output {}."
 
     /// Pulls the {next, why} out of the ghost response (tolerates fences / prose /
     /// truncation). Critically, it NEVER falls back to dumping the raw string: a
     /// response that looks like JSON but won't parse returns empty, so we never
     /// write `{"next":"…` braces onto the page as ink.
-    private static func parseGhost(_ raw: String) -> (String, String?, [String], [RawHighlight]) {
+    private static func parseGhost(_ raw: String) -> (String, String?, [String], [RawHighlight], String?) {
         var src = raw
         if let f = raw.range(of: "```json", options: .caseInsensitive),
            let c = raw.range(of: "```", range: f.upperBound..<raw.endIndex) {
@@ -739,7 +743,8 @@ final class AmbientTutorController: ObservableObject {
            let next = obj["next"] as? String {
             let why = (obj["why"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
             let steps = (obj["steps"] as? [String])?.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty } ?? []
-            return (next, (why?.isEmpty == false) ? why : nil, steps, parseHighlights(obj))
+            let blank = (obj["blankToken"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return (next, (why?.isEmpty == false) ? why : nil, steps, parseHighlights(obj), (blank?.isEmpty == false) ? blank : nil)
         }
         // 2) Regex-extract the string values — survives truncation (a cut-off
         //    response with no closing brace) and stray escaping. Highlights are a
@@ -750,15 +755,16 @@ final class AmbientTutorController: ObservableObject {
         if let nextVal, !nextVal.isEmpty {
             // Recover steps too (path 1 returned them, but this fallback used to drop
             // them — that's why the "?" sometimes showed a why with no steps).
-            return (nextVal, (whyVal?.isEmpty == false) ? whyVal : nil, recoverSteps(in: src), [])
+            let blank = firstCapture(#""blankToken"\s*:\s*"((?:[^"\\]|\\.)*)""#, in: src).map(unescapeJSON)
+            return (nextVal, (whyVal?.isEmpty == false) ? whyVal : nil, recoverSteps(in: src), [], (blank?.isEmpty == false) ? blank : nil)
         }
         // 3) It tried to be JSON but we couldn't recover a value → render nothing
         //    rather than spilling braces/keys onto the page.
         if src.contains("\"next\"") || src.contains("\"why\"") || src.contains("{") {
-            return ("", nil, [], [])
+            return ("", nil, [], [], nil)
         }
         // 4) Genuinely plain text — treat the whole thing as the next line.
-        return (raw, nil, [], [])
+        return (raw, nil, [], [], nil)
     }
 
     /// One un-resolved highlight as the model returned it: the term it used + the
@@ -845,6 +851,13 @@ final class AmbientTutorController: ObservableObject {
             .replacingOccurrences(of: "\\\\", with: "\\")
             .replacingOccurrences(of: "\\n", with: " ")
             .replacingOccurrences(of: "\\/", with: "/")
+    }
+
+    /// Validate the 2a blank token: clean it, and keep it ONLY if it actually appears
+    /// in the (unicode) ghost text so the fill-in split can't fail or blank the wrong span.
+    private static func cleanBlankToken(_ token: String?, in text: String) -> String? {
+        guard let raw = token?.trimmingCharacters(in: CharacterSet(charactersIn: " `'\"$=")), !raw.isEmpty else { return nil }
+        return text.mathToUnicode().contains(raw.mathToUnicode()) ? raw : nil
     }
 
     private static func cleanGhost(_ raw: String) -> String {

@@ -908,6 +908,18 @@ struct NoteEditorView: View {
                             quiz: nil), loading: false)
                 }
             }
+            // DEV: eyeball the 2a fill-in ghost (Subtle no-spoiler + blank token).
+            if ProcessInfo.processInfo.environment["CONOTE_DEMO_GHOST"] != nil {
+                let size = pageSize
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                    ambient.sensitivity = .subtle
+                    ambient.ghost = GhostSuggestion(
+                        pageIndex: pageIndex, anchor: CGPoint(x: size.width * 0.16, y: size.height * 0.34),
+                        text: "= sin(u) + C",
+                        why: "You've reduced it to ∫ cos(u) du. The antiderivative of cosine is sine — so the blank fills with u.",
+                        steps: [], inline: false, highlights: [], blankToken: "u")
+                }
+            }
             // DEV: eyeball the 5b margin chat thread in-editor without a key.
             if ProcessInfo.processInfo.environment["CONOTE_DEMO_CHAT"] != nil {
                 let size = pageSize

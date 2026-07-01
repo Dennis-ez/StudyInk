@@ -231,7 +231,14 @@ struct GhostInkLayer: View {
     var body: some View {
         Group {
             if !showAnswer {
-                spoilerGlyph
+                // 2a fill-in ghost: show the next line with the insight token blanked
+                // (never a full spoiler); fall back to the compact glyph when there's
+                // no maskable token.
+                if let blank = ghost.blankToken {
+                    fillInGhost(blank)
+                } else {
+                    spoilerGlyph
+                }
             } else {
                 switch preview {
                 case .ready(let lines, let bounds): handwriting(lines, bounds)
@@ -242,6 +249,18 @@ struct GhostInkLayer: View {
         }
         .task(id: ghost.text) { await renderPreview() }
         .onChange(of: showDetail) { onDetailChanged(showDetail) }
+    }
+
+    /// The 2a fill-in ghost (GhostTraceLayer) parked at the ghost anchor.
+    private func fillInGhost(_ blank: String) -> some View {
+        let p = transform.toScreen(ghost.anchor)
+        return GhostTraceLayer(
+            fullText: ghost.text, blankToken: blank, why: ghost.why,
+            onAccept: { _ in onAccept() },
+            onDismiss: onDismiss)
+            .fixedSize()
+            .position(x: p.x + 140, y: p.y)
+            .transition(.opacity)
     }
 
     /// The no-spoiler affordance: a compact "Next step" pill at the anchor. Tapping
