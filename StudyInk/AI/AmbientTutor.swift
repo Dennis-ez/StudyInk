@@ -358,6 +358,10 @@ final class AmbientTutorController: ObservableObject {
             )
             var blocks = context.blocks
             blocks.append(.text(Self.checkInstruction(lines: lines, pageNumber: pageIndex + 1, problem: problem)))
+            // Reply in the PAGE's language — a Hebrew page gets a Hebrew note/fix.
+            if lines.map(\.text).joined(separator: " ").isMostlyRTL {
+                blocks.append(.text("The page is in HEBREW — write every \"note\" (and any worded \"fix\") in HEBREW."))
+            }
             // Per-item y/anchor/note/fix is verbose; give it room so a multi-
             // equation page doesn't truncate mid-array.
             // temperature 0 → grading the SAME page gives the SAME verdicts every
@@ -691,9 +695,13 @@ final class AmbientTutorController: ObservableObject {
             let (nextRaw, why, steps, rawHighlights) = Self.parseGhost(raw)
             let text = Self.cleanGhost(nextRaw)
             guard !text.isEmpty, text.count < 140 else { return }
-            // Drop a suggestion that just echoes the line it's completing.
+            // Drop a suggestion that just echoes the line it's completing. The MANUAL
+            // button is lenient — only an EXACT echo is rejected, because a legitimate
+            // simplification/next step reuses tokens from the line above (that was
+            // dropping real suggestions → "no next step"). Auto stays strict (no noise).
             let a = Self.mathKey(text), b = Self.mathKey(last.text)
-            guard a.count >= 1, a != b, !b.contains(a) else { return }
+            let isEcho = auto ? (a == b || b.contains(a)) : (a == b)
+            guard a.count >= 1, !isEcho else { return }
             lastGhostSourceLine = last.text
             let highlights = Self.resolveHighlights(rawHighlights, pageSize: page.canvasSize)
             let anchor = isOpen

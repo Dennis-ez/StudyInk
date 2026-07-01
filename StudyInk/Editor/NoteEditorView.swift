@@ -141,12 +141,13 @@ struct NoteEditorView: View {
             // panel — otherwise the same thread shows in both places.
             $0.isPanelOnly != true && !(tutor.panelOpen && $0.id == tutor.panelBubbleID)
         }) { bubble in
-            AIBubbleView(
+            // 5b — the chat thread lives in the margin (collapsed connector chip /
+            // open YOU·MARGIN conversation), replacing the AIBubbleView card.
+            MarginThreadBubble(
                 bubble: bubble,
                 isLoading: tutor.loadingBubbleIDs.contains(bubble.id),
                 transform: canvasController.transform(forPage: bubble.pageIndex),
-                tutor: tutor,
-                onInsertTextBox: { textBoxes.append($0) }
+                tutor: tutor
             )
         }
     }
@@ -313,11 +314,12 @@ struct NoteEditorView: View {
                     )
                     ambient.invalidateGhost()
                 },
-                // The "✦ Find my mistake" pill — run the 3b diagnostic on the page.
+                // The "✦ Find my mistake" pill — stream the ✓ / ~ verdict glyphs (marks
+                // where without spoiling the fix; tap a ~ for the note, "Fix it" to reveal).
                 onGrade: {
                     ambient.clearGradePrompt()
                     canvasController.commitPendingInk()
-                    Task { await ambient.runDiagnostic(note: note, pageIndex: pageIndex, darkMode: colorScheme == .dark) }
+                    Task { await ambient.checkWork(note: note, pageIndex: pageIndex, darkMode: colorScheme == .dark) }
                 },
                 // 3b "Fix it" — write the fix as amber ink just below the broken line.
                 onDiagnosticFix: { err, rect in
@@ -902,8 +904,20 @@ struct NoteEditorView: View {
                         result: AIClient.CircleResult(
                             explain: "A chain of proteins in the inner mitochondrial membrane. Electrons released from glucose hop down it; each hop pumps H⁺ out, building a gradient that drives ATP synthase.",
                             simpler: "A bucket brigade for electrons — each hand-off shoves a proton uphill, storing 'pressure' that later spins a turbine (ATP synthase).",
-                            analogy: "A hydroelectric dam: the chain pumps water (H⁺) up behind it; ATP synthase is the turbine the water spins flooding back down.",
+                            analogy: nil,
                             quiz: nil), loading: false)
+                }
+            }
+            // DEV: eyeball the 5b margin chat thread in-editor without a key.
+            if ProcessInfo.processInfo.environment["CONOTE_DEMO_CHAT"] != nil {
+                let size = pageSize
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                    var b = AIBubbleModel(pageIndex: pageIndex, anchorX: size.width * 0.18, anchorY: size.height * 0.22,
+                                          x: size.width * 0.18, y: size.height * 0.22)
+                    b.thread = [AIExchange(question: "where did the 2x go?",
+                                           answer: "Good eye — what did you multiply by when you set $du = 2x\\,dx$? Look at where that factor lands in the next line.")]
+                    b.chips = ["show me the substitution", "is the 2x always there?"]
+                    tutor.bubbles.append(b)
                 }
             }
             canvasController.onStroke = { index, stroke in
@@ -1915,7 +1929,7 @@ extension NoteEditorView {
                     // PERSISTED page and misses everything just written — the
                     // check would then find no lines and silently do nothing.
                     canvasController.commitPendingInk()
-                    await ambient.runDiagnostic(note: note, pageIndex: pageIndex, darkMode: colorScheme == .dark)
+                    await ambient.checkWork(note: note, pageIndex: pageIndex, darkMode: colorScheme == .dark)
                 }
             } label: { Label("ambient.check", systemImage: "sparkles.rectangle.stack") }
             Button {

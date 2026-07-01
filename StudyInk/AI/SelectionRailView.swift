@@ -73,7 +73,8 @@ struct CircleAnswerCard: View {
             VStack(alignment: .leading, spacing: 6) {
                 if isLoading || result == nil {
                     HStack(spacing: 8) {
-                        ProgressView().controlSize(.small)
+                        Image(systemName: "sparkle").font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(AITokens.ai).breathing()
                         Text("ai.thinking").font(.system(size: 12)).foregroundStyle(AITokens.textFaint)
                     }
                 } else if let result {
