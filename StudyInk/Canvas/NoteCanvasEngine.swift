@@ -213,6 +213,7 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         }
         vectorCanvas.pencilOnly = controller.pencilOnly   // seed; updated via didSet
         vectorCanvas.onEraseEnded = { [weak self] in self?.controller.eraseGestureFinished() }
+        vectorCanvas.onEraseGestureAt = { [weak self] p in self?.controller.onEraseGesture?(p) }
         // The editor's TransformLassoOverlay owns selection — the engine just captures
         // the loop and reports it (in canvas/inkScale space, matching the projection the
         // existing lasso pipeline reads).

@@ -67,6 +67,11 @@ struct NoteEditorView: View {
     /// underline, a doodle) rather than handwriting — used to suppress the proactive
     /// tutor so it doesn't fire after you annotate/doodle instead of solving.
     @State private var lastStrokeIsWriting = true
+    /// P3 politeness: cooldown / session cap / dismissal suppression for every
+    /// PROACTIVE tutor surface. Manual buttons never consult it.
+    @StateObject private var governor = InterventionGovernor()
+    /// P3 stuck signals — local pen telemetry (repeated erasing in one region).
+    @State private var stuckDetector = StuckDetector()
     @State private var askLassoActive = false
     @State private var showGuidedLog = false
     @State private var transformLassoActive = false
@@ -889,6 +894,10 @@ struct NoteEditorView: View {
             canvasController.onPencilHold = {
                 withAnimation { askLassoActive = true }
             }
+            // P3 stuck signal: repeated erasing in one region → gentle offer there.
+            canvasController.onEraseGesture = { p in
+                if stuckDetector.noteErase(at: p) { stuckDetected(at: p) }
+            }
             canvasController.drawingProvider = { [weak note] index in
                 MainActor.assumeIsolated {
                     guard let note else { return PKDrawing() }
@@ -1204,6 +1213,7 @@ struct NoteEditorView: View {
                 onOpenHint: { openHint($0) },
                 onAcceptGhost: { acceptGhost($0) },
                 onAskGhostChat: { askGhostInChat($0) },
+                onGhostDismissed: { governor.noteDismissed(.ghost) },
                 onGrade: { runCheck() },
                 onGhostRequestSteps: { requestGhostSteps($0) },
                 onDiagnosticFix: { fixDiagnostic($0, rect: $1) },
@@ -1229,6 +1239,7 @@ struct NoteEditorView: View {
     }
 
     private func acceptGhost(_ g: GhostSuggestion) {
+        governor.noteAccepted(.ghost)   // engagement forgives past dismissals
         ambient.dismissGhost()
         tutor.writeInk(text: g.text, at: g.anchor, colorHex: ambientInkHex,
                        avoid: g.inline ? [] : ambient.lastLineRects, center: g.inline, on: canvasController.vectorCanvas)
@@ -1266,6 +1277,7 @@ struct NoteEditorView: View {
     /// suggested next step — the reliable, follow-up-able bubble (replaces the inline
     /// why/steps card). The ghost stays on the page so it can still be accepted.
     private func askGhostInChat(_ g: GhostSuggestion) {
+        governor.noteAccepted(.ghost)   // asking about it = engagement, not a dismissal
         let question = "Walk me through how you got this next step: \"\(g.text)\". Explain each step clearly."
         let hint = "You previously suggested this as the student's next line: \"\(g.text)\"."
             + (g.why.map { " Your stated reason was: \($0)" } ?? "")
@@ -1929,24 +1941,43 @@ extension NoteEditorView {
         // pen-pause fires two AI calls and shows two competing surfaces. Manual
         // check-my-work / suggest-next buttons still work.
         guard ambient.sensitivity != .off, !distractionFree, !guidedMode.isEnabled else { return }
+        // P3: the idle threshold, cooldown, session cap, and dismissal suppression all
+        // come from the governor (sensitivity-driven) — not hardcoded timers.
+        let thresholds = InterventionGovernor.thresholds(for: ambient.sensitivity)
         ghostIdleTask = Task {
-            try? await Task.sleep(nanoseconds: 3_900_000_000)
+            try? await Task.sleep(nanoseconds: UInt64(thresholds.idleDelay * 1_000_000_000))
             // Doodle / diagram line → the tutor stays silent (intent: sketching).
             guard !Task.isCancelled, lastStrokeIsWriting, !ambient.isChecking else { return }
             canvasController.commitPendingInk()
             let dark = colorScheme == .dark
             // Idle → try a next-step suggestion (in Subtle it renders as the no-spoiler
-            // fill-in ghost; in Helpful as the full answer).
-            if ambient.sensitivity != .off {
+            // fill-in ghost; in Helpful as the full answer). Gated by the governor.
+            if governor.mayOffer(.ghost, sensitivity: ambient.sensitivity) {
                 await ambient.suggestNext(note: note, pageIndex: pageIndex, darkMode: dark, auto: true)
+                if ambient.ghost != nil { governor.noteShown(.ghost) }
             }
             guard !Task.isCancelled else { return }
-            // ALSO offer to check the work — a small "Find my mistake" pill in the right
-            // margin (it doesn't overlap the ghost). Previously it only appeared when no
-            // ghost came, so on Helpful the check offer was almost never seen.
-            if let anchor = lastStrokeAnchor {
+            // ALSO offer to check the work — the quiet "Find my mistake" pill in the
+            // right margin. It rides the same pause (bypasses the cooldown) and doesn't
+            // consume the session cap; suppression still applies if repeatedly ignored.
+            if let anchor = lastStrokeAnchor,
+               governor.mayOffer(.gradeOffer, sensitivity: ambient.sensitivity, bypassCooldown: true) {
                 ambient.offerGrade(pageIndex: pageIndex, anchor: anchor)
             }
+        }
+    }
+
+    /// P3 stuck signal fired (e.g. 3+ erase gestures in one region within a minute):
+    /// after a short natural pause, park the gentle pulsing "Find my mistake" pill AT
+    /// the struggled region — never a card, never mid-writing.
+    private func stuckDetected(at point: CGPoint) {
+        guard ambient.sensitivity != .off, !distractionFree,
+              governor.mayOffer(.stuckHint, sensitivity: ambient.sensitivity, bypassCooldown: true) else { return }
+        let page = pageIndex
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            guard ambient.gradePrompt == nil, ambient.ghost == nil, !ambient.isChecking else { return }
+            ambient.offerGrade(pageIndex: page, anchor: point)
+            governor.noteShown(.stuckHint)
         }
     }
 

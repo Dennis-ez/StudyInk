@@ -17,6 +17,9 @@ struct MarginLaneView: View {
     var onAcceptGhost: (GhostSuggestion) -> Void = { _ in }
     /// The ghost's "?" (or a tap on the ghost ink) → open a chat thread about the step.
     var onAskGhostChat: (GhostSuggestion) -> Void = { _ in }
+    /// The student explicitly dismissed the ghost (✕ / flick-left) — feeds the P3
+    /// governor's dismissal suppression (two dismissals silence the type).
+    var onGhostDismissed: () -> Void = {}
     /// The student tapped the "grade my answer" glyph.
     var onGrade: () -> Void = {}
     /// The ghost's "?" asked for a full worked derivation (its own steps were sparse).
@@ -106,7 +109,7 @@ struct MarginLaneView: View {
                         ghost: g,
                         transform: transform,
                         onAccept: { onAcceptGhost(g) },
-                        onDismiss: { ambient.dismissGhost() },
+                        onDismiss: { ambient.dismissGhost(); onGhostDismissed() },
                         onAskChat: { onAskGhostChat(g) },
                         onDetailChanged: { ghostDetailShown = $0 },
                         explanation: ambient.explanation?.itemID == GhostSuggestion.explainItemID ? ambient.explanation : nil,

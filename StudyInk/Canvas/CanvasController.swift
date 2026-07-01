@@ -166,6 +166,9 @@ final class CanvasController: NSObject, ObservableObject {
     /// Fired by the engine's dismiss-tap intercept (see setTapIntercept) —
     /// the editor uses it to close the notes drawer on any page tap.
     var onInterceptedTap: (() -> Void)?
+    /// Eraser gesture lifted at this page-space point — feeds the stuck detector
+    /// (repeated erasing in one region = the student is likely stuck there).
+    var onEraseGesture: ((CGPoint) -> Void)?
     /// Bumped when a drawing gesture begins; observers (the toolbar's color
     /// strip) use it to dismiss themselves the moment writing starts.
     @Published private(set) var drawingGestureBeganToken = 0

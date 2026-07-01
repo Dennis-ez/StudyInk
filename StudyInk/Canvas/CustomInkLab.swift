@@ -338,6 +338,10 @@ final class VectorInkView: UIView {
     var pencilOnly = true
     /// Fired when an erase gesture lifts — the engine reverts to the previous tool.
     var onEraseEnded: (() -> Void)?
+    /// Fired on eraser lift with the gesture's last page-space point — feeds the
+    /// stuck detector (repeated erasing in one region = likely stuck).
+    var onEraseGestureAt: ((CGPoint) -> Void)?
+    private var lastErasePoint: CGPoint?
     var strokeCount: Int { strokes.count }
     /// True while a pen stroke is mid-flight (touch down, not yet lifted). The engine
     /// uses it to avoid re-laying-out / re-mounting the page under the pen.
@@ -708,7 +712,10 @@ final class VectorInkView: UIView {
             hideEraserCursor()
             // Erase lifted — commit the whole gesture as ONE host change (→ one undo
             // step), then revert to the previous tool.
-            if erasedThisGesture { onChange?(); onEraseEnded?() }
+            if erasedThisGesture {
+                onChange?(); onEraseEnded?()
+                if let p = lastErasePoint { onEraseGestureAt?(p) }
+            }
             return
         }
         if tool == .lasso {
@@ -1078,6 +1085,7 @@ final class VectorInkView: UIView {
 
     @discardableResult
     private func eraseAt(_ p: CGPoint) -> CGRect {
+        lastErasePoint = p
         let r = eraserRadius
         // Broad-phase on the CACHED bbox (no per-point bounds recompute), then a
         // point scan only for strokes whose box is under the eraser.
