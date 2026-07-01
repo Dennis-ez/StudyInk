@@ -203,7 +203,14 @@ final class DocumentScrollView: UIScrollView, UIScrollViewDelegate, PKCanvasView
         vectorCanvas.backgroundColor = .clear
         canvas.vectorCanvas = vectorCanvas   // AI ink routes through the inert canvas → here
         vectorCanvas.onChange = { [weak self] in self?.vectorCanvasChanged() }
-        vectorCanvas.onDrawWillBegin = { [weak self] in self?.revealActiveCanvasNow() }
+        vectorCanvas.onDrawWillBegin = { [weak self] in
+            self?.revealActiveCanvasNow()
+            // Strokes go to the vector canvas now, so PencilKit's drawingGestureRecognizer
+            // (the only thing wired to noteDrawingGestureBegan) never fires. Arm the ambient
+            // tutor from the REAL vector stroke-begin — without this scheduleAmbient() never
+            // ran, so the idle "next step" ghost never appeared on any sensitivity.
+            self?.controller.noteDrawingGestureBegan()
+        }
         vectorCanvas.pencilOnly = controller.pencilOnly   // seed; updated via didSet
         vectorCanvas.onEraseEnded = { [weak self] in self?.controller.eraseGestureFinished() }
         // The editor's TransformLassoOverlay owns selection — the engine just captures
