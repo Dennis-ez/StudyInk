@@ -217,8 +217,9 @@ struct LibraryView: View {
             purgeExpiredNotes()
             // One-time: give existing notes a tree position alongside folders.
             FileTree.backfillSortIndexIfNeeded(PersistenceController.shared.viewContext)
-            // DEV: auto-open the first note so the 3b demo diagnostic can be eyeballed.
-            if ProcessInfo.processInfo.environment["CONOTE_DEMO_CHECK"] != nil, autoOpenNote == nil {
+            // DEV: auto-open the first note so a Conote demo surface can be eyeballed.
+            let demo = ProcessInfo.processInfo.environment
+            if (demo["CONOTE_DEMO_CHECK"] != nil || demo["CONOTE_DEMO_CIRCLE"] != nil), autoOpenNote == nil {
                 autoOpenNote = activeNotes.first
             }
         }

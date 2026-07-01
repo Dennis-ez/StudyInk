@@ -83,6 +83,8 @@ struct NoteEditorView: View {
     /// copy / duplicate / delete choice from the pill.
     @State private var regionSelection: RegionSelection?
     @State private var circleAskRegion: CGRect?
+    /// 4b Circle-to-ask — the inline rail state (page-anchored so it stays glued).
+    @State private var circleRail: CircleRailState?
     /// Tap-to-define: cached OCR lines (page coords) for the current page, and the
     /// concept the student tapped (Lagrange, L'Hôpital, …) with its definition.
     @State private var conceptOCRLines: [OCRLine] = []
@@ -589,12 +591,18 @@ struct NoteEditorView: View {
                 exitDistractionFreeButton
             }
 
-            // Circle & Ask lasso capture layer.
+            // Circle & Ask lasso capture layer (4b — the selection morphs into an
+            // inline rail; no modal).
             GeometryGate(geometry: canvasController.geometry) {
                 AskLassoOverlay(isActive: $askLassoActive, transform: transform) { region in
-                    circleAskRegion = region
+                    let resolved = resolveCirclePage(screenRect: region)
+                    let pages = note.sortedPages
+                    let crop = pages.indices.contains(resolved.index)
+                        ? croppedImage(of: resolved.pageRect, page: pages[resolved.index]) : nil
+                    circleRail = CircleRailState(pageIndex: resolved.index, pageRect: resolved.pageRect, crop: crop)
                 }
             }
+            circleRailLayer
 
 
             if let selection = strokeSelection {
@@ -884,6 +892,20 @@ struct NoteEditorView: View {
                     ambient.injectDemoDiagnostic(pageIndex: pageIndex, pageSize: size)
                 }
             }
+            // DEV: eyeball the 4b circle-to-ask rail + answer in-editor without a key.
+            if ProcessInfo.processInfo.environment["CONOTE_DEMO_CIRCLE"] != nil {
+                let size = pageSize
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                    let rect = CGRect(x: size.width * 0.12, y: size.height * 0.30, width: size.width * 0.5, height: size.height * 0.028)
+                    circleRail = CircleRailState(
+                        pageIndex: pageIndex, pageRect: rect, crop: nil, selected: .explain,
+                        result: AIClient.CircleResult(
+                            explain: "A chain of proteins in the inner mitochondrial membrane. Electrons released from glucose hop down it; each hop pumps H⁺ out, building a gradient that drives ATP synthase.",
+                            simpler: "A bucket brigade for electrons — each hand-off shoves a proton uphill, storing 'pressure' that later spins a turbine (ATP synthase).",
+                            analogy: "A hydroelectric dam: the chain pumps water (H⁺) up behind it; ATP synthase is the turbine the water spins flooding back down.",
+                            quiz: nil), loading: false)
+                }
+            }
             canvasController.onStroke = { index, stroke in
                 let center = CGPoint(x: stroke.renderBounds.midX, y: stroke.renderBounds.midY)
                 if index == pageIndex { lastStrokeAnchor = center }
@@ -1127,13 +1149,6 @@ struct NoteEditorView: View {
                 PersistenceController.shared.save()
             }
         }
-        .sheet(isPresented: circleAskBinding) {
-            if let region = circleAskRegion {
-                CircleAskSheet(region: region) { question in
-                    sendCircleAsk(question: question, region: region)
-                }
-            }
-        }
         .alert(Text("ai.error"), isPresented: aiErrorBinding) {
             // A missing key is a dead-end with only "Done" — give a one-tap path
             // to set AI up instead of making the user leave the note to find it.
@@ -1156,6 +1171,86 @@ struct NoteEditorView: View {
 
     private var circleAskBinding: Binding<Bool> {
         Binding(get: { circleAskRegion != nil }, set: { if !$0 { circleAskRegion = nil } })
+    }
+
+    /// 4b Circle-to-ask state — the lassoed span (page-anchored so the rail + answer
+    /// stay glued to the content through scroll/zoom), and the fetched verbs.
+    struct CircleRailState {
+        var pageIndex: Int
+        var pageRect: CGRect
+        var crop: UIImage?
+        var selected: CircleVerb?
+        var result: AIClient.CircleResult?
+        var loading = false
+    }
+
+    /// The inline rail + pill + answer card, anchored to the circled span in page space.
+    @ViewBuilder private var circleRailLayer: some View {
+        if let rail = circleRail {
+            GeometryReader { geo in
+                let t = canvasController.transform(forPage: rail.pageIndex)
+                let r = t.toScreen(rail.pageRect)
+                ZStack(alignment: .topLeading) {
+                    // The circled span lifts into a soft amber pill in place.
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(AITokens.ai.opacity(0.10))
+                        .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .strokeBorder(AITokens.ai.opacity(0.40)))
+                        .frame(width: r.width + 10, height: r.height + 8)
+                        .position(x: r.midX, y: r.midY)
+                        .allowsHitTesting(false)
+                    // The inline verb rail slides out beside it on the same line.
+                    SelectionRail(
+                        selected: rail.selected,
+                        onVerb: { selectCircleVerb($0) },
+                        onClose: { withAnimation(.easeOut(duration: 0.2)) { circleRail = nil } })
+                        .fixedSize()
+                        .position(x: min(r.maxX + 92, geo.size.width - 116),
+                                  y: min(max(r.midY, 70), geo.size.height - 70))
+                    // The answer unfolds directly beneath the circled line.
+                    if let verb = rail.selected {
+                        CircleAnswerCard(verb: verb, result: rail.result, isLoading: rail.loading)
+                            .frame(width: 300)
+                            .position(x: min(max(r.midX, 170), geo.size.width - 170),
+                                      y: min(r.maxY + 116, geo.size.height - 120))
+                            .transition(.scale(scale: 0.94, anchor: .top).combined(with: .opacity))
+                    }
+                }
+            }
+            .ignoresSafeArea()
+        }
+    }
+
+    /// Fetch the circle answer for a tapped verb (once — all three come in one call).
+    private func selectCircleVerb(_ verb: CircleVerb) {
+        guard var rail = circleRail else { return }
+        let hadResult = rail.result != nil
+        rail.selected = verb
+        if !hadResult { rail.loading = true }
+        withAnimation(.easeOut(duration: 0.2)) { circleRail = rail }
+        guard !hadResult else { return }
+        let pageIndex = rail.pageIndex
+        let crop = rail.crop
+        let level = ambient.sensitivity.rawValue
+        Task {
+            let pages = note.sortedPages
+            guard pages.indices.contains(pageIndex) else { return }
+            let ocr = await NoteContextBuilder.ocrLines(for: pages[pageIndex])
+            let envelope = AIClient.buildEnvelope(
+                lines: ocr, focusLine: nil, locale: Locale.current.identifier,
+                guidedLevel: level, askDepth: 1)
+            let region = crop?.downsampled(maxDimension: 1024).pngData()
+            let result = try? await AIClient.call(
+                .circle, envelope: envelope, region: region,
+                extra: "The circled span is the attached image — answer about THAT span, with its surrounding context.",
+                as: AIClient.CircleResult.self)
+            await MainActor.run {
+                guard var current = circleRail else { return }
+                current.result = result
+                current.loading = false
+                withAnimation(.easeOut(duration: 0.2)) { circleRail = current }
+            }
+        }
     }
 
     /// Circle & Ask submit: crop the circled region from a fresh page render and
