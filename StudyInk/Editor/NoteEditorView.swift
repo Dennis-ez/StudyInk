@@ -288,9 +288,12 @@ struct NoteEditorView: View {
                 },
                 onShowWhy: { item in
                     // Show the why INSIDE the note (keep it open); tagged with the item so
-                    // it renders inline in the bubble, not as a separate floating card.
+                    // it renders inline in the bubble, not as a separate floating card. Ask
+                    // for the WORKED DERIVATION (not a restatement of the note above it).
+                    let correct = item.result.map { " The correct line is: \($0)." } ?? ""
+                    let focus = "The note already told the student: \"\(item.body)\".\(correct) Now show the WORKED STEPS that PROVE it — the actual derivation, step by step. Do NOT repeat the note; go deeper."
                     let anchor = CGPoint(x: item.anchorRect.midX, y: item.anchorRect.maxY)
-                    Task { await ambient.explainSteps(focus: item.body, anchor: anchor, pageIndex: pageIndex, note: note, darkMode: colorScheme == .dark, itemID: item.id) }
+                    Task { await ambient.explainSteps(focus: focus, anchor: anchor, pageIndex: pageIndex, note: note, darkMode: colorScheme == .dark, itemID: item.id) }
                 },
                 onOpenHint: { item in
                     // A watcher's "?" — highlight the line it flagged RIGHT AWAY, then

@@ -484,13 +484,16 @@ private struct InkOptionsStrip: View {
 
     /// Continuous width slider with a live size preview (replaces the fixed dots).
     private var widthControl: some View {
-        HStack(spacing: 8) {
-            let d = max(3, min(22, CGFloat(controller.toolState.width) + 1))
-            Circle().fill(Color.primary.opacity(0.75))
-                .frame(width: d, height: d)
-                .frame(width: 22, height: 22)
-            Slider(value: $controller.toolState.width, in: 1...20)
-                .frame(width: horizontal ? 120 : 90)
+        let d = max(3, min(22, CGFloat(controller.toolState.width) + 1))
+        let dot = Circle().fill(Color.primary.opacity(0.75))
+            .frame(width: d, height: d).frame(width: 22, height: 22)
+        // A vertical dock stacks the preview over a short slider so the panel stays
+        // narrow (the horizontal 120pt slider was making it too wide).
+        let slider = Slider(value: $controller.toolState.width, in: 1...20)
+            .frame(width: horizontal ? 120 : 56)
+        return Group {
+            if horizontal { HStack(spacing: 8) { dot; slider } }
+            else { VStack(spacing: 4) { dot; slider } }
         }
         .accessibilityLabel(Text("tool.width"))
         .accessibilityValue(Text("\(Int(controller.toolState.width))"))
@@ -498,11 +501,13 @@ private struct InkOptionsStrip: View {
 
     /// Opacity slider — shown for the highlighter (Notability exposes it there).
     private var opacityControl: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "circle.lefthalf.filled")
-                .font(.system(size: 13)).foregroundStyle(.secondary)
-            Slider(value: $controller.toolState.opacity, in: 0.1...1)
-                .frame(width: horizontal ? 100 : 80)
+        let icon = Image(systemName: "circle.lefthalf.filled")
+            .font(.system(size: 13)).foregroundStyle(.secondary)
+        let slider = Slider(value: $controller.toolState.opacity, in: 0.1...1)
+            .frame(width: horizontal ? 100 : 56)
+        return Group {
+            if horizontal { HStack(spacing: 6) { icon; slider } }
+            else { VStack(spacing: 4) { icon; slider } }
         }
         .accessibilityLabel(Text("tool.opacity"))
     }

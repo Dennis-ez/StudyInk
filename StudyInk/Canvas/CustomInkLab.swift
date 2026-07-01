@@ -290,8 +290,32 @@ final class VectorInkView: UIView {
     var tool: InkTool = .pen {
         didSet { if oldValue == .lasso, tool != .lasso { commitSelection() } }
     }
-    private let eraserRadius: CGFloat = 16
+    /// Eraser reach (page space) — driven by the eraser tool's width slider.
+    var eraserRadius: CGFloat = 16
     private var erasedThisGesture = false
+
+    /// A soft ring that shows the eraser's reach and follows the touch while erasing.
+    private lazy var eraserCursor: CAShapeLayer = {
+        let l = CAShapeLayer()
+        l.fillColor = UIColor.systemGray2.withAlphaComponent(0.16).cgColor
+        l.strokeColor = UIColor.systemGray.withAlphaComponent(0.8).cgColor
+        l.lineWidth = 1.3
+        l.isHidden = true
+        return l
+    }()
+    private func moveEraserCursor(to p: CGPoint) {
+        let r = eraserRadius
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        eraserCursor.path = UIBezierPath(ovalIn: CGRect(x: p.x - r, y: p.y - r, width: r * 2, height: r * 2)).cgPath
+        eraserCursor.isHidden = false
+        layer.addSublayer(eraserCursor)   // keep it above the ink tiles
+        CATransaction.commit()
+    }
+    private func hideEraserCursor() {
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        eraserCursor.isHidden = true
+        CATransaction.commit()
+    }
 
     // Undo/redo: snapshots of `strokes` (COW — cheap until mutated).
     private var undoStack: [[Stroke]] = []
@@ -608,7 +632,9 @@ final class VectorInkView: UIView {
         onDrawWillBegin?()
         if tool == .eraser {
             erasedThisGesture = false
-            let dirty = eraseAt(t.location(in: self))
+            let p = t.location(in: self)
+            moveEraserCursor(to: p)
+            let dirty = eraseAt(p)
             if !dirty.isNull { invalidate(dirty); onChange?() }
             return
         }
@@ -639,6 +665,7 @@ final class VectorInkView: UIView {
         if tool == .eraser {
             var dirty = CGRect.null
             for ct in event?.coalescedTouches(for: t) ?? [t] { dirty = dirty.union(eraseAt(ct.location(in: self))) }
+            moveEraserCursor(to: t.location(in: self))
             if !dirty.isNull { invalidate(dirty); onChange?() }
             return
         }
@@ -675,6 +702,7 @@ final class VectorInkView: UIView {
     }
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         if tool == .eraser {
+            hideEraserCursor()
             // Erase lifted — if it actually removed ink, revert to the previous tool.
             if erasedThisGesture { onEraseEnded?() }
             return
@@ -744,6 +772,7 @@ final class VectorInkView: UIView {
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
         current = []
         liveLayer.path = nil
+        hideEraserCursor()
         if tool == .lasso { selectionGesture = nil; lassoPoints = []; if selectionStrokes.isEmpty { lassoLayer.path = nil } }
     }
 

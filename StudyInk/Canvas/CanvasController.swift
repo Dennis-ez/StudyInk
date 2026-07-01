@@ -307,6 +307,8 @@ final class CanvasController: NSObject, ObservableObject {
             let cfg = toolState.vectorTool()
             v.tool = cfg.tool
             v.penWidth = cfg.width
+            // The eraser's size dots (8/16/28) drive its reach directly.
+            if cfg.tool == .eraser { v.eraserRadius = max(6, cfg.width) }
             v.widthVariation = cfg.widthVariation
             v.setColor(cfg.color)
             // Hand → let a finger pan the document instead of drawing.

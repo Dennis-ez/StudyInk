@@ -661,6 +661,14 @@ struct MarginNoteView: View {
 
     private var material: Material { colorScheme == .dark ? .regularMaterial : .ultraThinMaterial }
 
+    /// True when the "why" is essentially the note text already shown above it.
+    private func whyRepeatsNote(_ why: String) -> Bool {
+        func norm(_ s: String) -> String { s.lowercased().filter { $0.isLetter || $0.isNumber } }
+        let a = norm(why), b = norm(item.body)
+        guard a.count >= 6, b.count >= 6 else { return false }
+        return a == b || a.contains(b) || b.contains(a)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
@@ -728,7 +736,10 @@ struct MarginNoteView: View {
                     }
                 } else {
                     VStack(alignment: .leading, spacing: 7) {
-                        if let why = ex.why, !why.isEmpty {
+                        // Skip the why when it just repeats the note above it (the "show
+                        // why is the same as the first thing it said" bug); the steps ARE
+                        // the deeper answer.
+                        if let why = ex.why, !why.isEmpty, !whyRepeatsNote(why) {
                             AIRichText(content: why).font(.system(size: 12.5))
                         }
                         ForEach(Array(ex.steps.enumerated()), id: \.offset) { i, step in
