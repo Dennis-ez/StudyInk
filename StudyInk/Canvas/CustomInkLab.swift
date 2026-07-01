@@ -635,7 +635,10 @@ final class VectorInkView: UIView {
             let p = t.location(in: self)
             moveEraserCursor(to: p)
             let dirty = eraseAt(p)
-            if !dirty.isNull { invalidate(dirty); onChange?() }
+            // Live-render the erase, but DON'T notify the host yet — the whole drag is
+            // coalesced into one `onChange` on lift, so the editor records a single
+            // undo step for the gesture (not one per stroke removed).
+            if !dirty.isNull { invalidate(dirty) }
             return
         }
         if tool == .lasso {
@@ -666,7 +669,7 @@ final class VectorInkView: UIView {
             var dirty = CGRect.null
             for ct in event?.coalescedTouches(for: t) ?? [t] { dirty = dirty.union(eraseAt(ct.location(in: self))) }
             moveEraserCursor(to: t.location(in: self))
-            if !dirty.isNull { invalidate(dirty); onChange?() }
+            if !dirty.isNull { invalidate(dirty) }   // notify the host once on lift, not per erase
             return
         }
         if tool == .lasso {
@@ -703,8 +706,9 @@ final class VectorInkView: UIView {
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         if tool == .eraser {
             hideEraserCursor()
-            // Erase lifted — if it actually removed ink, revert to the previous tool.
-            if erasedThisGesture { onEraseEnded?() }
+            // Erase lifted — commit the whole gesture as ONE host change (→ one undo
+            // step), then revert to the previous tool.
+            if erasedThisGesture { onChange?(); onEraseEnded?() }
             return
         }
         if tool == .lasso {
@@ -773,6 +777,9 @@ final class VectorInkView: UIView {
         current = []
         liveLayer.path = nil
         hideEraserCursor()
+        // A cancelled erase still removed ink — commit it as one change so it persists
+        // (and stays a single undo step) rather than getting lost.
+        if tool == .eraser, erasedThisGesture { onChange?(); onEraseEnded?() }
         if tool == .lasso { selectionGesture = nil; lassoPoints = []; if selectionStrokes.isEmpty { lassoLayer.path = nil } }
     }
 

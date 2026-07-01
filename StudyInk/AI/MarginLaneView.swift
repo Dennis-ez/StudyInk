@@ -156,7 +156,6 @@ struct MarginLaneView: View {
                 if let ex = ambient.explanation, ex.pageIndex == pageIndex, ex.itemID == nil {
                     let p = transform.toScreen(ex.anchor)
                     StepDetailCard(why: ex.why, steps: ex.steps, isLoading: ex.isLoading,
-                                   highlights: ex.highlights,
                                    onDismiss: { ambient.dismissExplanation() })
                         .position(
                             x: min(max(p.x, 180), geo.size.width - 170 - trailingInset),
@@ -479,7 +478,7 @@ struct GhostInkLayer: View {
         let why = (ghost.why?.isEmpty == false) ? ghost.why : explanation?.why
         let loading = ghost.steps.isEmpty && (explanation?.isLoading ?? false)
         return VStack(alignment: .leading, spacing: 6) {
-            StepDetailCard(why: why, steps: steps, isLoading: loading, highlights: ghost.highlights,
+            StepDetailCard(why: why, steps: steps, isLoading: loading,
                            onDismiss: { withAnimation(.easeOut(duration: 0.2)) { showDetail = false } })
             // No-spoiler mode shows "Reveal answer" first (the card explained the HOW
             // without the answer); once revealed it becomes "Keep" — write it as ink.
@@ -575,9 +574,6 @@ struct StepDetailCard: View {
     let why: String?
     let steps: [String]
     var isLoading: Bool = false
-    /// The params/terms the tutor used, color-coded — each chip's color matches the
-    /// highlight drawn over that term on the canvas.
-    var highlights: [AIHighlight] = []
     var onDismiss: () -> Void
 
     /// RTL if ANY Hebrew appears (first-strong-char fails on math/number-leading lines).
@@ -603,9 +599,14 @@ struct StepDetailCard: View {
                     Text("ai.thinking").font(.caption).foregroundStyle(.secondary)
                 }
             } else {
-                if let why, !why.isEmpty { AIRichText(content: why).font(.system(size: 12)) }
-                if !highlights.isEmpty { consideredChips }
-                ForEach(Array(steps.enumerated()), id: \.offset) { i, step in
+                // Always render as numbered worked steps (never a bare sentence or a row
+                // of unused chips): the one-line "why" heads the list only when there
+                // ARE discrete steps; when the model gave a why but no steps, that why
+                // becomes the single step, so the card looks consistent every time.
+                let renderSteps: [String] = steps.isEmpty ? [why].compactMap { $0?.isEmpty == false ? $0 : nil } : steps
+                let headWhy: String? = steps.isEmpty ? nil : why
+                if let headWhy, !headWhy.isEmpty { AIRichText(content: headWhy).font(.system(size: 12)) }
+                ForEach(Array(renderSteps.enumerated()), id: \.offset) { i, step in
                     HStack(alignment: .top, spacing: 8) {
                         Text(verbatim: "\(i + 1)")
                             .font(.caption2.weight(.bold).monospacedDigit()).foregroundStyle(.white)
@@ -613,7 +614,7 @@ struct StepDetailCard: View {
                         AIRichText(content: step).font(.system(size: 12))
                     }
                 }
-                if steps.isEmpty && (why?.isEmpty ?? true) {
+                if renderSteps.isEmpty {
                     Text("ambient.notice.noSuggestion").font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -625,31 +626,6 @@ struct StepDetailCard: View {
         .shadow(color: AppTheme.current.aiAccent.opacity(0.14), radius: 16, y: 6)
         // Hebrew reason/steps read right-to-left (number badge on the right).
         .environment(\.layoutDirection, rtl ? .rightToLeft : .leftToRight)
-    }
-
-    /// The color-coded terms the tutor drew on — each chip's color matches the
-    /// highlight over that term on the canvas, so the student can connect "this
-    /// piece of my work" to "this color in the explanation".
-    private var consideredChips: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                ForEach(highlights) { h in
-                    HStack(spacing: 4) {
-                        Circle().fill(AIHighlightPalette.color(h.colorIndex)).frame(width: 6, height: 6)
-                        Text(h.label.mathToUnicode())
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(AIHighlightPalette.color(h.colorIndex))
-                            .lineLimit(1)
-                    }
-                    .padding(.horizontal, 8).padding(.vertical, 4)
-                    .background(AIHighlightPalette.color(h.colorIndex).opacity(0.13), in: Capsule())
-                    .overlay(Capsule().strokeBorder(AIHighlightPalette.color(h.colorIndex).opacity(0.3)))
-                }
-            }
-            .padding(.vertical, 1)
-        }
-        // Chips read left-to-right even in an RTL card (the math/labels are LTR).
-        .environment(\.layoutDirection, .leftToRight)
     }
 }
 
