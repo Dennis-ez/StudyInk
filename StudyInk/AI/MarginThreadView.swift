@@ -159,6 +159,7 @@ struct MarginThreadBubble: View {
     @State private var followUpText = ""
     @State private var appeared = false
     @State private var dragOffset: CGSize = .zero
+    @State private var keyboardHeight: CGFloat = 0
     @FocusState private var focused: Bool
 
     private var rows: [(speaker: ThreadBubbleRow.Speaker, text: String)] {
@@ -177,10 +178,12 @@ struct MarginThreadBubble: View {
     var body: some View {
         let pos = transform.toScreen(CGPoint(x: bubble.x, y: bubble.y))
         // Always spawn fully on screen (never cut off), even for a bubble anchored near
-        // an edge. Drag moves it (committed to the model on release).
+        // an edge. Drag moves it (committed to the model on release). When the keyboard
+        // is up, raise it so the input + send button stay visible above it.
         let screen = UIScreen.main.bounds
+        let bottomLimit = screen.height - 190 - keyboardHeight - (keyboardHeight > 0 ? 60 : 0)
         let cx = min(max(pos.x + 150, 168), max(168, screen.width - 168))
-        let cy = min(max(pos.y + 84, 150), max(150, screen.height - 190))
+        let cy = min(max(pos.y + 84, 150), max(150, bottomLimit))
         return Group {
             if bubble.isCollapsed { chip } else { open }
         }
@@ -188,7 +191,14 @@ struct MarginThreadBubble: View {
         .opacity(appeared ? 1 : 0)
         .offset(dragOffset)
         .position(x: cx, y: cy)
+        .animation(.easeOut(duration: 0.25), value: keyboardHeight)
         .onAppear { withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { appeared = true } }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { note in
+            if focused, let f = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect { keyboardHeight = f.height }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            keyboardHeight = 0
+        }
     }
 
     /// Drag to move — measured in GLOBAL space (stable) and committed to the model
