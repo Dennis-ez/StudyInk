@@ -5,6 +5,16 @@ import SwiftUI
 /// breathing animation. Every value comes from `AITokens` — no hardcoded hex. Reused
 /// by the guided ladder (1a), diagnostic (3b), and selection rail (4b).
 
+extension View {
+    /// Handoff `Lane.tapTarget`: small visual controls (22–26pt glyph buttons) get a
+    /// ≥44pt hit area via padding — visual size unchanged, just easier to hit. For
+    /// tightly-packed rows pass a smaller `hit` so neighbouring targets don't overlap.
+    func tutorTapTarget(_ visual: CGFloat = 24, hit: CGFloat = AITokens.Lane.tapTarget) -> some View {
+        let pad = max(0, (hit - visual) / 2)
+        return padding(pad).contentShape(Rectangle()).padding(-pad)
+    }
+}
+
 /// The accent a surface carries (drives the 4px accent bar + the mono kicker color).
 enum TutorAccent {
     case ai, correction, success

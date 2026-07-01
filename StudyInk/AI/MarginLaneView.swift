@@ -417,6 +417,7 @@ struct GhostInkLayer: View {
                 .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
         }
         .buttonStyle(.plain)
+        .tutorTapTarget(26)
         .accessibilityLabel(Text("ambient.why"))
     }
 
@@ -433,6 +434,7 @@ struct GhostInkLayer: View {
                 .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
         }
         .buttonStyle(.plain)
+        .tutorTapTarget(22)
         .accessibilityLabel(Text("ai.dismiss"))
     }
 

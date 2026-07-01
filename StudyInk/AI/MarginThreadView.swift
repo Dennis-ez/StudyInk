@@ -252,13 +252,13 @@ struct MarginThreadBubble: View {
                 Button { tutor.pin(bubbleID: bubble.id) } label: {
                     Image(systemName: bubble.isPinned ? "pin.fill" : "pin").font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(bubble.isPinned ? AITokens.ai : AITokens.textFaint)
-                }.buttonStyle(.plain)
+                }.buttonStyle(.plain).tutorTapTarget(18, hit: 30)
                 Button { tutor.toggleCollapsed(bubbleID: bubble.id) } label: {
                     Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(AITokens.textFaint)
-                }.buttonStyle(.plain)
+                }.buttonStyle(.plain).tutorTapTarget(18, hit: 30)
                 Button { tutor.dismiss(bubbleID: bubble.id) } label: {
                     Image(systemName: "xmark").font(.system(size: 11, weight: .bold)).foregroundStyle(AITokens.textFaint)
-                }.buttonStyle(.plain)
+                }.buttonStyle(.plain).tutorTapTarget(18, hit: 30)
             }
             .contentShape(Rectangle())
             .gesture(dragGesture)   // the header is the drag handle

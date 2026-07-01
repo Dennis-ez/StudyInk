@@ -125,6 +125,7 @@ struct GhostTraceLayer: View {
                     .overlay(Circle().strokeBorder(style: StrokeStyle(lineWidth: 1.4, dash: [3, 2])).foregroundStyle(AITokens.ai))
             }
             .buttonStyle(.plain)
+            .tutorTapTarget(24)
             switch state {
             case .scaffold:
                 TutorChip(title: "ambient.ghost.fillBlank", action: { withAnimation(AITokens.Motion.unfold) { state = .revealed } })
@@ -138,6 +139,7 @@ struct GhostTraceLayer: View {
                 Image(systemName: "xmark").font(.system(size: 10, weight: .bold)).foregroundStyle(AITokens.textFaint)
             }
             .buttonStyle(.plain)
+            .tutorTapTarget(16)
         }
     }
 
