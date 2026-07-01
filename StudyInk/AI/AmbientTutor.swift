@@ -417,6 +417,26 @@ final class AmbientTutorController: ObservableObject {
         if diagnostic != nil { withAnimation(.easeOut(duration: 0.2)) { diagnostic = nil } }
     }
 
+    /// DEV-only (env `CONOTE_DEMO_CHECK`): inject the canonical 3b diagnostic with
+    /// synthetic line rects so the surface can be eyeballed in the editor without an
+    /// API key. No effect unless the flag is set.
+    func injectDemoDiagnostic(pageIndex: Int, pageSize: CGSize) {
+        let x = pageSize.width * 0.10
+        let top = pageSize.height * 0.20
+        let step = pageSize.height * 0.055
+        let rects = (0..<5).map { i in
+            CGRect(x: x, y: top + CGFloat(i) * step, width: pageSize.width * 0.55, height: pageSize.height * 0.035)
+        }
+        withAnimation(.easeIn(duration: 0.3)) {
+            diagnostic = DiagnosticState(
+                pageIndex: pageIndex, ok: [true, true, true, true, false], brokenLine: 4,
+                error: AIClient.CheckResult.FirstError(
+                    line: 4, why: "You put 2x back in for u. But the substitution was u = x² — so the answer is:",
+                    fixLatex: "\\sin(x^2) + C", rubricTag: "back-substitution"),
+                praise: "Four clean steps!", lineRects: rects)
+        }
+    }
+
     /// 3b "Check my work · straight to the break" (handoff §4.3): reads the page
     /// on-device into a parsed line structure, runs the schema-constrained `check`
     /// Gemini call, and surfaces the line-health map + the FIRST error's diagnostic.

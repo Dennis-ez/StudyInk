@@ -27,22 +27,24 @@ struct TutorCard<Content: View>: View {
     @ViewBuilder var content: () -> Content
 
     var body: some View {
-        HStack(alignment: .top, spacing: 0) {
-            Rectangle().fill(accent.color).frame(width: 4)
-            VStack(alignment: .leading, spacing: 8) {
-                Text(kicker.uppercased())
-                    .font(AITokens.mono(10, .medium)).tracking(1.1)
-                    .foregroundStyle(accent.color)
-                if let title, !title.isEmpty {
-                    Text(title).font(AITokens.fraunces(16)).foregroundStyle(AITokens.textInk)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                content()
+        VStack(alignment: .leading, spacing: 8) {
+            Text(kicker.uppercased())
+                .font(AITokens.mono(10, .medium)).tracking(1.1)
+                .foregroundStyle(accent.color)
+            if let title, !title.isEmpty {
+                Text(title).font(AITokens.fraunces(16)).foregroundStyle(AITokens.textInk)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.horizontal, 14).padding(.vertical, 12)
+            content()
         }
+        .padding(.leading, 18).padding(.trailing, 14).padding(.vertical, 12)
         .frame(maxWidth: maxWidth, alignment: .leading)
+        // Ideal (content) height — otherwise the flexible accent bar stretches the card
+        // to fill its container when placed via .position() in the editor overlay.
+        .fixedSize(horizontal: false, vertical: true)
         .background(AITokens.cardBg)
+        // The 4px accent bar rides the card's actual height as a leading overlay.
+        .overlay(alignment: .leading) { Rectangle().fill(accent.color).frame(width: 4) }
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(AITokens.cardRing, lineWidth: 1))
         .shadow(color: AITokens.cardShadow.opacity(0.32), radius: 22, x: 0, y: 16)

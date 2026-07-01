@@ -143,9 +143,10 @@ struct MarginLaneView: View {
                             onFixIt: { onDiagnosticFix(err, rect) },
                             onShowRule: { onDiagnosticShowRule(err, rect) },
                             onReplay: { ambient.dismissDiagnostic(); onGrade() })
+                            .frame(width: 300)
                             .position(
-                                x: geo.size.width - 170 - trailingInset,
-                                y: min(max(y + 40, 170), geo.size.height - 200))
+                                x: geo.size.width - 172 - trailingInset,
+                                y: min(max(y + 60, 260), geo.size.height - 220))
                             .transition(.scale(scale: 0.92, anchor: .topTrailing).combined(with: .opacity))
                     }
                 }

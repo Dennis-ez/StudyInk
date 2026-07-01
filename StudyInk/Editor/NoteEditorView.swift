@@ -877,6 +877,13 @@ struct NoteEditorView: View {
             // popped up the moment I entered the page" misfire).
             guidedMode.isEnabled = false
             audio.attach(note: note)
+            // DEV: eyeball the 3b diagnostic surface in-editor without an API key.
+            if ProcessInfo.processInfo.environment["CONOTE_DEMO_CHECK"] != nil {
+                let size = pageSize
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                    ambient.injectDemoDiagnostic(pageIndex: pageIndex, pageSize: size)
+                }
+            }
             canvasController.onStroke = { index, stroke in
                 let center = CGPoint(x: stroke.renderBounds.midX, y: stroke.renderBounds.midY)
                 if index == pageIndex { lastStrokeAnchor = center }
