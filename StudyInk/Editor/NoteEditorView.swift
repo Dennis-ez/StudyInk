@@ -287,10 +287,10 @@ struct NoteEditorView: View {
                     }
                 },
                 onShowWhy: { item in
-                    // Worked steps in the inline step UI — NOT the AI chat bubble.
-                    ambient.dismiss()
+                    // Show the why INSIDE the note (keep it open); tagged with the item so
+                    // it renders inline in the bubble, not as a separate floating card.
                     let anchor = CGPoint(x: item.anchorRect.midX, y: item.anchorRect.maxY)
-                    Task { await ambient.explainSteps(focus: item.body, anchor: anchor, pageIndex: pageIndex, note: note, darkMode: colorScheme == .dark) }
+                    Task { await ambient.explainSteps(focus: item.body, anchor: anchor, pageIndex: pageIndex, note: note, darkMode: colorScheme == .dark, itemID: item.id) }
                 },
                 onOpenHint: { item in
                     // A watcher's "?" — highlight the line it flagged RIGHT AWAY, then

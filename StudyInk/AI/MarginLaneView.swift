@@ -78,7 +78,8 @@ struct MarginLaneView: View {
                     let p = transform.toScreen(CGPoint(x: glyphPageX(for: item), y: item.anchorRect.midY))
                     MarginNoteView(
                         item: item,
-                        onDismiss: { ambient.dismiss() },
+                        explanation: ambient.explanation?.itemID == item.id ? ambient.explanation : nil,
+                        onDismiss: { ambient.dismiss(); ambient.dismissExplanation() },
                         onFixIt: { onFixIt(item) },
                         onShowWhy: { onShowWhy(item) }
                     )
@@ -151,9 +152,9 @@ struct MarginLaneView: View {
                     }
                 }
 
-                // Inline "why" explanation as worked steps (the step UI), near the
-                // line — replaces opening the AI chat bubble.
-                if let ex = ambient.explanation, ex.pageIndex == pageIndex {
+                // Inline "why" explanation as worked steps (the step UI), near the line.
+                // Skip the ones bound to a margin note (itemID) — those render INSIDE it.
+                if let ex = ambient.explanation, ex.pageIndex == pageIndex, ex.itemID == nil {
                     let p = transform.toScreen(ex.anchor)
                     StepDetailCard(why: ex.why, steps: ex.steps, isLoading: ex.isLoading,
                                    highlights: ex.highlights,
@@ -614,6 +615,8 @@ struct SquigglePath: Shape {
 /// action-first chips.
 struct MarginNoteView: View {
     let item: MarginItem
+    /// The "Show why" worked steps, fetched for THIS note — rendered inline in the bubble.
+    var explanation: StepExplanation? = nil
     var onDismiss: () -> Void
     var onFixIt: () -> Void
     var onShowWhy: () -> Void
@@ -669,14 +672,43 @@ struct MarginNoteView: View {
                     }
                     .buttonStyle(.plain)
                 }
-                Button(action: onShowWhy) {
-                    Text("ambient.showWhy")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Color.accentColor)
+                // Once the why is showing (or loading) inline, drop the button.
+                if explanation == nil {
+                    Button(action: onShowWhy) {
+                        Text("ambient.showWhy")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Color.accentColor)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
             .padding(.top, item.result == nil ? 8 : 0)
+
+            // The "why" worked steps, expanded INSIDE this note (not a floating card).
+            if let ex = explanation {
+                Divider().padding(.vertical, 9)
+                if ex.isLoading {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("ai.thinking").font(.caption).foregroundStyle(.secondary)
+                    }
+                } else {
+                    VStack(alignment: .leading, spacing: 7) {
+                        if let why = ex.why, !why.isEmpty {
+                            AIRichText(content: why).font(.system(size: 12.5))
+                        }
+                        ForEach(Array(ex.steps.enumerated()), id: \.offset) { i, step in
+                            HStack(alignment: .top, spacing: 8) {
+                                Text(verbatim: "\(i + 1)")
+                                    .font(.caption2.weight(.bold).monospacedDigit()).foregroundStyle(.white)
+                                    .frame(width: 16, height: 16).background(AppTheme.current.aiAccent, in: Circle())
+                                AIRichText(content: step).font(.system(size: 12.5))
+                            }
+                        }
+                    }
+                    .transition(.opacity)
+                }
+            }
         }
         .padding(.leading, 16)
         .padding(.trailing, 14)

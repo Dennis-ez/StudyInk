@@ -78,6 +78,9 @@ struct StepExplanation: Equatable {
     var why: String?
     var steps: [String]
     var isLoading: Bool
+    /// When set, this explanation belongs to a specific margin note (the check
+    /// glyph's "Show why") and renders INSIDE that note rather than as a floating card.
+    var itemID: UUID? = nil
     /// The params/terms from the student's own work the tutor used — color-coded
     /// as chips here and as matching highlights over their ink on the canvas.
     var highlights: [AIHighlight] = []
@@ -589,9 +592,9 @@ final class AmbientTutorController: ObservableObject {
     /// chat bubble). Used by the grade-result note, the hint glyph, etc.
     @Published var explanation: StepExplanation?
 
-    func explainSteps(focus: String, anchor: CGPoint, pageIndex: Int, note: Note, darkMode: Bool) async {
+    func explainSteps(focus: String, anchor: CGPoint, pageIndex: Int, note: Note, darkMode: Bool, itemID: UUID? = nil) async {
         withAnimation(.easeOut(duration: 0.2)) {
-            explanation = StepExplanation(pageIndex: pageIndex, anchor: anchor, why: nil, steps: [], isLoading: true)
+            explanation = StepExplanation(pageIndex: pageIndex, anchor: anchor, why: nil, steps: [], isLoading: true, itemID: itemID)
         }
         do {
             let context = await NoteContextBuilder.build(note: note, currentPageIndex: pageIndex, darkMode: darkMode)
@@ -606,7 +609,7 @@ final class AmbientTutorController: ObservableObject {
             let highlights = Self.resolveHighlights(rawHighlights, pageSize: pageSize)
             withAnimation(.easeOut(duration: 0.2)) {
                 explanation = StepExplanation(pageIndex: pageIndex, anchor: anchor, why: why, steps: steps,
-                                              isLoading: false, highlights: highlights)
+                                              isLoading: false, itemID: itemID, highlights: highlights)
             }
         } catch {
             if explanation?.anchor == anchor { explanation = nil }
