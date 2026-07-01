@@ -91,15 +91,10 @@ struct MarginLaneView: View {
                     .transition(.scale(scale: 0.92, anchor: .topTrailing).combined(with: .opacity))
                 }
 
-                // Color-coded highlights over the student's own work — the params the
-                // tutor used — shown WHILE the why/steps detail is open, matching the
-                // chip colors in the card.
-                if let g = ambient.ghost, g.pageIndex == pageIndex, ghostDetailShown, !g.highlights.isEmpty {
-                    InkHighlightOverlay(highlights: g.highlights, transform: transform)
-                }
-                if let ex = ambient.explanation, ex.pageIndex == pageIndex, !ex.highlights.isEmpty {
-                    InkHighlightOverlay(highlights: ex.highlights, transform: transform)
-                }
+                // NOTE: on-canvas colour boxes over the student's ink are DISABLED — the
+                // model's normalized box coordinates are unreliable (they landed in empty
+                // space). The colour-coded chips in the card still show the considered
+                // params; precise on-ink placement needs the {col,line} layout anchoring.
 
                 // Ghost next-step suggestion, faint amber ahead of the pen.
                 if let g = ambient.ghost, g.pageIndex == pageIndex {
@@ -568,10 +563,14 @@ struct StepDetailCard: View {
     var highlights: [AIHighlight] = []
     var onDismiss: () -> Void
 
-    private var rtl: Bool { (why?.isMostlyRTL ?? false) || (steps.first?.isMostlyRTL ?? false) }
+    /// RTL if ANY Hebrew appears (first-strong-char fails on math/number-leading lines).
+    private var rtl: Bool {
+        let all = ([why].compactMap { $0 } + steps).joined(separator: " ")
+        return all.unicodeScalars.contains { (0x0590...0x05FF).contains($0.value) }
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: rtl ? .trailing : .leading, spacing: 8) {
             HStack(spacing: 7) {
                 Lucide("sparkles", size: 12).foregroundStyle(AppTheme.current.aiAccent)
                 Text("ambient.why").font(.caption.weight(.semibold)).foregroundStyle(SemanticColor.textMutedColor)

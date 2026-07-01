@@ -158,6 +158,7 @@ struct MarginThreadBubble: View {
     @ObservedObject var tutor: AITutorController
     @State private var followUpText = ""
     @State private var appeared = false
+    @State private var dragOffset: CGSize = .zero
     @FocusState private var focused: Bool
 
     private var rows: [(speaker: ThreadBubbleRow.Speaker, text: String)] {
@@ -175,13 +176,33 @@ struct MarginThreadBubble: View {
 
     var body: some View {
         let pos = transform.toScreen(CGPoint(x: bubble.x, y: bubble.y))
-        Group {
+        // Always spawn fully on screen (never cut off), even for a bubble anchored near
+        // an edge. Drag moves it (committed to the model on release).
+        let screen = UIScreen.main.bounds
+        let cx = min(max(pos.x + 150, 168), max(168, screen.width - 168))
+        let cy = min(max(pos.y + 84, 150), max(150, screen.height - 190))
+        return Group {
             if bubble.isCollapsed { chip } else { open }
         }
         .scaleEffect(appeared ? 1 : 0.86, anchor: .top)
         .opacity(appeared ? 1 : 0)
-        .position(x: pos.x + 150, y: pos.y + 84)
+        .offset(dragOffset)
+        .position(x: cx, y: cy)
         .onAppear { withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { appeared = true } }
+    }
+
+    /// Drag to move — measured in GLOBAL space (stable) and committed to the model
+    /// once on release, like the old bubble.
+    private var dragGesture: some Gesture {
+        DragGesture(minimumDistance: 6, coordinateSpace: .global)
+            .onChanged { dragOffset = $0.translation }
+            .onEnded { v in
+                let z = max(transform.zoomScale, 0.01)
+                tutor.move(bubbleID: bubble.id, to: CGPoint(
+                    x: bubble.x + v.translation.width / z,
+                    y: bubble.y + v.translation.height / z))
+                dragOffset = .zero
+            }
     }
 
     private var chip: some View {
@@ -202,6 +223,7 @@ struct MarginThreadBubble: View {
     private var open: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
+                Image(systemName: "line.3.horizontal").font(.system(size: 10)).foregroundStyle(AITokens.textFainter)
                 Text("Thread").font(AITokens.mono(9)).tracking(0.6).foregroundStyle(AITokens.textFainter)
                 Spacer()
                 Button { tutor.toggleCollapsed(bubbleID: bubble.id) } label: {
@@ -211,15 +233,23 @@ struct MarginThreadBubble: View {
                     Image(systemName: "xmark").font(.system(size: 11, weight: .bold)).foregroundStyle(AITokens.textFaint)
                 }.buttonStyle(.plain)
             }
-            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                ThreadBubbleRow(speaker: row.speaker, text: row.text)
-            }
-            if isLoading {
-                HStack(spacing: 8) {
-                    Image(systemName: "sparkle").font(.system(size: 12, weight: .semibold)).foregroundStyle(AITokens.ai).breathing()
-                    Text("ai.thinking").font(.system(size: 12)).foregroundStyle(AITokens.textFaint)
+            .contentShape(Rectangle())
+            .gesture(dragGesture)   // the header is the drag handle
+            // Long threads scroll instead of running off the card.
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                        ThreadBubbleRow(speaker: row.speaker, text: row.text)
+                    }
+                    if isLoading {
+                        HStack(spacing: 8) {
+                            Image(systemName: "sparkle").font(.system(size: 12, weight: .semibold)).foregroundStyle(AITokens.ai).breathing()
+                            Text("ai.thinking").font(.system(size: 12)).foregroundStyle(AITokens.textFaint)
+                        }
+                    }
                 }
             }
+            .frame(maxHeight: 260)
             if !bubble.chips.isEmpty && !isLoading {
                 VStack(alignment: .leading, spacing: 5) {
                     ForEach(bubble.chips, id: \.self) { c in

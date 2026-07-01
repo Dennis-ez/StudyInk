@@ -102,13 +102,16 @@ struct ToolState: Codable, Equatable {
         // opacity rather than taper): ballpoint fine & crisp, monoline medium-uniform,
         // fountain the boldest, pencil a soft translucent graphite.
         case .ballpoint:
-            return VectorToolConfig(tool: .pen, color: canonical, width: width * 0.5, draws: true)
+            // Pressure toggle → the line responds to Apple Pencil force (was ignored).
+            return VectorToolConfig(tool: .pen, color: canonical, width: width * 0.5, draws: true,
+                                    widthVariation: pressureSensitive ? 0.5 : 0)
         case .monoline:
             return VectorToolConfig(tool: .pen, color: canonical, width: width * 0.6, draws: true)
         case .fountain:
-            // The fountain pen tapers with speed + pressure (Notability-style); the
-            // others stay constant (widthVariation defaults to 0).
-            return VectorToolConfig(tool: .pen, color: canonical, width: width * 0.85, draws: true, widthVariation: 0.6)
+            // The fountain pen tapers with speed + pressure (Notability-style); more with
+            // the pressure toggle on, a lighter calligraphic taper when off.
+            return VectorToolConfig(tool: .pen, color: canonical, width: width * 0.85, draws: true,
+                                    widthVariation: pressureSensitive ? 0.7 : 0.3)
         case .pencil:
             return VectorToolConfig(tool: .pen, color: canonical.withAlphaComponent(min(opacity, 0.8)),
                                     width: width * 0.62, draws: true)
