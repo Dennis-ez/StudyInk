@@ -908,6 +908,18 @@ struct NoteEditorView: View {
                             quiz: nil), loading: false)
                 }
             }
+            // DEV: eyeball the 1a guided ladder.
+            if ProcessInfo.processInfo.environment["CONOTE_DEMO_LADDER"] != nil {
+                let size = pageSize
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                    ambient.guidedLadder = GuidedLadderState(
+                        step: AIClient.NextStep(
+                            nudge: "You've set the integral up. Notice cos(x²) — its inside isn't a plain x. What kind of move untangles a function-inside-a-function?",
+                            hint: "Let u be the inside of the cosine. Then differentiate it to find du — and watch for the 2x already sitting in front.",
+                            stepLatex: "u = x^2,\\ du = 2x\\,dx", blankToken: "x^2", confidence: 0.9, value: 0.8),
+                        rung: 1, anchor: CGPoint(x: size.width * 0.16, y: size.height * 0.3), pageIndex: pageIndex)
+                }
+            }
             // DEV: eyeball the 2a fill-in ghost (Subtle no-spoiler + blank token).
             if ProcessInfo.processInfo.environment["CONOTE_DEMO_GHOST"] != nil {
                 let size = pageSize
@@ -1953,6 +1965,13 @@ extension NoteEditorView {
                     if ambient.ghost == nil { ambient.showNotice(String(localized: "ambient.notice.noSuggestion")) }
                 }
             } label: { Label("ambient.suggest", systemImage: "wand.and.rays") }
+            // 1a — guided ladder: a question, then a hint, then the step (one per tap).
+            Button {
+                Task {
+                    canvasController.commitPendingInk()
+                    await ambient.startGuidedLadder(note: note, pageIndex: pageIndex, darkMode: colorScheme == .dark)
+                }
+            } label: { Label("ambient.guidedHint", systemImage: "stairs") }
             Picker(selection: Binding(get: { ambient.sensitivity }, set: {
                 ambient.sensitivity = $0   // the arbiter reads this; guidedMode stays inert
             })) {

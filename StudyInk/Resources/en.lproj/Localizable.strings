@@ -241,6 +241,7 @@
 "ambient.nextStep" = "Next step";
 "ambient.revealAnswer" = "Reveal answer";
 "ambient.suggest" = "Suggest next step";
+"ambient.guidedHint" = "Guided hint";
 // Conote AI handoff — tutor surfaces
 "ambient.ladder.stuckHint" = "Still stuck — hint me";
 "ambient.ladder.showStep" = "Show the step";

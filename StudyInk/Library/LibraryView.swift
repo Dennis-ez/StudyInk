@@ -219,7 +219,7 @@ struct LibraryView: View {
             FileTree.backfillSortIndexIfNeeded(PersistenceController.shared.viewContext)
             // DEV: auto-open the first note so a Conote demo surface can be eyeballed.
             let demo = ProcessInfo.processInfo.environment
-            if (demo["CONOTE_DEMO_CHECK"] != nil || demo["CONOTE_DEMO_CIRCLE"] != nil || demo["CONOTE_DEMO_CHAT"] != nil || demo["CONOTE_DEMO_GHOST"] != nil), autoOpenNote == nil {
+            if demo.keys.contains(where: { $0.hasPrefix("CONOTE_DEMO_") }), autoOpenNote == nil {
                 autoOpenNote = activeNotes.first
             }
         }

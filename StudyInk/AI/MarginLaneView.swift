@@ -165,6 +165,21 @@ struct MarginLaneView: View {
                         )
                         .transition(.scale(scale: 0.92, anchor: .top).combined(with: .opacity))
                 }
+
+                // 1a guided ladder — question → hint → step, one rung per tap.
+                if let g = ambient.guidedLadder, g.pageIndex == pageIndex {
+                    let p = transform.toScreen(g.anchor)
+                    GuidedLadderCard(
+                        step: g.step, rung: g.rung,
+                        onAdvance: { ambient.advanceLadder() },
+                        onReplay: { ambient.replayLadder() },
+                        onDismiss: { ambient.dismissLadder() })
+                        .frame(width: 300)
+                        .position(
+                            x: min(max(p.x + 150, 180), geo.size.width - 170 - trailingInset),
+                            y: min(max(p.y, 210), geo.size.height - 230))
+                        .transition(.scale(scale: 0.92, anchor: .top).combined(with: .opacity))
+                }
             }
         }
     }

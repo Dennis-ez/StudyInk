@@ -241,6 +241,7 @@
 "ambient.nextStep" = "הצעד הבא";
 "ambient.revealAnswer" = "גלה את התשובה";
 "ambient.suggest" = "הצע צעד הבא";
+"ambient.guidedHint" = "רמז מודרך";
 // Conote AI handoff — tutor surfaces
 "ambient.ladder.stuckHint" = "עדיין תקוע — רמז לי";
 "ambient.ladder.showStep" = "הראה את הצעד";

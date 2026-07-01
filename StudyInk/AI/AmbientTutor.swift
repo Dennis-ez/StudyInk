@@ -149,6 +149,15 @@ struct DiagnosticState {
     var lineRects: [CGRect]                          // page-space, for spotlight + fix anchor
 }
 
+/// The 1a "Guided mode · reveal in layers" state (handoff §4.1): one `next_step` call
+/// returns nudge/hint/step; the card reveals only up to the current rung.
+struct GuidedLadderState {
+    var step: AIClient.NextStep
+    var rung: Int                                   // 1 question · 2 hint · 3 step
+    var anchor: CGPoint
+    var pageIndex: Int
+}
+
 enum AmbientSensitivity: String, CaseIterable, Identifiable {
     case off, subtle, helpful
     var id: String { rawValue }
@@ -175,6 +184,8 @@ final class AmbientTutorController: ObservableObject {
     @Published var ghost: GhostSuggestion?
     /// The 3b diagnostic result (health map + first break), if a check is showing.
     @Published var diagnostic: DiagnosticState?
+    /// The 1a guided ladder, if one is open.
+    @Published var guidedLadder: GuidedLadderState?
     /// OCR line rects from the most recent check — used so AI ink (fix-it) lands
     /// in a clear gap instead of over the student's existing work.
     private(set) var lastLineRects: [CGRect] = []
@@ -425,6 +436,76 @@ final class AmbientTutorController: ObservableObject {
 
     func dismissDiagnostic() {
         if diagnostic != nil { withAnimation(.easeOut(duration: 0.2)) { diagnostic = nil } }
+    }
+
+    // MARK: - 1a guided ladder (reveal in layers)
+
+    func dismissLadder() {
+        if guidedLadder != nil { withAnimation(.easeOut(duration: 0.2)) { guidedLadder = nil } }
+    }
+    /// Reveal one rung deeper (question → hint → step). At the step, the line is also
+    /// written faintly as a ghost so it can be traced.
+    func advanceLadder() {
+        guard var g = guidedLadder else { return }
+        g.rung = min(3, g.rung + 1)
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { guidedLadder = g }
+        if g.rung == 3, let latex = g.step.stepLatex {
+            let text = Self.cleanGhost(latex)
+            if !text.isEmpty {
+                withAnimation(.easeIn(duration: 0.25)) {
+                    ghost = GhostSuggestion(pageIndex: g.pageIndex, anchor: g.anchor, text: text,
+                                            why: g.step.hint, steps: [], inline: false,
+                                            blankToken: Self.cleanBlankToken(g.step.blankToken, in: text))
+                }
+            }
+        }
+    }
+    func replayLadder() {
+        guard var g = guidedLadder else { return }
+        ghost = nil
+        g.rung = 1
+        withAnimation(.easeOut(duration: 0.2)) { guidedLadder = g }
+    }
+
+    /// Start the 1a ladder for the page's last line — ONE `next_step` call returns the
+    /// nudge/hint/step; the card reveals up to the current rung. Reads the page image.
+    func startGuidedLadder(note: Note, pageIndex: Int, darkMode: Bool) async {
+        guard sensitivity != .off else { return }
+        let pages = note.sortedPages
+        guard pages.indices.contains(pageIndex) else { return }
+        let page = pages[pageIndex]
+        ghost = nil; dismissDiagnostic(); clearGradePrompt()
+
+        let mediaFrames = page.mediaItems.map(\.frame)
+        let allOCR = await NoteContextBuilder.ocrLines(for: page)
+        let inMedia: (OCRLine) -> Bool = { line in mediaFrames.contains { $0.intersects(line.rect) } }
+        let lines = Self.mergeRows(allOCR.filter { !inMedia($0) })
+        guard let last = lines.max(by: { $0.rect.maxY < $1.rect.maxY }) else {
+            showNotice(String(localized: "ambient.notice.empty")); return
+        }
+        let focusLine = lines.firstIndex(where: { $0.rect == last.rect })
+        let anchor = CGPoint(x: last.rect.minX, y: last.rect.maxY + last.rect.height * 0.7)
+
+        isSuggesting = true
+        defer { isSuggesting = false }
+        do {
+            let context = await NoteContextBuilder.build(note: note, currentPageIndex: pageIndex, darkMode: darkMode)
+            let region = context.blocks.compactMap { block -> Data? in
+                if case let .imagePNG(data) = block { return data } else { return nil }
+            }.first
+            let envelope = AIClient.buildEnvelope(lines: lines, focusLine: focusLine,
+                                                  guidedLevel: sensitivity.rawValue, askDepth: 3)
+            let step = try await AIClient.call(.next_step, envelope: envelope, region: region,
+                                               maxTokens: 1400, as: AIClient.NextStep.self)
+            guard let step, (step.nudge != nil || step.hint != nil || step.stepLatex != nil) else {
+                showNotice(String(localized: "ambient.notice.noSuggestion")); return
+            }
+            withAnimation(.easeOut(duration: 0.25)) {
+                guidedLadder = GuidedLadderState(step: step, rung: 1, anchor: anchor, pageIndex: pageIndex)
+            }
+        } catch {
+            showNotice(error.localizedDescription)
+        }
     }
 
     /// DEV-only (env `CONOTE_DEMO_CHECK`): inject the canonical 3b diagnostic with
