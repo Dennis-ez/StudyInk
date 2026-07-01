@@ -1281,6 +1281,11 @@ struct NoteEditorView: View {
                 }
             }
             .ignoresSafeArea()
+            // Panning/zooming the page dismisses the rail (it was pinned to the screen
+            // and drifted off the circled term) — cleaner than having it linger.
+            .onChange(of: transform.toScreen(CGPoint.zero)) {
+                if circleRail != nil { withAnimation(.easeOut(duration: 0.15)) { circleRail = nil }; circleAskText = "" }
+            }
         }
     }
 

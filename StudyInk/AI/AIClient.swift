@@ -185,21 +185,17 @@ enum AIClient {
         var userText = intent.userPrompt + "\n\nENVELOPE:\n" + envJSON
         if let extra, !extra.isEmpty { userText += "\n\n" + extra }
 
-        let raw: String
-        if AIConfig.provider == .gemini {
-            var content: [AIContent] = [.text(userText)]
-            if let region { content.append(.imagePNG(region)) }
-            raw = try await GeminiService.sendStructured(
-                system: system, messages: [.user(content)], schema: intent.schema,
-                maxTokens: maxTokens, temperature: 0.2)
-        } else {
-            // Providers without a native schema get it enforced through the prompt.
-            let augmented = userText + "\n\nOutput ONLY minified JSON matching this schema (no prose, no code fences):\n"
-                + jsonString(intent.schema)
-            var content: [AIContent] = [.text(augmented)]
-            if let region { content.append(.imagePNG(region)) }
-            raw = try await AIService.send(system: system, messages: [.user(content)], maxTokens: maxTokens, temperature: 0.2)
-        }
+        // Use the PROVEN router (AIService.send) for every provider, with the schema
+        // enforced through the prompt + tolerant decode. Gemini's native responseSchema
+        // path (sendStructured) was unreliable — it silently failed, which made circle
+        // "couldn't reach" and guided hint show "no next step".
+        let augmented = userText
+            + "\n\nReply in the page's language (\(envelope.locale.hasPrefix("he") ? "Hebrew" : envelope.locale))."
+            + "\n\nOutput ONLY minified JSON matching this schema (no prose, no code fences):\n"
+            + jsonString(intent.schema)
+        var content: [AIContent] = [.text(augmented)]
+        if let region { content.append(.imagePNG(region)) }
+        let raw = try await AIService.send(system: system, messages: [.user(content)], maxTokens: maxTokens, temperature: 0.2)
         return decode(raw, as: T.self)
     }
 

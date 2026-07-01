@@ -262,6 +262,7 @@
 "ambient.ghost.aiInkOneUndo" = "✦ AI ink · one-undo";
 "ambient.sensitivity" = "Ambient tutor";
 "ambient.showWhy" = "Show why";
+"ambient.why" = "Why";
 "ambient.glyph.correct" = "Looks right";
 "ambient.glyph.attend" = "Correction — double-tap to view";
 "ambient.off" = "Off";
