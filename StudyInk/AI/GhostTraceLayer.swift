@@ -78,7 +78,7 @@ struct GhostTraceLayer: View {
         let accepted = state == .accepted
         if needsTypeset {
             AIInkMath(latex: state == .scaffold ? scaffoldLatex : latexClean,
-                      color: accepted ? AITokens.ai : AITokens.inkStudent, fontSize: 25)
+                      color: accepted ? AITokens.ai : AITokens.inkStudent, fontSize: 36)
                 .opacity(accepted ? 1 : AITokens.inkGhostOpacity)
                 .scaleEffect(state == .scaffold && pulse ? 1.02 : 1.0)
                 .contentShape(Rectangle())
@@ -86,9 +86,9 @@ struct GhostTraceLayer: View {
         } else {
             let p = parts
             HStack(spacing: 0) {
-                Text(p.pre).font(AITokens.caveat(26))
+                Text(p.pre).font(AITokens.caveat(32))
                 blankView
-                Text(p.post).font(AITokens.caveat(26))
+                Text(p.post).font(AITokens.caveat(32))
             }
             .foregroundStyle(accepted ? AITokens.ai : AITokens.inkStudent)
             .opacity(accepted ? 1 : AITokens.inkGhostOpacity)
@@ -100,15 +100,15 @@ struct GhostTraceLayer: View {
         switch state {
         case .scaffold:
             // The one exception to "no box": the blank is a pulsing scaffold box.
-            RoundedRectangle(cornerRadius: 5, style: .continuous)
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .fill(AITokens.scaffoldBoxBg)
-                .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous).strokeBorder(AITokens.scaffoldBoxRing))
-                .frame(width: max(26, CGFloat(p.blank.count) * 13), height: 30)
+                .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(AITokens.scaffoldBoxRing))
+                .frame(width: max(34, CGFloat(p.blank.count) * 16), height: 38)
                 .scaleEffect(pulse ? 1.06 : 1.0)
                 .opacity(1)   // the blank stays full-strength even though the trace is dimmed
                 .onTapGesture { withAnimation(AITokens.Motion.unfold) { state = .revealed } }
         case .revealed, .accepted:
-            Text(p.blank).font(AITokens.caveat(26))
+            Text(p.blank).font(AITokens.caveat(32))
         }
     }
 

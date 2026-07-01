@@ -111,6 +111,12 @@ struct AIBubbleModel: Codable, Equatable, Identifiable {
     var isPanelOnly: Bool? = nil
     /// User-chosen thread height (vertical resize); nil = default.
     var maxHeight: Double? = nil
+    /// Hide the FIRST question from the transcript (used when the thread was seeded by a
+    /// system-generated prompt like the ghost's "explain this step" — the student never
+    /// typed it, so showing it is noise).
+    var hidesLeadQuestion: Bool? = nil
+    /// Short label for the collapsed / pinned chip (the full first question is too long).
+    var title: String? = nil
 
     var anchor: CGPoint { CGPoint(x: anchorX, y: anchorY) }
     var latestAnswer: String { thread.last?.answer ?? "" }

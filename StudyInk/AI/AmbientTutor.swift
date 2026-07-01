@@ -380,7 +380,7 @@ final class AmbientTutorController: ObservableObject {
             blocks.append(.text(Self.checkInstruction(lines: lines, pageNumber: pageIndex + 1, problem: problem)))
             // Reply in the PAGE's language — a Hebrew page gets a Hebrew note/fix.
             if lines.map(\.text).joined(separator: " ").isMostlyRTL {
-                blocks.append(.text("The page is in HEBREW — write every \"note\" (and any worded \"fix\") in HEBREW."))
+                blocks.append(.text("The page is in HEBREW — write every \"note\" (and any worded \"fix\") in CLEAR, NATURAL, grammatically correct Hebrew, phrased the way a Hebrew-speaking teacher would actually say it. Do NOT translate word-for-word from English and do NOT invent non-words; if unsure of a term, use the plainest correct Hebrew. Keep math/LaTeX inside \"fix\" as-is (left-to-right)."))
             }
             // Per-item y/anchor/note/fix is verbose; give it room so a multi-
             // equation page doesn't truncate mid-array.

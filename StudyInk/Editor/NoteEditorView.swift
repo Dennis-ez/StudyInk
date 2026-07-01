@@ -1270,8 +1270,12 @@ struct NoteEditorView: View {
         let hint = "You previously suggested this as the student's next line: \"\(g.text)\"."
             + (g.why.map { " Your stated reason was: \($0)" } ?? "")
             + " Explain the derivation step by step; do not just restate it."
+        // Short pin title = the step itself (folded to readable unicode), so the collapsed
+        // chip isn't the whole prompt. Hide the seeded question from the transcript.
+        let title = String(g.text.mathToUnicode().prefix(22))
         tutor.currentPageIndex = pageIndex
-        Task { await tutor.ask(question: question, anchor: g.anchor, systemHint: hint) }
+        Task { await tutor.ask(question: question, anchor: g.anchor, systemHint: hint,
+                               showLeadQuestion: false, title: title) }
     }
 
     /// The ghost's "?" had no steps → fetch a full worked derivation on demand.
@@ -1932,13 +1936,15 @@ extension NoteEditorView {
             canvasController.commitPendingInk()
             let dark = colorScheme == .dark
             // Idle → try a next-step suggestion (in Subtle it renders as the no-spoiler
-            // fill-in ghost; in Helpful as the full answer). Falls through to the grade
-            // offer only if nothing comes. One surface, never two.
+            // fill-in ghost; in Helpful as the full answer).
             if ambient.sensitivity != .off {
                 await ambient.suggestNext(note: note, pageIndex: pageIndex, darkMode: dark, auto: true)
             }
             guard !Task.isCancelled else { return }
-            if ambient.ghost == nil, let anchor = lastStrokeAnchor {
+            // ALSO offer to check the work — a small "Find my mistake" pill in the right
+            // margin (it doesn't overlap the ghost). Previously it only appeared when no
+            // ghost came, so on Helpful the check offer was almost never seen.
+            if let anchor = lastStrokeAnchor {
                 ambient.offerGrade(pageIndex: pageIndex, anchor: anchor)
             }
         }

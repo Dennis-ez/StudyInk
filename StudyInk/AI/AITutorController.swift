@@ -53,7 +53,9 @@ final class AITutorController: ObservableObject {
         focusRegion: CGRect? = nil,
         focusImage: UIImage? = nil,
         systemHint: String? = nil,
-        panelOnly: Bool = false
+        panelOnly: Bool = false,
+        showLeadQuestion: Bool = true,
+        title: String? = nil
     ) async {
         guard let note, let page = currentPage else { return }
         let pageSize = page.canvasSize
@@ -64,6 +66,8 @@ final class AITutorController: ObservableObject {
             x: position.x, y: position.y
         )
         bubble.thread = [AIExchange(question: question, answer: "")]
+        bubble.hidesLeadQuestion = showLeadQuestion ? nil : true
+        bubble.title = title
         if panelOnly {
             bubble.isPanelOnly = true
             panelBubbleID = bubble.id

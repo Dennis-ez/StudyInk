@@ -121,14 +121,22 @@ struct ThreadBubbleRow: View {
     let speaker: Speaker
     let text: String
 
+    /// Any Hebrew ⇒ read right-to-left and hug the right edge (the design is RTL when
+    /// the content is Hebrew). AIRichText already right-aligns the answer's own text.
+    private var rtl: Bool { text.unicodeScalars.contains { (0x0590...0x05FF).contains($0.value) } }
+
     var body: some View {
         let isYou = speaker == .you
-        return VStack(alignment: isYou ? .trailing : .leading, spacing: 3) {
+        // Hebrew rows go to the right; otherwise the usual YOU-right / MARGIN-left.
+        let trailing = rtl || isYou
+        return VStack(alignment: trailing ? .trailing : .leading, spacing: 3) {
             Text(isYou ? "YOU" : "MARGIN")
                 .font(AITokens.mono(8)).tracking(0.8).foregroundStyle(AITokens.textFainter)
             Group {
                 if isYou {
                     Text(text).font(.system(size: 13)).foregroundStyle(.white)
+                        .multilineTextAlignment(rtl ? .trailing : .leading)
+                        .environment(\.layoutDirection, rtl ? .rightToLeft : .leftToRight)
                 } else {
                     AIRichText(content: text).font(.system(size: 13)).foregroundStyle(AITokens.textInk)
                 }
@@ -144,7 +152,7 @@ struct ThreadBubbleRow: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity, alignment: isYou ? .trailing : .leading)
+        .frame(maxWidth: .infinity, alignment: trailing ? .trailing : .leading)
     }
 }
 
@@ -164,14 +172,18 @@ struct MarginThreadBubble: View {
 
     private var rows: [(speaker: ThreadBubbleRow.Speaker, text: String)] {
         var out: [(ThreadBubbleRow.Speaker, String)] = []
-        for ex in bubble.thread {
-            if let q = ex.question, !q.trimmingCharacters(in: .whitespaces).isEmpty { out.append((.you, q)) }
+        for (i, ex) in bubble.thread.enumerated() {
+            // Hide a system-seeded first question (the ghost's "explain this step" prompt).
+            let hideQ = i == 0 && bubble.hidesLeadQuestion == true
+            if !hideQ, let q = ex.question, !q.trimmingCharacters(in: .whitespaces).isEmpty { out.append((.you, q)) }
             if !ex.answer.trimmingCharacters(in: .whitespaces).isEmpty { out.append((.margin, ex.answer)) }
         }
         return out
     }
     private var preview: String {
-        bubble.thread.first?.question ?? String(bubble.latestAnswer.prefix(24))
+        if let t = bubble.title, !t.isEmpty { return t }
+        if bubble.hidesLeadQuestion != true, let q = bubble.thread.first?.question, !q.isEmpty { return q }
+        return String(bubble.latestAnswer.prefix(24))
     }
     private var canSend: Bool { !followUpText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isLoading }
 
@@ -250,21 +262,30 @@ struct MarginThreadBubble: View {
             }
             .contentShape(Rectangle())
             .gesture(dragGesture)   // the header is the drag handle
-            // Long threads scroll instead of running off the card.
-            ScrollView {
-                VStack(alignment: .leading, spacing: 10) {
-                    ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                        ThreadBubbleRow(speaker: row.speaker, text: row.text)
-                    }
-                    if isLoading {
-                        HStack(spacing: 8) {
-                            Image(systemName: "sparkle").font(.system(size: 12, weight: .semibold)).foregroundStyle(AITokens.ai).breathing()
-                            Text("ai.thinking").font(.system(size: 12)).foregroundStyle(AITokens.textFaint)
+            // Long threads scroll instead of running off the card; auto-scroll to the
+            // newest message when a row arrives, the answer updates, or thinking starts.
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                            ThreadBubbleRow(speaker: row.speaker, text: row.text)
                         }
+                        if isLoading {
+                            HStack(spacing: 8) {
+                                Image(systemName: "sparkle").font(.system(size: 12, weight: .semibold)).foregroundStyle(AITokens.ai).breathing()
+                                Text("ai.thinking").font(.system(size: 12)).foregroundStyle(AITokens.textFaint)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        Color.clear.frame(height: 1).id("threadBottom")
                     }
                 }
+                .frame(maxHeight: 260)
+                .onChange(of: rows.count) { _, _ in withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("threadBottom", anchor: .bottom) } }
+                .onChange(of: bubble.latestAnswer) { _, _ in withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("threadBottom", anchor: .bottom) } }
+                .onChange(of: isLoading) { _, _ in withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("threadBottom", anchor: .bottom) } }
+                .onAppear { proxy.scrollTo("threadBottom", anchor: .bottom) }
             }
-            .frame(maxHeight: 260)
             if !bubble.chips.isEmpty && !isLoading {
                 VStack(alignment: .leading, spacing: 5) {
                     ForEach(bubble.chips, id: \.self) { c in
