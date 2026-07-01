@@ -123,7 +123,7 @@ struct ThreadBubbleRow: View {
 
     /// Any Hebrew ⇒ read right-to-left and hug the right edge (the design is RTL when
     /// the content is Hebrew). AIRichText already right-aligns the answer's own text.
-    private var rtl: Bool { text.unicodeScalars.contains { (0x0590...0x05FF).contains($0.value) } }
+    private var rtl: Bool { Bidi.containsRTL(text) }
 
     var body: some View {
         let isYou = speaker == .you
@@ -315,7 +315,10 @@ struct MarginThreadBubble: View {
         .background(AITokens.cardBg, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(AITokens.cardRing))
         .shadow(color: AITokens.cardShadow.opacity(0.3), radius: 18, y: 8)
-        .environment(\.layoutDirection, bubble.latestAnswer.isMostlyRTL ? .rightToLeft : .leftToRight)
+        // Any Hebrew ⇒ the whole card mirrors: header order, chips row, and the ask-
+        // more field (send button flips to the left). isMostlyRTL is first-strong-char
+        // and missed math-leading Hebrew answers.
+        .environment(\.layoutDirection, Bidi.containsRTL(bubble.latestAnswer) ? .rightToLeft : .leftToRight)
     }
 
     private func send() {

@@ -7,20 +7,59 @@ import SwiftMath
 // Light inline math (x², a_i, \alpha) folds to unicode and stays in the prose
 // flow; **bold**/bullets render through AttributedString markdown.
 
+enum Bidi {
+    /// First-Strong Isolate / Pop Directional Isolate — wrap an LTR math/latin run
+    /// embedded in RTL (Hebrew) prose so the bidi algorithm can't reorder it
+    /// (audit #8: "(√x-1)" rendering scrambled mid-sentence).
+    static let fsi = "\u{2068}"
+    static let pdi = "\u{2069}"
+
+    /// Wraps `run` in directional isolates when the host text is bidirectional
+    /// (any RTL script present) — otherwise returns it untouched.
+    static func isolate(_ run: String, inRTL: Bool) -> String {
+        guard inRTL, !run.isEmpty else { return run }
+        return fsi + run + pdi
+    }
+
+    static func containsRTL(_ s: String) -> Bool {
+        s.unicodeScalars.contains { (0x0590...0x05FF).contains($0.value) || (0x0600...0x06FF).contains($0.value) }
+    }
+}
+
 extension String {
     /// LaTeX → readable unicode for plain-text rendering. Handles delimited math
     /// ($…$, $$…$$, \(…\), \[…\]) AND the bare \cdot / \int / x^{2} the model often
     /// emits undelimited, via InkWriter's LaTeX parser (symbols, \frac, scripts).
     /// Used for the prose blocks and the simpler standalone Text renderers
     /// (guided mode); the rich bubble promotes heavy math to typeset blocks.
+    ///
+    /// In bidirectional text (Hebrew around math) each folded DELIMITED span is
+    /// wrapped in FSI…PDI isolates so the surrounding RTL prose can't reorder it.
     func mathToUnicode() -> String {
         var s = replacingOccurrences(of: "\\$", with: "$")
             .replacingOccurrences(of: "￥", with: "$")
         guard s.contains("$") || s.contains("\\") else { return s }
-        for delimiter in ["$$", "$", "\\(", "\\)", "\\[", "\\]"] {
-            s = s.replacingOccurrences(of: delimiter, with: " ")
+        let rtl = Bidi.containsRTL(s)
+        // Fold delimited spans individually so each gets its own bidi isolation.
+        if let regex = try? NSRegularExpression(
+            pattern: #"\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]|\$([^$]+?)\$|\\\(([\s\S]+?)\\\)"#) {
+            let ns = s as NSString
+            var out = ""
+            var last = 0
+            for m in regex.matches(in: s, range: NSRange(location: 0, length: ns.length)) {
+                out += ns.substring(with: NSRange(location: last, length: m.range.location - last))
+                for g in 1...4 where m.range(at: g).location != NSNotFound {
+                    out += Bidi.isolate(InkWriter.plainText(from: ns.substring(with: m.range(at: g))), inRTL: rtl)
+                    break
+                }
+                last = m.range.location + m.range.length
+            }
+            out += ns.substring(from: last)
+            s = out
         }
-        return InkWriter.plainText(from: s)
+        // Any remaining bare LaTeX (undelimited \frac, x^{2}) still folds over the
+        // whole string, as before.
+        return s.contains("\\") ? InkWriter.plainText(from: s) : s
     }
 }
 
@@ -111,8 +150,9 @@ enum MathSegmenter {
                 flushText()
                 out.append(.math(latex: latex, display: display))
             } else {
-                // Light inline math stays in the sentence, folded to unicode.
-                pending += InkWriter.plainText(from: latex)
+                // Light inline math stays in the sentence, folded to unicode — bidi-
+                // isolated so Hebrew prose around it can't reorder the LTR run.
+                pending += Bidi.isolate(InkWriter.plainText(from: latex), inRTL: Bidi.containsRTL(s))
             }
         }
         if last < ns.length { pending += ns.substring(from: last) }
@@ -210,9 +250,7 @@ struct AIRichText: View {
 
     // Any Hebrew present ⇒ RTL. (isMostlyRTL is first-strong-char, so a Hebrew line
     // that starts with a number/formula was wrongly read as LTR and left-aligned.)
-    private var rtl: Bool {
-        content.unicodeScalars.contains { (0x0590...0x05FF).contains($0.value) }
-    }
+    private var rtl: Bool { Bidi.containsRTL(content) }
     private var mathColor: UIColor {
         UIColor.label.resolvedColor(with: UITraitCollection(userInterfaceStyle: colorScheme == .dark ? .dark : .light))
     }

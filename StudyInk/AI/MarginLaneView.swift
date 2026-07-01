@@ -598,7 +598,7 @@ struct StepDetailCard: View {
     /// RTL if ANY Hebrew appears (first-strong-char fails on math/number-leading lines).
     private var rtl: Bool {
         let all = ([why].compactMap { $0 } + steps).joined(separator: " ")
-        return all.unicodeScalars.contains { (0x0590...0x05FF).contains($0.value) }
+        return Bidi.containsRTL(all)
     }
 
     var body: some View {
