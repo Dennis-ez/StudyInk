@@ -841,9 +841,9 @@ struct NoteEditorView: View {
                     ambient.sensitivity = .subtle
                     ambient.ghost = GhostSuggestion(
                         pageIndex: pageIndex, anchor: CGPoint(x: size.width * 0.16, y: size.height * 0.34),
-                        text: "= sin(u) + C",
-                        why: "You've reduced it to ∫ cos(u) du. The antiderivative of cosine is sine — so the blank fills with u.",
-                        steps: [], inline: false, highlights: [], blankToken: "u")
+                        text: "\\frac{x-3}{2\\sqrt{x}}",
+                        why: "Differentiate with the power rule, then divide by 2√x.",
+                        steps: [], inline: false, highlights: [], blankToken: "x-3")
                 }
             }
             // DEV: eyeball the 5b margin chat thread in-editor without a key.

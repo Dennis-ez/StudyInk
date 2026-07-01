@@ -26,6 +26,34 @@ struct GhostTraceLayer: View {
         return (String(text[text.startIndex..<r.lowerBound]), String(text[r]), String(text[r.upperBound...]))
     }
 
+    /// The next line as clean LaTeX (delimiters stripped). Typeset in 2D when it's real
+    /// math so a fraction/root reads correctly instead of folding to "(…)/(2√(x))".
+    private var latexClean: String {
+        fullText
+            .replacingOccurrences(of: "$$", with: "").replacingOccurrences(of: "$", with: "")
+            .replacingOccurrences(of: "\\(", with: "").replacingOccurrences(of: "\\)", with: "")
+            .replacingOccurrences(of: "\\[", with: "").replacingOccurrences(of: "\\]", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Heavy 2D structure that unicode-folding mangles → typeset it. A plain linear line
+    /// (e.g. "= sin(u) + C") stays handwritten with the pulsing scaffold box.
+    private var needsTypeset: Bool {
+        let s = latexClean
+        guard MathSegmenter.typesets(s) else { return false }
+        return ["\\frac", "\\dfrac", "\\tfrac", "\\sqrt", "\\int", "\\sum", "\\prod",
+                "\\lim", "^{", "_{"].contains { s.contains($0) }
+    }
+
+    /// The typeset LaTeX with the insight token masked by SwiftMath's placeholder box
+    /// (\square) until revealed. Falls back to the full expression if the token can't be
+    /// located in the LaTeX — correct math wins over the blank.
+    private var scaffoldLatex: String {
+        guard !blankToken.isEmpty, let r = latexClean.range(of: blankToken) else { return latexClean }
+        var s = latexClean; s.replaceSubrange(r, with: "\\square ")
+        return MathSegmenter.typesets(s) ? s : latexClean
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .center, spacing: 6) {
@@ -41,17 +69,28 @@ struct GhostTraceLayer: View {
         }
     }
 
-    // The dimmed step with the blank in the middle.
-    private var traceLine: some View {
-        let p = parts
+    // The dimmed step with the blank in the middle — typeset in 2D for real math
+    // (fractions/roots), handwritten (Caveat) with a pulsing scaffold box for a plain
+    // linear line. Tapping a scaffold reveals the answer either way.
+    @ViewBuilder private var traceLine: some View {
         let accepted = state == .accepted
-        return HStack(spacing: 0) {
-            Text(p.pre).font(AITokens.caveat(26))
-            blankView
-            Text(p.post).font(AITokens.caveat(26))
+        if needsTypeset {
+            AIInkMath(latex: state == .scaffold ? scaffoldLatex : latexClean,
+                      color: accepted ? AITokens.ai : AITokens.inkStudent, fontSize: 25)
+                .opacity(accepted ? 1 : AITokens.inkGhostOpacity)
+                .scaleEffect(state == .scaffold && pulse ? 1.02 : 1.0)
+                .contentShape(Rectangle())
+                .onTapGesture { if state == .scaffold { withAnimation(AITokens.Motion.unfold) { state = .revealed } } }
+        } else {
+            let p = parts
+            HStack(spacing: 0) {
+                Text(p.pre).font(AITokens.caveat(26))
+                blankView
+                Text(p.post).font(AITokens.caveat(26))
+            }
+            .foregroundStyle(accepted ? AITokens.ai : AITokens.inkStudent)
+            .opacity(accepted ? 1 : AITokens.inkGhostOpacity)
         }
-        .foregroundStyle(accepted ? AITokens.ai : AITokens.inkStudent)
-        .opacity(accepted ? 1 : AITokens.inkGhostOpacity)
     }
 
     @ViewBuilder private var blankView: some View {
