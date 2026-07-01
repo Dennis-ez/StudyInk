@@ -597,6 +597,8 @@ struct StepDetailCard: View {
     let steps: [String]
     var isLoading: Bool = false
     var onDismiss: () -> Void
+    @Environment(\.colorScheme) private var scheme
+    private var dark: Bool { scheme == .dark }
 
     /// RTL if ANY Hebrew appears (first-strong-char fails on math/number-leading lines).
     private var rtl: Bool {
@@ -608,12 +610,12 @@ struct StepDetailCard: View {
         // Absolute-leading: the env below carries direction (Hebrew ⇒ leading =
         // visually right). Content-based .trailing flips double-invert — see AIRichText.
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 7) {
-                Lucide("sparkles", size: 12).foregroundStyle(AppTheme.current.aiAccent)
-                Text("ambient.why").font(.caption.weight(.semibold)).foregroundStyle(SemanticColor.textMutedColor)
-                Spacer(minLength: 6)
-                Button(action: onDismiss) { Lucide("x", size: 12).foregroundStyle(SemanticColor.textMutedColor) }
-                    .buttonStyle(.plain).accessibilityLabel(Text("ai.dismiss"))
+            HStack(spacing: 8) {
+                Image(systemName: "sparkle").font(.system(size: 12, weight: .semibold)).foregroundStyle(AITokens.ai)
+                Text("ambient.why").font(.caption.weight(.semibold)).foregroundStyle(AITokens.textMuted(dark))
+                Spacer(minLength: 8)
+                Button(action: onDismiss) { Lucide("x", size: 12).foregroundStyle(AITokens.textFaint(dark)) }
+                    .buttonStyle(.plain).tutorTapTarget(16).accessibilityLabel(Text("ai.dismiss"))
             }
             .environment(\.layoutDirection, .leftToRight)
 
@@ -623,28 +625,33 @@ struct StepDetailCard: View {
             // "why + loading", never a bare sentence, a collapsed step, or a chip row.
             if let why, !why.isEmpty { AIRichText(content: why).font(.system(size: 12)) }
             if isLoading || (steps.isEmpty && why?.isEmpty == false) {
+                // Same breathing sparkle as every other thinking state — one language
+                // for "the tutor is working" everywhere.
                 HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
-                    Text("ai.thinking").font(.caption).foregroundStyle(.secondary)
+                    Image(systemName: "sparkle").font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(AITokens.ai).breathing()
+                    Text("ai.thinking").font(.caption).foregroundStyle(AITokens.textFaint(dark))
                 }
             } else if steps.isEmpty {
-                Text("ambient.notice.noSuggestion").font(.caption).foregroundStyle(.secondary)
+                Text("ambient.notice.noSuggestion").font(.caption).foregroundStyle(AITokens.textFaint(dark))
             } else {
                 ForEach(Array(steps.enumerated()), id: \.offset) { i, step in
                     HStack(alignment: .top, spacing: 8) {
                         Text(verbatim: "\(i + 1)")
                             .font(.caption2.weight(.bold).monospacedDigit()).foregroundStyle(.white)
-                            .frame(width: 17, height: 17).background(AppTheme.current.aiAccent, in: Circle())
+                            .frame(width: 17, height: 17).background(AITokens.ai, in: Circle())
                         AIRichText(content: step).font(.system(size: 12))
                     }
                 }
             }
         }
-        .padding(.horizontal, 12).padding(.vertical, 10)
+        .padding(.horizontal, 12).padding(.vertical, 12)
         .frame(maxWidth: 300, alignment: .leading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(SemanticColor.separator))
-        .shadow(color: AppTheme.current.aiAccent.opacity(0.14), radius: 16, y: 6)
+        // The tutor card chrome (dark-aware) — was .regularMaterial + app-theme tokens,
+        // the one tutor surface styled unlike the others.
+        .background(AITokens.cardBg(dark), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(AITokens.cardRing(dark)))
+        .shadow(color: AITokens.cardShadow.opacity(0.3), radius: 18, y: 8)
         // Hebrew reason/steps read right-to-left (number badge on the right).
         .environment(\.layoutDirection, rtl ? .rightToLeft : .leftToRight)
     }
