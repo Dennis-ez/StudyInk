@@ -186,14 +186,11 @@ final class AITutorController: ObservableObject {
     /// the bubble vanished.
     func pin(bubbleID: UUID) {
         guard let index = bubbles.firstIndex(where: { $0.id == bubbleID }) else { return }
+        // Pin ≠ minimize (they used to both collapse and read as the same button):
+        // pinning just MARKS the thread in place — the card stays open, the pin fills.
+        // The payoff is on close: ✕ on a pinned thread tucks it into its anchored chip
+        // (returnable) instead of deleting it.
         bubbles[index].isPinned.toggle()
-        // Pinning tucks the card into its compact chip, anchored on the page — a
-        // persistent, returnable marker (tap the chip to reopen). Unpinning
-        // re-expands it. The chip stays in place, so it reads as "pinned here",
-        // not "vanished".
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-            bubbles[index].isCollapsed = bubbles[index].isPinned
-        }
         persistPinnedBubbles()
     }
 
@@ -211,9 +208,15 @@ final class AITutorController: ObservableObject {
 
     func dismiss(bubbleID: UUID) {
         guard let index = bubbles.firstIndex(where: { $0.id == bubbleID }) else { return }
+        // ✕ on a PINNED thread doesn't delete — it collapses to its anchored chip so
+        // the student can get back to it (that's what pinning means). Unpin to delete.
+        if bubbles[index].isPinned {
+            withAnimation(AITokens.Motion.dismiss) { bubbles[index].isCollapsed = true }
+            persistPinnedBubbles()
+            return
+        }
         let bubble = bubbles.remove(at: index)
         logToHistory(bubble)
-        if bubble.isPinned { persistPinnedBubbles() }
     }
 
     func move(bubbleID: UUID, to point: CGPoint) {

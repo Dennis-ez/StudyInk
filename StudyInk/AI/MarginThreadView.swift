@@ -121,24 +121,27 @@ struct ThreadBubbleRow: View {
     let speaker: Speaker
     let text: String
 
-    /// Any Hebrew ⇒ read right-to-left and hug the right edge (the design is RTL when
-    /// the content is Hebrew). AIRichText already right-aligns the answer's own text.
+    /// Any Hebrew ⇒ the text itself reads right-to-left. Row PLACEMENT stays
+    /// semantic (YOU = trailing, MARGIN = leading) and the CARD's layoutDirection
+    /// mirrors it for Hebrew threads — no content-based flips here (they double-
+    /// inverted against the mirrored card and came out visually left).
     private var rtl: Bool { Bidi.containsRTL(text) }
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         let isYou = speaker == .you
-        // Hebrew rows go to the right; otherwise the usual YOU-right / MARGIN-left.
-        let trailing = rtl || isYou
-        return VStack(alignment: trailing ? .trailing : .leading, spacing: 3) {
+        let dark = scheme == .dark
+        return VStack(alignment: isYou ? .trailing : .leading, spacing: 3) {
             Text(isYou ? "YOU" : "MARGIN")
                 .font(AITokens.mono(8)).tracking(0.8).foregroundStyle(AITokens.textFainter)
             Group {
                 if isYou {
                     Text(text).font(.system(size: 13)).foregroundStyle(.white)
-                        .multilineTextAlignment(rtl ? .trailing : .leading)
+                        .multilineTextAlignment(.leading)
                         .environment(\.layoutDirection, rtl ? .rightToLeft : .leftToRight)
                 } else {
-                    AIRichText(content: text).font(.system(size: 13)).foregroundStyle(AITokens.textInk)
+                    AIRichText(content: text).font(.system(size: 13))
+                        .foregroundStyle(AITokens.textInk(dark))
                 }
             }
             .padding(.horizontal, 11).padding(.vertical, 8)
@@ -152,7 +155,7 @@ struct ThreadBubbleRow: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity, alignment: trailing ? .trailing : .leading)
+        .frame(maxWidth: .infinity, alignment: isYou ? .trailing : .leading)
     }
 }
 
@@ -169,6 +172,8 @@ struct MarginThreadBubble: View {
     @State private var dragOffset: CGSize = .zero
     @State private var keyboardHeight: CGFloat = 0
     @FocusState private var focused: Bool
+    @Environment(\.colorScheme) private var scheme
+    private var dark: Bool { scheme == .dark }
 
     private var rows: [(speaker: ThreadBubbleRow.Speaker, text: String)] {
         var out: [(ThreadBubbleRow.Speaker, String)] = []
@@ -232,12 +237,12 @@ struct MarginThreadBubble: View {
             HStack(spacing: 7) {
                 Image(systemName: bubble.isPinned ? "pin.fill" : "sparkle").font(.system(size: 11, weight: .semibold)).foregroundStyle(AITokens.ai)
                 Text("Thread").font(AITokens.mono(9)).tracking(0.4).foregroundStyle(AITokens.textFainter)
-                Text("· \(preview)").font(.system(size: 12)).foregroundStyle(AITokens.textMuted).lineLimit(1)
-                Text("\(bubble.thread.count) ›").font(.system(size: 11, weight: .bold)).foregroundStyle(AITokens.textFaint)
+                Text("· \(preview)").font(.system(size: 12)).foregroundStyle(AITokens.textMuted(dark)).lineLimit(1)
+                Text("\(bubble.thread.count) ›").font(.system(size: 11, weight: .bold)).foregroundStyle(AITokens.textFaint(dark))
             }
             .padding(.horizontal, 11).padding(.vertical, 7)
-            .background(AITokens.cardBg, in: Capsule())
-            .overlay(Capsule().strokeBorder(AITokens.cardRing))
+            .background(AITokens.cardBg(dark), in: Capsule())
+            .overlay(Capsule().strokeBorder(AITokens.cardRing(dark)))
         }
         .buttonStyle(.plain)
     }
@@ -254,10 +259,10 @@ struct MarginThreadBubble: View {
                         .foregroundStyle(bubble.isPinned ? AITokens.ai : AITokens.textFaint)
                 }.buttonStyle(.plain).tutorTapTarget(18, hit: 30)
                 Button { tutor.toggleCollapsed(bubbleID: bubble.id) } label: {
-                    Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(AITokens.textFaint)
+                    Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(AITokens.textFaint(dark))
                 }.buttonStyle(.plain).tutorTapTarget(18, hit: 30)
                 Button { tutor.dismiss(bubbleID: bubble.id) } label: {
-                    Image(systemName: "xmark").font(.system(size: 11, weight: .bold)).foregroundStyle(AITokens.textFaint)
+                    Image(systemName: "xmark").font(.system(size: 11, weight: .bold)).foregroundStyle(AITokens.textFaint(dark))
                 }.buttonStyle(.plain).tutorTapTarget(18, hit: 30)
             }
             .contentShape(Rectangle())
@@ -273,7 +278,7 @@ struct MarginThreadBubble: View {
                         if isLoading {
                             HStack(spacing: 8) {
                                 Image(systemName: "sparkle").font(.system(size: 12, weight: .semibold)).foregroundStyle(AITokens.ai).breathing()
-                                Text("ai.thinking").font(.system(size: 12)).foregroundStyle(AITokens.textFaint)
+                                Text("ai.thinking").font(.system(size: 12)).foregroundStyle(AITokens.textFaint(dark))
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
@@ -307,13 +312,13 @@ struct MarginThreadBubble: View {
                 }.buttonStyle(.plain).disabled(!canSend)
             }
             .padding(.horizontal, 10).padding(.vertical, 6)
-            .background(AITokens.chipBg, in: Capsule())
+            .background(AITokens.chipBg(dark), in: Capsule())
             TutorChip(title: "ambient.chat.gotIt", systemImage: "checkmark",
                       accent: AITokens.success, action: { tutor.dismiss(bubbleID: bubble.id) })
         }
         .padding(12).frame(width: 300, alignment: .leading)
-        .background(AITokens.cardBg, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(AITokens.cardRing))
+        .background(AITokens.cardBg(dark), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(AITokens.cardRing(dark)))
         .shadow(color: AITokens.cardShadow.opacity(0.3), radius: 18, y: 8)
         // Any Hebrew ⇒ the whole card mirrors: header order, chips row, and the ask-
         // more field (send button flips to the left). isMostlyRTL is first-strong-char

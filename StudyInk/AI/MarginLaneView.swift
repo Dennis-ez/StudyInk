@@ -605,7 +605,9 @@ struct StepDetailCard: View {
     }
 
     var body: some View {
-        VStack(alignment: rtl ? .trailing : .leading, spacing: 8) {
+        // Absolute-leading: the env below carries direction (Hebrew ⇒ leading =
+        // visually right). Content-based .trailing flips double-invert — see AIRichText.
+        VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 7) {
                 Lucide("sparkles", size: 12).foregroundStyle(AppTheme.current.aiAccent)
                 Text("ambient.why").font(.caption.weight(.semibold)).foregroundStyle(SemanticColor.textMutedColor)
@@ -639,7 +641,7 @@ struct StepDetailCard: View {
             }
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
-        .frame(maxWidth: 300, alignment: rtl ? .trailing : .leading)
+        .frame(maxWidth: 300, alignment: .leading)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(SemanticColor.separator))
         .shadow(color: AppTheme.current.aiAccent.opacity(0.14), radius: 16, y: 6)

@@ -74,6 +74,17 @@ enum AITokens {
     /// rung-0 "static dot" cue used by the Subtle dial.
     static let subtleDot    = hex(0xC6B699)
 
+    // MARK: color — dark-aware chat surface
+    // The chat bubble is the one tutor surface students read at night — it follows
+    // the system appearance (unlike the on-page paper surfaces, which stay warm).
+
+    static func cardBg(_ dark: Bool) -> Color { dark ? hex(0x211D18, 0.98) : cardBg }
+    static func cardRing(_ dark: Bool) -> Color { dark ? hex(0x3E362A) : cardRing }
+    static func chipBg(_ dark: Bool) -> Color { dark ? hex(0x2E2820) : chipBg }
+    static func textInk(_ dark: Bool) -> Color { dark ? hex(0xE6DECE) : textInk }
+    static func textMuted(_ dark: Bool) -> Color { dark ? panelText : textMuted }
+    static func textFaint(_ dark: Bool) -> Color { dark ? panelMuted : textFaint }
+
     // MARK: color — dark panels (decision trace / code)
 
     static let panelDark    = hex(0x211D18)

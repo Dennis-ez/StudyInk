@@ -256,7 +256,12 @@ struct AIRichText: View {
     }
 
     var body: some View {
-        VStack(alignment: rtl ? .trailing : .leading, spacing: 6) {
+        // ABSOLUTE-leading layout: alignment is always .leading and the layout
+        // direction carries RTL. Hebrew ⇒ leading = visually right. This survives any
+        // host environment (a mirrored chat card) without double-inverting — the old
+        // content-based .trailing flips cancelled against a mirrored host and came out
+        // visually LEFT ("Hebrew is left aligned in the chat").
+        VStack(alignment: .leading, spacing: 6) {
             ForEach(MathSegmenter.segments(from: content)) { item in
                 switch item.segment {
                 case .text(let text):
@@ -266,11 +271,14 @@ struct AIRichText: View {
                         MathBlockView(latex: latex, display: display,
                                       color: mathColor, fontSize: display ? 19 : 17)
                     }
-                    .frame(maxWidth: .infinity, alignment: rtl ? .trailing : .leading)
+                    // Math is an LTR island even in Hebrew prose.
+                    .environment(\.layoutDirection, .leftToRight)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
         }
-        .frame(maxWidth: .infinity, alignment: rtl ? .trailing : .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .environment(\.layoutDirection, rtl ? .rightToLeft : .leftToRight)
     }
 }
 
@@ -291,11 +299,13 @@ private struct ProseBlock: View {
     }
 
     var body: some View {
+        // Absolute-leading: AIRichText's environment carries the direction, so
+        // .leading is visually right for Hebrew. No per-block flips (they double-
+        // inverted against a mirrored host and landed visually left).
         Text(attributed)
             .font(.subheadline)
-            .multilineTextAlignment(rtl ? .trailing : .leading)
-            .frame(maxWidth: .infinity, alignment: rtl ? .trailing : .leading)
-            .environment(\.layoutDirection, rtl ? .rightToLeft : .leftToRight)
+            .multilineTextAlignment(.leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .textSelection(.enabled)
     }
 }
