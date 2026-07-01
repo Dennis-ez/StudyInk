@@ -26,7 +26,7 @@ struct BrandMark: View {
             .frame(width: size, height: size)
             .overlay(
                 Circle()
-                    .fill(Color(red: 1.0, green: 0.839, blue: 0.039)) // #FFD60A
+                    .fill(DS.brandGold)
                     .frame(width: size * 0.46, height: size * 0.46)
             )
             .accessibilityHidden(true)
@@ -114,7 +114,7 @@ struct SplashMark: View {
                 )
                 .overlay {
                     RoundedRectangle(cornerRadius: s * 0.08, style: .continuous)
-                        .fill(Color(red: 0.988, green: 0.980, blue: 0.961))
+                        .fill(DS.brandPaper)
                         .frame(width: s * 0.56, height: s * 0.62)
                         .overlay {
                             VStack(spacing: s * 0.065) {
@@ -129,7 +129,7 @@ struct SplashMark: View {
                 }
                 .overlay(alignment: .bottomTrailing) {
                     Circle()
-                        .fill(Color(red: 1.0, green: 0.839, blue: 0.039))
+                        .fill(DS.brandGold)
                         .frame(width: s * 0.30, height: s * 0.30)
                         .padding(s * 0.06)
                 }

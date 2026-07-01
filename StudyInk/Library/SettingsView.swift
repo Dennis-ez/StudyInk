@@ -383,7 +383,7 @@ struct SettingsView: View {
                     .frame(width: 60, height: 60)
                     .overlay(
                         Circle()
-                            .fill(Color(red: 1.0, green: 0.839, blue: 0.039)) // #FFD60A gold dot
+                            .fill(DS.brandGold) // brand token
                             .frame(width: 60 * 0.46, height: 60 * 0.46)
                     )
 

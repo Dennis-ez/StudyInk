@@ -19,7 +19,8 @@ struct InsertSpaceOverlay: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var dragStart: CGFloat?
 
-    private var paper: Color { colorScheme == .dark ? Color(red: 0.11, green: 0.11, blue: 0.118) : .white }
+    // Same source as the rendered page background, so the wedge matches the paper exactly.
+    private var paper: Color { Color(PageRenderer.backgroundColor(darkMode: colorScheme == .dark)) }
     private var accent: Color { AppTheme.current.aiAccent }
 
     var body: some View {

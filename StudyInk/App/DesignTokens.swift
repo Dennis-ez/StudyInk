@@ -4,6 +4,12 @@ import SwiftUI
 /// and the named motion curves. Color tokens live on `AppTheme` / `SemanticColor`.
 /// Source of truth: DesignHandoff/README.md.
 enum DS {
+    // MARK: Brand
+    /// The gold dot in the brand mark / theme chips (#FFD60A) — brand-fixed, never themed.
+    static let brandGold = Color(red: 1.0, green: 0.839, blue: 0.039)
+    /// The tiny paper sheet in the brand mark (#FCFAF5-adjacent) — brand-fixed.
+    static let brandPaper = Color(red: 0.988, green: 0.980, blue: 0.961)
+
     // MARK: Corner radius
     enum Radius {
         static let sm: CGFloat = 8
