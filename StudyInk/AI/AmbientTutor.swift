@@ -830,8 +830,11 @@ final class AmbientTutorController: ObservableObject {
                   let c = raw.range(of: "```", range: f.upperBound..<raw.endIndex) {
             src = String(raw[f.upperBound..<c.lowerBound])
         }
-        // 1) Strict JSON object.
-        if let s = src.firstIndex(of: "{"), let e = src.lastIndex(of: "}"),
+        // 1) Strict JSON object — only attempt it when there's actually a "next" key.
+        //    A bare LaTeX answer (\frac{x-3}{2\sqrt{x}}) also has { }, and must NOT be
+        //    fed to JSONSerialization and then written off as unparseable.
+        if src.contains("\"next\""),
+           let s = src.firstIndex(of: "{"), let e = src.lastIndex(of: "}"),
            let data = String(src[s...e]).data(using: .utf8),
            let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let next = obj["next"] as? String {
@@ -852,13 +855,52 @@ final class AmbientTutorController: ObservableObject {
             let blank = firstCapture(#""blankToken"\s*:\s*"((?:[^"\\]|\\.)*)""#, in: src).map(unescapeJSON)
             return (nextVal, (whyVal?.isEmpty == false) ? whyVal : nil, recoverSteps(in: src), [], (blank?.isEmpty == false) ? blank : nil)
         }
-        // 3) It tried to be JSON but we couldn't recover a value → render nothing
-        //    rather than spilling braces/keys onto the page.
-        if src.contains("\"next\"") || src.contains("\"why\"") || src.contains("{") {
+        // 2.5) PROSE fallback — the model frequently ignores "output JSON" and writes
+        //    the answer as text: "<answer>\nwhy: <sentence>\nsteps:\n- <s1>\n- <s2>",
+        //    often with the math wrapped in $…$. Parse that leniently so the ghost still
+        //    appears (this was the "OK round-trip in the log but nothing on the page").
+        if !src.contains("\"next\""), let prose = parseProseGhost(src) { return prose }
+        // 3) Real broken JSON (an actual "next"/"why" KEY that wouldn't parse) → render
+        //    nothing rather than spilling braces/keys as ink. A lone brace from LaTeX no
+        //    longer counts here — it used to swallow every \frac/\sqrt answer as empty.
+        if src.contains("\"next\"") || src.contains("\"why\"") {
             return ("", nil, [], [], nil)
         }
-        // 4) Genuinely plain text — treat the whole thing as the next line.
+        // 4) Genuinely plain text — treat the first non-empty line as the next line.
         return (raw, nil, [], [], nil)
+    }
+
+    /// The model wrote the next step as PROSE instead of JSON — commonly
+    /// "<answer line>\nwhy: <one sentence>\nsteps:\n- <s1>\n- <s2>", with the math
+    /// possibly wrapped in $…$. Pull out next / why / steps; nil if there's no answer
+    /// line (so the caller can fall through). No blankToken (prose rarely marks one).
+    private static func parseProseGhost(_ src: String) -> (String, String?, [String], [RawHighlight], String?)? {
+        let whyR = src.range(of: "why:", options: .caseInsensitive)
+        let stepsR = src.range(of: "steps:", options: .caseInsensitive)
+        let firstLabel = [whyR?.lowerBound, stepsR?.lowerBound].compactMap { $0 }.min()
+        // The answer = the first non-empty line BEFORE any why:/steps: label. Skip lines
+        // that look like leftover JSON syntax so a malformed object doesn't leak through.
+        let head = firstLabel.map { String(src[src.startIndex..<$0]) } ?? src
+        let next = head.split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "$", with: "").trimmingCharacters(in: .whitespaces) }
+            .first { !$0.isEmpty && !$0.hasPrefix("{") && !$0.hasPrefix("\"") } ?? ""
+        guard !next.isEmpty else { return nil }
+        var why: String?
+        if let whyR {
+            let end = (stepsR.map { $0.lowerBound > whyR.upperBound } ?? false) ? stepsR!.lowerBound : src.endIndex
+            why = String(src[whyR.upperBound..<end]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        var steps: [String] = []
+        if let stepsR {
+            steps = String(src[stepsR.upperBound...])
+                .split(whereSeparator: \.isNewline)
+                .map { $0.trimmingCharacters(in: .whitespaces)
+                        .replacingOccurrences(of: #"^[-•*]+\s*"#, with: "", options: .regularExpression)
+                        .replacingOccurrences(of: #"^\d+[.)]\s*"#, with: "", options: .regularExpression)
+                        .trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+        }
+        return (next, (why?.isEmpty == false) ? why : nil, steps, [], nil)
     }
 
     /// One un-resolved highlight as the model returned it: the term it used + the
